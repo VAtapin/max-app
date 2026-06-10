@@ -61,16 +61,20 @@ function logout_admin(): void
 
 function log_activity(?string $actorType, ?int $actorId, string $action, ?string $entityType = null, ?int $entityId = null, array $details = []): void
 {
-    $stmt = db()->prepare(
-        'INSERT INTO activity_logs (actor_type, actor_id, action, entity_type, entity_id, details)
-         VALUES (:actor_type, :actor_id, :action, :entity_type, :entity_id, :details)'
-    );
-    $stmt->execute([
-        'actor_type' => $actorType,
-        'actor_id' => $actorId,
-        'action' => $action,
-        'entity_type' => $entityType,
-        'entity_id' => $entityId,
-        'details' => $details ? json_encode($details, JSON_UNESCAPED_UNICODE) : null,
-    ]);
+    try {
+        $stmt = db()->prepare(
+            'INSERT INTO activity_logs (actor_type, actor_id, action, entity_type, entity_id, details)
+             VALUES (:actor_type, :actor_id, :action, :entity_type, :entity_id, :details)'
+        );
+        $stmt->execute([
+            'actor_type' => $actorType,
+            'actor_id' => $actorId,
+            'action' => $action,
+            'entity_type' => $entityType,
+            'entity_id' => $entityId,
+            'details' => $details ? json_encode($details, JSON_UNESCAPED_UNICODE) : null,
+        ]);
+    } catch (Throwable) {
+        // Logging must never block the business action in the admin panel.
+    }
 }

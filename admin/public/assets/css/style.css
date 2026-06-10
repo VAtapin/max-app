@@ -272,6 +272,18 @@ button:disabled {
     background: #fee4e2;
     color: var(--danger);
     border-radius: 6px;
+    margin-bottom: 12px;
+}
+
+.notice {
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+}
+
+.notice.success {
+    background: #dcfae6;
+    color: #067647;
 }
 
 @media (max-width: 1000px) {

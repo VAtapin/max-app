@@ -249,6 +249,16 @@ function select_options(string $source, array $admin): array
     return $stmt->fetchAll();
 }
 
+function safe_select_options(string $source, array $admin, array &$errors): array
+{
+    try {
+        return select_options($source, $admin);
+    } catch (Throwable $e) {
+        $errors[] = 'Не удалось загрузить список для поля: ' . $source . '. ' . $e->getMessage();
+        return [];
+    }
+}
+
 function normalize_datetime(?string $value): ?string
 {
     if (!$value) {
@@ -366,6 +376,7 @@ function save_record(string $moduleKey, array $module, array $payload, ?int $id,
 $action = $_GET['action'] ?? 'list';
 $id = isset($_GET['id']) ? (int)$_GET['id'] : null;
 $errors = [];
+$success = $_GET['success'] ?? null;
 $editRow = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -379,10 +390,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit('Record not found');
         }
 
-        $stmt = db()->prepare("DELETE FROM {$module['table']} WHERE id = :id");
-        $stmt->execute(['id' => $postId]);
-        log_activity('admin', (int)$admin['id'], 'delete_' . $module['table'], $module['table'], $postId);
-        redirect('crud.php?module=' . urlencode($moduleKey));
+        try {
+            $stmt = db()->prepare("DELETE FROM {$module['table']} WHERE id = :id");
+            $stmt->execute(['id' => $postId]);
+            log_activity('admin', (int)$admin['id'], 'delete_' . $module['table'], $module['table'], $postId);
+            redirect('crud.php?module=' . urlencode($moduleKey) . '&success=deleted');
+        } catch (Throwable $e) {
+            $errors[] = 'Не удалось удалить запись: ' . $e->getMessage();
+        }
     }
 
     if ($postId && !scoped_row_exists($moduleKey, $module, $postId, $admin)) {
@@ -394,8 +409,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $errors = validate_payload($module['fields'], $payload);
     $errors = array_merge($errors, validate_scope_payload($moduleKey, $payload, $admin));
     if (!$errors) {
-        save_record($moduleKey, $module, $payload, $postId, $admin);
-        redirect('crud.php?module=' . urlencode($moduleKey));
+        try {
+            save_record($moduleKey, $module, $payload, $postId, $admin);
+            redirect('crud.php?module=' . urlencode($moduleKey) . '&success=saved');
+        } catch (Throwable $e) {
+            $errors[] = 'Не удалось сохранить запись: ' . $e->getMessage();
+        }
     }
 
     $editRow = $payload + ['id' => $postId];
@@ -424,12 +443,17 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <h1><?= h($title) ?></h1>
     <a class="button" href="crud.php?module=<?= h($moduleKey) ?>&action=create">Добавить</a>
 </div>
+<?php if ($success === 'saved'): ?>
+    <div class="notice success">Запись сохранена.</div>
+<?php elseif ($success === 'deleted'): ?>
+    <div class="notice success">Запись удалена.</div>
+<?php endif; ?>
+<?php foreach ($errors as $error): ?>
+    <div class="alert"><?= h($error) ?></div>
+<?php endforeach; ?>
 <?php if ($action === 'create' || $action === 'edit'): ?>
     <section class="panel form-panel">
         <h2><?= $action === 'edit' ? 'Редактировать запись' : 'Добавить запись' ?></h2>
-        <?php foreach ($errors as $error): ?>
-            <div class="alert"><?= h($error) ?></div>
-        <?php endforeach; ?>
         <form method="post" class="crud-form">
             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
             <input type="hidden" name="action" value="save">
@@ -453,7 +477,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                                     <option value="<?= h($option) ?>" <?= (string)$value === (string)$option ? 'selected' : '' ?>><?= h($option) ?></option>
                                 <?php endforeach; ?>
                             <?php else: ?>
-                                <?php foreach (select_options($field['source'], $admin) as $option): ?>
+                                <?php foreach (safe_select_options($field['source'], $admin, $errors) as $option): ?>
                                     <option value="<?= (int)$option['id'] ?>" <?= (string)$value === (string)$option['id'] ? 'selected' : '' ?>>
                                         #<?= (int)$option['id'] ?> <?= h($option['label']) ?>
                                     </option>
