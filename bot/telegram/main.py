@@ -22,7 +22,10 @@ async def main() -> None:
     dispatcher = build_dispatcher()
 
     try:
-        await dispatcher.start_polling(bot)
+        me = await bot.get_me()
+        logging.info("Starting Telegram polling for @%s (%s)", me.username, me.id)
+        await bot.delete_webhook(drop_pending_updates=False)
+        await dispatcher.start_polling(bot, allowed_updates=dispatcher.resolve_used_update_types())
     finally:
         await bot.session.close()
         await close_pool()

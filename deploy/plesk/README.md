@@ -124,6 +124,12 @@ Logs:
 journalctl -u max-app-telegram.service -f
 ```
 
+Telegram diagnostics:
+
+```bash
+bash deploy/plesk/check-telegram.sh
+```
+
 ## 9. Update Deploy
 
 For later updates:
