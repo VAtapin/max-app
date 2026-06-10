@@ -138,6 +138,12 @@ Set Telegram bot menu button:
 bot/.venv/bin/python -m bot.telegram.set_menu_button
 ```
 
+Reset custom menu button when BotFather already provides the Mini App Open button:
+
+```bash
+bot/.venv/bin/python -m bot.telegram.clear_menu_button
+```
+
 ## 9. Update Deploy
 
 For later updates:
