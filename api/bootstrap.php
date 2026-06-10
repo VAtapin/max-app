@@ -29,10 +29,13 @@ function require_platform_user(): array
     $data = input_json();
     $platform = $_GET['platform'] ?? $_POST['platform'] ?? $data['platform'] ?? null;
     $platformUserId = $_GET['platform_user_id'] ?? $_POST['platform_user_id'] ?? $data['platform_user_id'] ?? null;
+    $authToken = $_GET['auth_token'] ?? $_POST['auth_token'] ?? $data['auth_token'] ?? null;
 
     if (!$platform || !$platformUserId) {
         json_response(['error' => 'platform and platform_user_id are required'], 422);
     }
+
+    verify_platform_auth((string)$platform, (string)$platformUserId, $authToken ? (string)$authToken : null);
 
     $stmt = db()->prepare(
         'SELECT u.*
@@ -183,4 +186,30 @@ function ensure_platform_account(int $endUserId, string $platform, string $platf
         'platform_user_id' => $platformUserId,
         'username' => $username,
     ]);
+}
+
+function telegram_auth_token(string $platformUserId): ?string
+{
+    $config = app_config();
+    $botToken = $config['integrations']['telegram_bot_token'] ?? getenv('TELEGRAM_BOT_TOKEN') ?: '';
+    if ($botToken === '') {
+        return null;
+    }
+
+    return hash_hmac('sha256', 'telegram:' . $platformUserId, $botToken);
+}
+
+function verify_platform_auth(string $platform, string $platformUserId, ?string $authToken): void
+{
+    if ($platform !== 'telegram') {
+        return;
+    }
+
+    $expected = telegram_auth_token($platformUserId);
+    if ($expected === null) {
+        json_response(['error' => 'telegram auth token is not configured'], 500);
+    }
+    if (!$authToken || !hash_equals($expected, $authToken)) {
+        json_response(['error' => 'telegram auth token is invalid'], 403);
+    }
 }

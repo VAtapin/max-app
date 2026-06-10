@@ -8,6 +8,7 @@
 - `api/` - общий JSON API для VK Mini App и будущих интеграций.
 - `bot/` - Telegram Bot, MAX Bot и общая Python-бизнес-логика.
 - `vk-mini-app/` - статическое VK Mini App на HTML/CSS/JavaScript.
+- `mini-app/` - общий Mini App интерфейс для Telegram, VK и web.
 - `database/` - SQL-схема и стартовые данные.
 
 ## Требования
@@ -120,7 +121,13 @@ python -m bot.max.main
 
 ## VK Mini App
 
-Файлы находятся в:
+Основной общий интерфейс находится в:
+
+```text
+mini-app/
+```
+
+Старый путь для VK сохранён:
 
 ```text
 vk-mini-app/
@@ -130,6 +137,7 @@ vk-mini-app/
 
 ```text
 api/auth.php
+api/telegram_auth.php
 api/user.php
 api/products.php
 api/tests.php
@@ -139,6 +147,8 @@ api/contact_manager.php
 ```
 
 Для локальной разработки можно открыть `vk-mini-app/index.html` через веб-сервер проекта. API должен быть доступен по соседнему пути `../api`.
+
+Telegram Mini App открывается из кнопки бота и использует `api/telegram_auth.php` для проверки Telegram `initData`.
 
 ## Важные правила MVP
 

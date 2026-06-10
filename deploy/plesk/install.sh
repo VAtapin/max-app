@@ -28,6 +28,13 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 cd "$PROJECT_ROOT"
 
+php_quote() {
+  local value="${1:-}"
+  value="${value//\\/\\\\}"
+  value="${value//\'/\\\'}"
+  printf "'%s'" "$value"
+}
+
 echo "Checking PHP..."
 "$PHP_BIN" -v
 "$PHP_BIN" -m | grep -qi '^pdo_mysql$' || {
@@ -44,12 +51,15 @@ return [
         'base_url' => '/admin/public',
     ],
     'db' => [
-        'host' => '${DB_HOST}',
-        'port' => '${DB_PORT}',
-        'database' => '${DB_DATABASE}',
-        'username' => '${DB_USERNAME}',
-        'password' => '${DB_PASSWORD}',
+        'host' => $(php_quote "$DB_HOST"),
+        'port' => $(php_quote "$DB_PORT"),
+        'database' => $(php_quote "$DB_DATABASE"),
+        'username' => $(php_quote "$DB_USERNAME"),
+        'password' => $(php_quote "$DB_PASSWORD"),
         'charset' => 'utf8mb4',
+    ],
+    'integrations' => [
+        'telegram_bot_token' => $(php_quote "${TELEGRAM_BOT_TOKEN:-}"),
     ],
 ];
 PHP
@@ -65,6 +75,7 @@ DB_PASSWORD=${DB_PASSWORD}
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
 MAX_BOT_TOKEN=${MAX_BOT_TOKEN:-}
 MAX_API_BASE_URL=${MAX_API_BASE_URL:-https://botapi.max.ru}
+SWPRO_MINI_APP_URL=${SWPRO_MINI_APP_URL:-https://swpro.ru/mini-app/index.html}
 LOG_LEVEL=${LOG_LEVEL:-INFO}
 BOTENV
 

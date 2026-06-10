@@ -20,6 +20,10 @@ fi
 echo "Running Telegram diagnostics..."
 bot/.venv/bin/python -m bot.telegram.diagnostics
 
+echo
+echo "To set Telegram menu button:"
+echo "  bot/.venv/bin/python -m bot.telegram.set_menu_button"
+
 if command -v systemctl >/dev/null 2>&1; then
   echo
   echo "Service status:"

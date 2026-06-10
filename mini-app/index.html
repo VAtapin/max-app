@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SWPro</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
+</head>
+<body>
+    <main class="app">
+        <header class="app-header">
+            <div>
+                <span class="eyebrow">SWPro Ассистент</span>
+                <h1>SWPro</h1>
+            </div>
+        </header>
+
+        <nav class="tabs" aria-label="Навигация">
+            <button data-page="home" class="active">Главная</button>
+            <button data-page="tests">Тесты</button>
+            <button data-page="products">Продукты</button>
+            <button data-page="recommendations">Рекомендации</button>
+            <button data-page="leads">Заявки</button>
+            <button data-page="profile">Профиль</button>
+        </nav>
+
+        <section id="page" class="page"></section>
+
+        <p class="disclaimer">
+            Информация носит ознакомительный характер и не является медицинской рекомендацией.
+            Перед применением продуктов проконсультируйтесь со специалистом.
+        </p>
+    </main>
+    <script src="app.js"></script>
+</body>
+</html>

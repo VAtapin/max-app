@@ -85,6 +85,8 @@ This creates:
 
 Private files are ignored by Git.
 
+Run this again after updates that add new private config values. Telegram Mini App requires the bot token in `admin/app/config/local.php` to verify `initData`.
+
 ## 6. Import Database
 
 ```bash
@@ -130,6 +132,12 @@ Telegram diagnostics:
 bash deploy/plesk/check-telegram.sh
 ```
 
+Set Telegram bot menu button:
+
+```bash
+bot/.venv/bin/python -m bot.telegram.set_menu_button
+```
+
 ## 9. Update Deploy
 
 For later updates:
@@ -144,6 +152,7 @@ bash deploy/plesk/deploy.sh deploy/plesk/live.env
 ```text
 https://swpro.ru/api/index.php
 https://swpro.ru/admin/public/login.php
+https://swpro.ru/mini-app/index.html
 https://swpro.ru/vk-mini-app/index.html
 ```
 

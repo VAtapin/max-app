@@ -18,6 +18,9 @@ $config = [
         'upload_max_bytes' => 5 * 1024 * 1024,
         'allowed_image_types' => ['image/jpeg', 'image/png', 'image/webp'],
     ],
+    'integrations' => [
+        'telegram_bot_token' => getenv('TELEGRAM_BOT_TOKEN') ?: '',
+    ],
 ];
 
 $localConfig = __DIR__ . '/local.php';

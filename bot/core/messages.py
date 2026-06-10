@@ -16,6 +16,7 @@ MAIN_MENU = [
 def welcome_text(first_name: str | None = None) -> str:
     name = f", {first_name}" if first_name else ""
     return (
-        f"Здравствуйте{name}. Я помогу пройти короткий тест и показать продукты для поддержки самочувствия.\n\n"
+        f"Здравствуйте{name}. Я SWPro Ассистент. Помогу пройти короткий тест, "
+        f"показать рекомендации и связаться с менеджером.\n\n"
         f"{MEDICAL_DISCLAIMER}"
     )
