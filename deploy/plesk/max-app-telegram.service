@@ -1,0 +1,16 @@
+[Unit]
+Description=MAX App Telegram Bot
+After=network.target mariadb.service mysql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/vhosts/swpro.ru/httpdocs
+EnvironmentFile=/var/www/vhosts/swpro.ru/httpdocs/bot/.env
+ExecStart=/var/www/vhosts/swpro.ru/httpdocs/bot/.venv/bin/python -m bot.telegram.main
+Restart=always
+RestartSec=5
+User=swpro
+Group=psacln
+
+[Install]
+WantedBy=multi-user.target

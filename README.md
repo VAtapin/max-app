@@ -68,6 +68,22 @@ admin/public
 /admin/public/login.php
 ```
 
+## Live deploy на Plesk
+
+Для сервера `swpro.ru` на Plesk Obsidian подготовлены скрипты и шаблоны:
+
+```text
+deploy/plesk/
+```
+
+Основная инструкция:
+
+```text
+deploy/plesk/README.md
+```
+
+Скрипты рассчитаны на Ubuntu 22.04, Plesk, PHP-FPM 8.3 и MariaDB 10.6.
+
 ## Python bots
 
 Создайте окружение и установите зависимости:

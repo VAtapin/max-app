@@ -1,0 +1,11 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(\.git|database|deploy|bot|admin/app)(/|$) - [F,L]
+    RewriteRule ^(README\.md|\.env|composer\.(json|lock))$ - [F,L]
+</IfModule>
+
+<FilesMatch "^(\.env|.*\.ini|.*\.log|.*\.sql)$">
+    Require all denied
+</FilesMatch>

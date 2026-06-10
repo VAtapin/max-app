@@ -1,0 +1,9 @@
+/.env
+/admin/app/config/local.php
+/bot/.env
+/admin/uploads/*
+!/admin/uploads/.gitkeep
+*.log
+*.tmp
+__pycache__/
+*.py[cod]

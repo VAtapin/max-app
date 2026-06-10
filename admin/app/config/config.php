@@ -1,6 +1,6 @@
 <?php
 
-return [
+$config = [
     'app' => [
         'name' => 'Health Sales Support',
         'base_url' => '/admin/public',
@@ -19,3 +19,10 @@ return [
         'allowed_image_types' => ['image/jpeg', 'image/png', 'image/webp'],
     ],
 ];
+
+$localConfig = __DIR__ . '/local.php';
+if (is_file($localConfig)) {
+    $config = array_replace_recursive($config, require $localConfig);
+}
+
+return $config;
