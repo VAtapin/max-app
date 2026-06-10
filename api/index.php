@@ -11,6 +11,8 @@ json_response([
         'GET /api/tests.php',
         'POST /api/tests.php?action=submit',
         'GET /api/recommendations.php',
+        'GET /api/leads.php',
+        'POST /api/leads.php',
         'POST /api/contact_manager.php',
     ],
 ]);

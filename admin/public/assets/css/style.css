@@ -25,6 +25,10 @@ a {
     text-decoration: none;
 }
 
+a.button {
+    display: inline-block;
+}
+
 .app-shell {
     display: grid;
     grid-template-columns: 240px 1fr;
@@ -168,6 +172,11 @@ button {
     cursor: pointer;
 }
 
+.secondary-button {
+    background: #eef4f3;
+    color: var(--text);
+}
+
 button:disabled {
     opacity: 0.55;
     cursor: not-allowed;
@@ -177,10 +186,58 @@ button:disabled {
     background: transparent;
     color: var(--accent);
     padding: 0;
+    font: inherit;
 }
 
 .link-button.danger {
     color: var(--danger);
+}
+
+.inline-form {
+    display: inline;
+    margin-left: 10px;
+}
+
+.form-panel {
+    margin-bottom: 18px;
+}
+
+.crud-form {
+    display: grid;
+    gap: 14px;
+    max-width: 900px;
+}
+
+.field {
+    display: grid;
+    gap: 6px;
+}
+
+.field span {
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.field input,
+.field select,
+.field textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font: inherit;
+    padding: 10px 12px;
+}
+
+.field input[type="checkbox"] {
+    width: auto;
+    justify-self: start;
+}
+
+.form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
 .disclaimer {

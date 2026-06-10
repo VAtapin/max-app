@@ -1,6 +1,7 @@
 <?php
 
 require __DIR__ . '/bootstrap.php';
+require __DIR__ . '/recommendation_engine.php';
 
 if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = input_json();
@@ -45,9 +46,25 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
     $summary = 'Подобраны направления поддержки. ' . medical_disclaimer();
     $done = db()->prepare('UPDATE user_test_sessions SET completed_at = NOW(), total_score = :total, result_summary = :summary WHERE id = :id');
     $done->execute(['total' => $total, 'summary' => $summary, 'id' => $sessionId]);
+    $recommendations = build_recommendations((int)$user['id'], $sessionId);
     db()->commit();
 
-    json_response(['session_id' => $sessionId, 'total_score' => $total, 'summary' => $summary]);
+    $log = db()->prepare(
+        'INSERT INTO activity_logs (actor_type, actor_id, action, entity_type, entity_id, details)
+         VALUES ("end_user", :actor_id, "complete_test", "user_test_sessions", :entity_id, :details)'
+    );
+    $log->execute([
+        'actor_id' => $user['id'],
+        'entity_id' => $sessionId,
+        'details' => json_encode(['recommendations_count' => count($recommendations)], JSON_UNESCAPED_UNICODE),
+    ]);
+
+    json_response([
+        'session_id' => $sessionId,
+        'total_score' => $total,
+        'summary' => $summary,
+        'recommendations' => $recommendations,
+    ]);
 }
 
 if (isset($_GET['id'])) {

@@ -114,6 +114,48 @@ button.secondary {
     color: var(--accent-dark);
 }
 
+button.compact {
+    min-height: 34px;
+    padding: 6px 10px;
+}
+
+.test-form {
+    display: grid;
+    gap: 14px;
+}
+
+.question {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+
+.question legend {
+    padding: 0 4px;
+    font-weight: 700;
+}
+
+.answer {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    gap: 8px;
+    align-items: start;
+}
+
+.answer input {
+    margin-top: 2px;
+}
+
+.text-answer {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 12px;
+}
+
 .disclaimer {
     color: var(--muted);
     font-size: 12px;

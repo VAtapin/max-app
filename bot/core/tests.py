@@ -1,4 +1,5 @@
 from bot.db.mysql import cursor
+from bot.core.recommendations import build_recommendations
 
 
 async def list_tests() -> list[dict]:
@@ -74,4 +75,6 @@ async def save_test_result(end_user_id: int, test_id: int, answers: list[dict]) 
             (end_user_id, session_id),
         )
 
-        return session_id
+    await build_recommendations(end_user_id, session_id)
+
+    return session_id

@@ -22,6 +22,8 @@ async def build_recommendations(end_user_id: int, test_session_id: int) -> list[
         )
         scores = await cur.fetchall()
 
+        await cur.execute("DELETE FROM recommendations WHERE test_session_id = %s", (test_session_id,))
+
         recommendations = []
         for item in scores:
             product_id = item["product_id"]

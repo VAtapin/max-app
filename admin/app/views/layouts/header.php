@@ -12,16 +12,26 @@
     <aside class="sidebar">
         <div class="brand"><?= h($config['app']['name']) ?></div>
         <nav>
-            <a href="index.php">Dashboard</a>
-            <a href="crud.php?module=resellers">Реселлеры</a>
-            <a href="crud.php?module=managers">Менеджеры</a>
-            <a href="crud.php?module=users">Пользователи</a>
-            <a href="crud.php?module=leads">Лиды</a>
-            <a href="crud.php?module=categories">Категории</a>
-            <a href="crud.php?module=products">Продукты</a>
-            <a href="crud.php?module=tests">Тесты</a>
-            <a href="crud.php?module=broadcasts">Рассылки</a>
-            <a href="crud.php?module=content">Контент</a>
+            <?php
+            $navItems = [
+                'dashboard' => ['Dashboard', 'index.php'],
+                'resellers' => ['Реселлеры', 'crud.php?module=resellers'],
+                'managers' => ['Менеджеры', 'crud.php?module=managers'],
+                'users' => ['Пользователи', 'crud.php?module=users'],
+                'platform_accounts' => ['Аккаунты платформ', 'crud.php?module=platform_accounts'],
+                'leads' => ['Лиды', 'crud.php?module=leads'],
+                'categories' => ['Категории', 'crud.php?module=categories'],
+                'products' => ['Продукты', 'crud.php?module=products'],
+                'tests' => ['Тесты', 'crud.php?module=tests'],
+                'broadcasts' => ['Рассылки', 'crud.php?module=broadcasts'],
+                'content' => ['Контент', 'crud.php?module=content'],
+            ];
+            ?>
+            <?php foreach ($navItems as $module => [$label, $href]): ?>
+                <?php if (can_manage($module, $admin)): ?>
+                    <a href="<?= h($href) ?>"><?= h($label) ?></a>
+                <?php endif; ?>
+            <?php endforeach; ?>
         </nav>
     </aside>
     <main class="main">

@@ -14,6 +14,7 @@ function count_table(string $sql, array $params = []): int
 }
 
 [$userWhere, $userParams] = scope_where_for_users($admin);
+[$leadWhere, $leadParams] = scope_where_for_leads($admin);
 
 $stats = [
     'users' => count_table("SELECT COUNT(*) FROM end_users $userWhere", $userParams),
@@ -25,7 +26,7 @@ $stats = [
     ),
     'resellers' => $admin['role'] === 'superadmin' ? count_table('SELECT COUNT(*) FROM resellers') : 0,
     'tests' => count_table('SELECT COUNT(*) FROM user_test_sessions WHERE completed_at IS NOT NULL'),
-    'leads' => count_table('SELECT COUNT(*) FROM leads'),
+    'leads' => count_table("SELECT COUNT(*) FROM leads $leadWhere", $leadParams),
 ];
 
 $recentStmt = db()->prepare("SELECT id, platform, username, first_name, created_at FROM end_users $userWhere ORDER BY id DESC LIMIT 8");

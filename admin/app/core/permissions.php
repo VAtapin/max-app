@@ -6,8 +6,8 @@ function can_manage(string $module, array $user): bool
         return true;
     }
 
-    $resellerModules = ['dashboard', 'managers', 'users', 'broadcasts', 'leads'];
-    $managerModules = ['dashboard', 'users', 'leads'];
+    $resellerModules = ['dashboard', 'managers', 'users', 'platform_accounts', 'broadcasts', 'leads'];
+    $managerModules = ['dashboard', 'users', 'platform_accounts', 'leads'];
 
     if ($user['role'] === 'reseller') {
         return in_array($module, $resellerModules, true);
@@ -21,6 +21,19 @@ function can_manage(string $module, array $user): bool
 }
 
 function scope_where_for_users(array $user): array
+{
+    if ($user['role'] === 'superadmin') {
+        return ['', []];
+    }
+
+    if ($user['role'] === 'reseller') {
+        return ['WHERE reseller_id = :reseller_id', ['reseller_id' => $user['reseller_id']]];
+    }
+
+    return ['WHERE manager_id = :manager_id', ['manager_id' => $user['manager_id']]];
+}
+
+function scope_where_for_leads(array $user): array
 {
     if ($user['role'] === 'superadmin') {
         return ['', []];

@@ -13,7 +13,7 @@ async def create_lead(user: dict, message: str, product_id: int | None = None) -
                 user.get("manager_id"),
                 user.get("reseller_id"),
                 product_id,
-                user["platform"],
+                user.get("current_platform", user["platform"]),
                 message,
             ),
         )

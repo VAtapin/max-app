@@ -34,12 +34,30 @@ function require_platform_user(): array
         json_response(['error' => 'platform and platform_user_id are required'], 422);
     }
 
-    $stmt = db()->prepare('SELECT * FROM end_users WHERE platform = :platform AND platform_user_id = :platform_user_id LIMIT 1');
+    $stmt = db()->prepare(
+        'SELECT u.*
+         FROM platform_accounts pa
+         JOIN end_users u ON u.id = pa.end_user_id
+         WHERE pa.platform = :platform AND pa.platform_user_id = :platform_user_id
+         LIMIT 1'
+    );
     $stmt->execute([
         'platform' => $platform,
         'platform_user_id' => $platformUserId,
     ]);
     $user = $stmt->fetch();
+
+    if (!$user) {
+        $legacyStmt = db()->prepare('SELECT * FROM end_users WHERE platform = :platform AND platform_user_id = :platform_user_id LIMIT 1');
+        $legacyStmt->execute([
+            'platform' => $platform,
+            'platform_user_id' => $platformUserId,
+        ]);
+        $user = $legacyStmt->fetch();
+        if ($user) {
+            ensure_platform_account((int)$user['id'], $platform, (string)$platformUserId, $user['username'] ?? null);
+        }
+    }
 
     if (!$user) {
         json_response(['error' => 'user not found'], 404);
@@ -56,11 +74,29 @@ function create_or_get_user(array $data): array
         json_response(['error' => 'platform_user_id is required'], 422);
     }
 
-    $stmt = db()->prepare('SELECT * FROM end_users WHERE platform = :platform AND platform_user_id = :platform_user_id LIMIT 1');
+    $stmt = db()->prepare(
+        'SELECT u.*
+         FROM platform_accounts pa
+         JOIN end_users u ON u.id = pa.end_user_id
+         WHERE pa.platform = :platform AND pa.platform_user_id = :platform_user_id
+         LIMIT 1'
+    );
     $stmt->execute(['platform' => $platform, 'platform_user_id' => $platformUserId]);
     $existing = $stmt->fetch();
     if ($existing) {
+        $touch = db()->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
+        $touch->execute(['id' => $existing['id']]);
         return $existing;
+    }
+
+    $legacyStmt = db()->prepare('SELECT * FROM end_users WHERE platform = :platform AND platform_user_id = :platform_user_id LIMIT 1');
+    $legacyStmt->execute(['platform' => $platform, 'platform_user_id' => $platformUserId]);
+    $legacyUser = $legacyStmt->fetch();
+    if ($legacyUser) {
+        ensure_platform_account((int)$legacyUser['id'], $platform, $platformUserId, $data['username'] ?? null);
+        $touch = db()->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
+        $touch->execute(['id' => $legacyUser['id']]);
+        return $legacyUser;
     }
 
     $resellerId = null;
@@ -120,6 +156,31 @@ function create_or_get_user(array $data): array
         'details' => json_encode(['platform' => $platform, 'referral_code' => $referralCode], JSON_UNESCAPED_UNICODE),
     ]);
 
-    $stmt->execute(['platform' => $platform, 'platform_user_id' => $platformUserId]);
-    return $stmt->fetch();
+    if ($referralCode) {
+        $registration = db()->prepare(
+            'UPDATE referral_links
+             SET registrations_count = registrations_count + 1
+             WHERE referral_code = :referral_code AND platform = :platform'
+        );
+        $registration->execute(['referral_code' => $referralCode, 'platform' => $platform]);
+    }
+
+    $created = db()->prepare('SELECT * FROM end_users WHERE id = :id LIMIT 1');
+    $created->execute(['id' => $userId]);
+    return $created->fetch();
+}
+
+function ensure_platform_account(int $endUserId, string $platform, string $platformUserId, ?string $username = null): void
+{
+    $stmt = db()->prepare(
+        'INSERT INTO platform_accounts (end_user_id, platform, platform_user_id, username)
+         VALUES (:end_user_id, :platform, :platform_user_id, :username)
+         ON DUPLICATE KEY UPDATE end_user_id = VALUES(end_user_id), username = VALUES(username)'
+    );
+    $stmt->execute([
+        'end_user_id' => $endUserId,
+        'platform' => $platform,
+        'platform_user_id' => $platformUserId,
+        'username' => $username,
+    ]);
 }
