@@ -4,6 +4,7 @@ require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
 require_once __DIR__ . '/../app/core/crud_views.php';
 require_once __DIR__ . '/../app/core/lead_responses.php';
+require_once __DIR__ . '/../app/core/test_admin.php';
 
 $admin = require_auth();
 
@@ -566,6 +567,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = $postId;
     }
 
+    if ($moduleKey === 'tests' && $postId && handle_test_builder_action($postAction, $postId, $admin, $errors)) {
+        if (!scoped_row_exists($moduleKey, $module, $postId, $admin)) {
+            http_response_code(404);
+            exit('Record not found');
+        }
+        if (!$errors) {
+            redirect('crud.php?module=tests&action=edit&id=' . $postId . '&success=saved');
+        }
+        $action = 'edit';
+        $id = $postId;
+    }
+
     if ($postAction === 'delete') {
         if (!$canDelete) {
             $errors[] = 'Удаление в этом разделе отключено, чтобы не потерять историю пользователей, платформ и заявок.';
@@ -721,6 +734,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
             </div>
         </form>
     </section>
+    <?php if ($moduleKey === 'tests' && $action === 'edit' && $editRow): ?>
+        <?= render_test_builder((int)$editRow['id']) ?>
+    <?php endif; ?>
     <?php if ($moduleKey === 'leads' && $action === 'edit' && $editRow): ?>
         <section class="panel form-panel">
             <h2>Ответить пользователю</h2>

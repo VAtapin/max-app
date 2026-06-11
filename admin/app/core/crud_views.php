@@ -207,9 +207,9 @@ function append_lead_filter_sql(string $sql, array $filters, array &$params): st
 
     $response = $filters['response'] ?? 'all';
     if ($response === 'none') {
-        $sql .= ' AND lr.response_count IS NULL';
+        $sql .= ' AND lrc.response_count IS NULL';
     } elseif (in_array($response, ['sent', 'pending', 'failed'], true)) {
-        $sql .= ' AND lr.last_response_status = :lead_response_filter';
+        $sql .= ' AND lr.status = :lead_response_filter';
         $params['lead_response_filter'] = $response;
     }
 
@@ -271,7 +271,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
                     CONCAT_WS(' ', NULLIF(eu.first_name, ''), NULLIF(eu.last_name, '')) AS full_name,
                     eu.username AS user_username,
                     p.title AS product_title, m.name AS manager_name, r.name AS reseller_name,
-                    lr.response_count, lr.last_response_status, lr.last_response_at
+                    lrc.response_count, lr.status AS last_response_status, lr.created_at AS last_response_at
              FROM leads l
              LEFT JOIN end_users eu ON eu.id = l.end_user_id
              LEFT JOIN products p ON p.id = l.product_id

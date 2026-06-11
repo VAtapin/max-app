@@ -52,10 +52,9 @@ h2 {
 
 .tabs {
     display: grid;
-    grid-template-columns: repeat(6, minmax(86px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
     margin-bottom: 14px;
-    overflow-x: auto;
 }
 
 .tabs button {
@@ -66,6 +65,7 @@ h2 {
     min-height: 40px;
     padding: 8px 6px;
     font-size: 12px;
+    white-space: normal;
 }
 
 .tabs button.active {
@@ -206,10 +206,38 @@ button.compact {
 
 @media (max-width: 380px) {
     .tabs {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(2, 1fr);
     }
 
     h1 {
         font-size: 22px;
     }
+}
+
+
+.result-card {
+    background: #eef8f6;
+    border: 1px solid #b9ded8;
+    border-radius: 8px;
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+}
+
+.result-score {
+    color: var(--accent-dark);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.answer {
+    background: #f9fbfb;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 9px;
+}
+
+.answer:has(input:checked) {
+    border-color: var(--accent);
+    background: #eef8f6;
 }

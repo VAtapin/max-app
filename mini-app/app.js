@@ -218,7 +218,7 @@ async function renderTest(testId) {
             <h2>${escapeHtml(result.test.title)}</h2>
             <p class="muted">${escapeHtml(result.test.description || '')}</p>
             <form id="test-form" class="test-form">
-                ${result.questions.map((question) => renderQuestion(question)).join('')}
+                ${result.questions.length ? result.questions.map((question) => renderQuestion(question)).join('') : '<div class="empty">\u0412\u043e\u043f\u0440\u043e\u0441\u044b \u0434\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u0442\u0435\u0441\u0442\u0430 \u043f\u043e\u043a\u0430 \u043d\u0435 \u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u044b.</div>'}
                 <button class="primary" type="submit">Получить рекомендации</button>
             </form>
         </section>
@@ -272,10 +272,13 @@ async function submitTest(form) {
 
     page.innerHTML = `
         <section class="panel">
-            <h2>Рекомендации готовы</h2>
-            <p class="muted">${escapeHtml(result.summary)}</p>
-            <button class="primary" data-page-target="recommendations">Показать рекомендации</button>
-            <button class="secondary" data-action="contact">Связаться с менеджером</button>
+            <div class="result-card">
+                <strong>${escapeHtml(result.result?.title || '\u0420\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438 \u0433\u043e\u0442\u043e\u0432\u044b')}</strong>
+                <span class="result-score">\u0411\u0430\u043b\u043b\u044b: ${escapeHtml(result.total_score)}</span>
+                <p class="muted">${escapeHtml(result.summary)}</p>
+            </div>
+            <button class="primary" data-page-target="recommendations">\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438</button>
+            <button class="secondary" data-action="contact">\u0421\u0432\u044f\u0437\u0430\u0442\u044c\u0441\u044f \u0441 \u043c\u0435\u043d\u0435\u0434\u0436\u0435\u0440\u043e\u043c</button>
         </section>
     `;
 }
@@ -319,7 +322,7 @@ function responseAttachmentLinks(response) {
         : (response.attachment_path ? [response.attachment_path] : []);
 
     return attachments.map((path, index) => (
-        `<a href="${escapeHtml(path)}" target="_blank" rel="noopener">???? ${index + 1}</a>`
+        `<a href="${escapeHtml(path)}" target="_blank" rel="noopener">\u0424\u0430\u0439\u043b ${index + 1}</a>`
     )).join('');
 }
 
