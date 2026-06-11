@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
 require_once __DIR__ . '/../app/core/crud_views.php';
+require_once __DIR__ . '/../app/core/lead_responses.php';
 
 $admin = require_auth();
 
@@ -105,6 +106,8 @@ $modules = [
             'warning_text' => ['label' => 'Предупреждение', 'type' => 'textarea'],
             'contraindications' => ['label' => 'Противопоказания', 'type' => 'textarea'],
             'image_path' => ['label' => 'Изображение', 'type' => 'file', 'accept' => 'image/*'],
+            'document_path' => ['label' => 'PDF/инструкция', 'type' => 'file', 'accept' => 'application/pdf'],
+            'video_url' => ['label' => 'Ссылка на видео'],
             'price' => ['label' => 'Цена', 'type' => 'number', 'step' => '0.01', 'nullable' => true],
             'purchase_url' => ['label' => 'Ссылка на видео/страницу с информацией'],
             'sort_order' => ['label' => 'Сортировка', 'type' => 'number', 'default' => 100],
@@ -147,10 +150,15 @@ $modules = [
         'table' => 'content_posts',
         'columns' => ['id', 'title', 'status', 'publish_at', 'created_by'],
         'fields' => [
+            'content_type' => ['label' => 'Тип материала', 'type' => 'select', 'options' => ['article', 'image', 'pdf', 'video', 'link'], 'required' => true],
             'title' => ['label' => 'Заголовок', 'required' => true],
             'short_text' => ['label' => 'Краткий текст', 'type' => 'textarea'],
             'full_text' => ['label' => 'Полный текст', 'type' => 'textarea'],
             'image_path' => ['label' => 'Изображение', 'type' => 'file', 'accept' => 'image/*'],
+            'attachment_path' => ['label' => 'PDF/файл', 'type' => 'file', 'accept' => 'application/pdf,video/mp4,image/*'],
+            'video_url' => ['label' => 'Ссылка на видео'],
+            'button_text' => ['label' => 'Текст кнопки'],
+            'button_url' => ['label' => 'Ссылка кнопки'],
             'category_id' => ['label' => 'Категория продукта', 'type' => 'select', 'source' => 'product_categories', 'nullable' => true],
             'status' => ['label' => 'Статус', 'type' => 'select', 'options' => ['draft', 'published', 'hidden'], 'required' => true],
             'publish_at' => ['label' => 'Дата публикации', 'type' => 'datetime-local', 'nullable' => true],
@@ -229,6 +237,8 @@ function select_options(string $source, array $admin): array
         'end_users' => ['table' => 'end_users', 'label' => 'platform_user_id'],
         'products' => ['table' => 'products', 'label' => 'title'],
         'product_categories' => ['table' => 'product_categories', 'label' => 'title'],
+        'content_posts' => ['table' => 'content_posts', 'label' => 'title'],
+        'tests' => ['table' => 'tests', 'label' => 'title'],
     ];
     if (!isset($allowed[$source])) {
         return [];
@@ -329,6 +339,7 @@ function public_upload_path(string $moduleKey, string $filename): string
         'products' => 'products',
         'broadcasts' => 'broadcasts',
         'content' => 'content',
+        'leads' => 'responses',
         default => 'files',
     };
 
@@ -341,6 +352,7 @@ function upload_directory(string $moduleKey): string
         'products' => 'products',
         'broadcasts' => 'broadcasts',
         'content' => 'content',
+        'leads' => 'responses',
         default => 'files',
     };
 
@@ -350,7 +362,14 @@ function upload_directory(string $moduleKey): string
 function apply_file_uploads(string $moduleKey, array $fields, array $payload, array &$errors): array
 {
     $config = app_config();
-    $allowedTypes = $config['security']['allowed_image_types'] ?? ['image/jpeg', 'image/png', 'image/webp'];
+    $allowedImageTypes = $config['security']['allowed_image_types'] ?? ['image/jpeg', 'image/png', 'image/webp'];
+    $allowedAttachmentTypes = $config['security']['allowed_attachment_types'] ?? [
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'application/pdf',
+        'video/mp4',
+    ];
     $maxBytes = (int)($config['security']['upload_max_bytes'] ?? 5242880);
 
     foreach ($fields as $name => $field) {
@@ -375,8 +394,12 @@ function apply_file_uploads(string $moduleKey, array $fields, array $payload, ar
 
         $finfo = new finfo(FILEINFO_MIME_TYPE);
         $mime = $finfo->file($file['tmp_name']);
+        $accept = (string)($field['accept'] ?? 'image/*');
+        $allowedTypes = $accept === 'image/*' ? $allowedImageTypes : $allowedAttachmentTypes;
         if (!in_array($mime, $allowedTypes, true)) {
-            $errors[] = 'Поддерживаются только изображения JPG, PNG или WebP.';
+            $errors[] = $accept === 'image/*'
+                ? 'Поддерживаются только изображения JPG, PNG или WebP.'
+                : 'Поддерживаются JPG, PNG, WebP, PDF или MP4.';
             continue;
         }
 
@@ -384,6 +407,8 @@ function apply_file_uploads(string $moduleKey, array $fields, array $payload, ar
             'image/jpeg' => 'jpg',
             'image/png' => 'png',
             'image/webp' => 'webp',
+            'application/pdf' => 'pdf',
+            'video/mp4' => 'mp4',
             default => null,
         };
         if (!$extension) {
@@ -505,6 +530,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postAction = $_POST['action'] ?? 'save';
     $postId = isset($_POST['id']) && $_POST['id'] !== '' ? (int)$_POST['id'] : null;
 
+    if ($postAction === 'send_lead_response') {
+        if ($moduleKey !== 'leads' || !$postId || !scoped_row_exists($moduleKey, $module, $postId, $admin)) {
+            http_response_code(404);
+            exit('Record not found');
+        }
+
+        $responseId = create_and_send_lead_response($postId, $admin, $errors);
+        if ($responseId && !$errors) {
+            redirect('crud.php?module=leads&action=edit&id=' . $postId . '&success=response_sent');
+        }
+        $action = 'edit';
+        $id = $postId;
+    }
+
     if ($postAction === 'delete') {
         if (!$canDelete) {
             $errors[] = 'Удаление в этом разделе отключено, чтобы не потерять историю пользователей, платформ и заявок.';
@@ -593,6 +632,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <div class="notice success">Запись сохранена.</div>
 <?php elseif ($success === 'deleted'): ?>
     <div class="notice success">Запись удалена.</div>
+<?php elseif ($success === 'response_sent'): ?>
+    <div class="notice success">Ответ отправлен пользователю.</div>
 <?php endif; ?>
 <?php foreach ($errors as $error): ?>
     <div class="alert"><?= h($error) ?></div>
@@ -655,6 +696,93 @@ require __DIR__ . '/../app/views/layouts/header.php';
             </div>
         </form>
     </section>
+    <?php if ($moduleKey === 'leads' && $action === 'edit' && $editRow): ?>
+        <section class="panel form-panel">
+            <h2>Ответить пользователю</h2>
+            <form method="post" class="crud-form" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                <input type="hidden" name="action" value="send_lead_response">
+                <input type="hidden" name="id" value="<?= h((string)$editRow['id']) ?>">
+
+                <label class="field">
+                    <span>Текст ответа</span>
+                    <textarea name="response_text" rows="4" placeholder="Напишите сообщение пользователю"></textarea>
+                </label>
+
+                <label class="field">
+                    <span>Материал</span>
+                    <select name="response_content_id">
+                        <option value="">Не выбран</option>
+                        <?php foreach (safe_select_options('content_posts', $admin, $errors) as $option): ?>
+                            <option value="<?= (int)$option['id'] ?>">#<?= (int)$option['id'] ?> <?= h($option['label']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span>Предложить тест</span>
+                    <select name="response_test_id">
+                        <option value="">Не выбран</option>
+                        <?php foreach (safe_select_options('tests', $admin, $errors) as $option): ?>
+                            <option value="<?= (int)$option['id'] ?>">#<?= (int)$option['id'] ?> <?= h($option['label']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span>Файл: изображение, PDF или MP4</span>
+                    <input type="file" name="response_attachment" accept="image/*,application/pdf,video/mp4">
+                </label>
+
+                <label class="field">
+                    <span>Ссылка на видео, PDF или страницу</span>
+                    <input type="url" name="response_external_url" placeholder="https://...">
+                </label>
+
+                <div class="form-actions">
+                    <button type="submit">Отправить ответ</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="panel">
+            <h2>История ответов</h2>
+            <?php $responses = lead_response_history((int)$editRow['id']); ?>
+            <?php if ($responses): ?>
+                <table class="data-table">
+                    <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>Менеджер</th>
+                        <th>Ответ</th>
+                        <th>Материал/тест</th>
+                        <th>Статус</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($responses as $response): ?>
+                        <tr>
+                            <td><?= h($response['created_at']) ?></td>
+                            <td><?= h($response['admin_name'] ?? '—') ?></td>
+                            <td><?= nl2br(h($response['message_text'] ?? '')) ?></td>
+                            <td>
+                                <?= h($response['content_title'] ?? '') ?>
+                                <?= $response['test_title'] ? '<br>' . h($response['test_title']) : '' ?>
+                                <?= $response['attachment_path'] ? '<br><a href="' . h($response['attachment_path']) . '" target="_blank" rel="noopener">Файл</a>' : '' ?>
+                            </td>
+                            <td>
+                                <?= h($response['status']) ?>
+                                <?= $response['error_message'] ? '<br>' . h($response['error_message']) : '' ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else: ?>
+                <div class="empty-state">Ответов по этой заявке пока нет.</div>
+            <?php endif; ?>
+        </section>
+    <?php endif; ?>
 <?php endif; ?>
 <section class="panel">
     <?= $listHtml ?>

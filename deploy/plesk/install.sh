@@ -88,7 +88,7 @@ bot/.venv/bin/python -m pip install --upgrade pip
 bot/.venv/bin/pip install -r bot/requirements.txt
 
 echo "Creating upload directories..."
-mkdir -p admin/uploads/products admin/uploads/content admin/uploads/broadcasts admin/uploads/files
+mkdir -p admin/uploads/products admin/uploads/content admin/uploads/broadcasts admin/uploads/files admin/uploads/responses
 
 if [[ -n "${APP_USER:-}" ]]; then
   echo "Applying ownership to $APP_USER:${APP_GROUP:-psacln}..."

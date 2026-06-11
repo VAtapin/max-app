@@ -102,6 +102,12 @@ Password: admin123
 
 Change it after first login.
 
+For later schema updates without wiping data, run migrations instead of importing the full schema:
+
+```bash
+bash deploy/plesk/migrate-db.sh deploy/plesk/live.env
+```
+
 ## 7. Protect Private Paths
 
 The repository includes `.htaccess`. For Plesk/nginx, also paste:
@@ -152,6 +158,8 @@ For later updates:
 cd /var/www/vhosts/swpro.ru/httpdocs
 bash deploy/plesk/deploy.sh deploy/plesk/live.env
 ```
+
+The deploy script pulls code, applies migrations, checks syntax, updates bot dependencies and restarts the bot service when the service is installed.
 
 ## 10. Smoke Test URLs
 

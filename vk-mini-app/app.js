@@ -196,8 +196,14 @@ async function renderProducts() {
     page.innerHTML = result.products.length
         ? result.products.map((product) => `
             <article class="item">
+                ${product.image_path ? `<img class="item-image" src="${escapeHtml(product.image_path)}" alt="">` : ''}
                 <strong>${escapeHtml(product.title)}</strong>
                 <span class="muted">${escapeHtml(product.short_description || '')}</span>
+                <div class="item-links">
+                    ${product.document_path ? `<a href="${escapeHtml(product.document_path)}" target="_blank" rel="noopener">PDF</a>` : ''}
+                    ${product.video_url ? `<a href="${escapeHtml(product.video_url)}" target="_blank" rel="noopener">Видео</a>` : ''}
+                    ${product.purchase_url ? `<a href="${escapeHtml(product.purchase_url)}" target="_blank" rel="noopener">Подробнее</a>` : ''}
+                </div>
                 <button class="secondary" data-product-id="${product.id}">Запросить информацию</button>
             </article>
         `).join('')

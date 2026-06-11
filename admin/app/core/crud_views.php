@@ -138,6 +138,7 @@ function crud_display_columns(string $moduleKey): array
             'id' => 'ID',
             'title' => 'Продукт',
             'category_title' => 'Категория',
+            'media_summary' => 'Медиа',
             'price' => 'Цена',
             'sort_order' => 'Сорт.',
             'state' => 'Статус',
@@ -161,7 +162,9 @@ function crud_display_columns(string $moduleKey): array
         'content' => [
             'id' => 'ID',
             'title' => 'Материал',
+            'content_type' => 'Тип',
             'category_title' => 'Категория',
+            'media_summary' => 'Файлы/ссылки',
             'status' => 'Статус',
             'publish_at' => 'Публикация',
         ],
@@ -281,7 +284,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
 
     if ($moduleKey === 'products') {
         return [
-            "SELECT p.id, p.title, c.title AS category_title, p.price, p.sort_order,
+            "SELECT p.id, p.title, c.title AS category_title, p.image_path, p.document_path, p.video_url, p.purchase_url, p.price, p.sort_order,
                     IF(p.is_active = 1, 'активен', 'выключен') AS state
              FROM products p
              LEFT JOIN product_categories c ON c.id = p.category_id
@@ -315,7 +318,8 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
 
     if ($moduleKey === 'content') {
         return [
-            "SELECT cp.id, cp.title, c.title AS category_title, cp.status, cp.publish_at
+            "SELECT cp.id, cp.title, cp.content_type, c.title AS category_title, cp.image_path,
+                    cp.attachment_path, cp.video_url, cp.button_url, cp.status, cp.publish_at
              FROM content_posts cp
              LEFT JOIN product_categories c ON c.id = cp.category_id
              ORDER BY cp.id DESC
@@ -347,6 +351,24 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
         $message = trim((string)($row['message'] ?? ''));
         $message = $message !== '' ? $message : 'Без сообщения';
         return ($row['status'] ?? 'new') . "\n" . $message . "\n" . ($row['source_platform'] ?? '');
+    }
+
+    if ($column === 'media_summary') {
+        $items = [];
+        if (!empty($row['image_path'])) {
+            $items[] = 'изображение';
+        }
+        if (!empty($row['document_path']) || !empty($row['attachment_path'])) {
+            $items[] = 'файл/PDF';
+        }
+        if (!empty($row['video_url'])) {
+            $items[] = 'видео';
+        }
+        if (!empty($row['purchase_url']) || !empty($row['button_url'])) {
+            $items[] = 'ссылка';
+        }
+
+        return $items ? implode("\n", $items) : '—';
     }
 
     return format_cell_value($row[$column] ?? null);

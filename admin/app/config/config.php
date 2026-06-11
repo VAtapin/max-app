@@ -15,8 +15,15 @@ $config = [
         'charset' => 'utf8mb4',
     ],
     'security' => [
-        'upload_max_bytes' => 5 * 1024 * 1024,
+        'upload_max_bytes' => 30 * 1024 * 1024,
         'allowed_image_types' => ['image/jpeg', 'image/png', 'image/webp'],
+        'allowed_attachment_types' => [
+            'image/jpeg',
+            'image/png',
+            'image/webp',
+            'application/pdf',
+            'video/mp4',
+        ],
     ],
     'integrations' => [
         'telegram_bot_token' => getenv('TELEGRAM_BOT_TOKEN') ?: '',

@@ -9,6 +9,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS activity_logs;
 DROP TABLE IF EXISTS broadcast_logs;
 DROP TABLE IF EXISTS broadcasts;
+DROP TABLE IF EXISTS lead_responses;
 DROP TABLE IF EXISTS leads;
 DROP TABLE IF EXISTS content_posts;
 DROP TABLE IF EXISTS recommendations;
@@ -174,6 +175,8 @@ CREATE TABLE products (
   warning_text TEXT NULL,
   contraindications TEXT NULL,
   image_path VARCHAR(255) NULL,
+  document_path VARCHAR(255) NULL,
+  video_url VARCHAR(255) NULL,
   price DECIMAL(10,2) NULL,
   purchase_url VARCHAR(255) NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
@@ -337,10 +340,15 @@ CREATE TABLE recommendations (
 
 CREATE TABLE content_posts (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  content_type ENUM('article', 'image', 'pdf', 'video', 'link') NOT NULL DEFAULT 'article',
   title VARCHAR(190) NOT NULL,
   short_text TEXT NULL,
   full_text MEDIUMTEXT NULL,
   image_path VARCHAR(255) NULL,
+  attachment_path VARCHAR(255) NULL,
+  video_url VARCHAR(255) NULL,
+  button_text VARCHAR(100) NULL,
+  button_url VARCHAR(255) NULL,
   category_id BIGINT UNSIGNED NULL,
   status ENUM('draft', 'published', 'hidden') NOT NULL DEFAULT 'draft',
   publish_at DATETIME NULL,
@@ -385,6 +393,37 @@ CREATE TABLE leads (
     ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT fk_leads_product
     FOREIGN KEY (product_id) REFERENCES products(id)
+    ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE lead_responses (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  lead_id BIGINT UNSIGNED NOT NULL,
+  admin_user_id BIGINT UNSIGNED NULL,
+  content_post_id BIGINT UNSIGNED NULL,
+  test_id BIGINT UNSIGNED NULL,
+  platform ENUM('telegram', 'vk', 'max', 'web') NOT NULL,
+  message_text TEXT NULL,
+  attachment_path VARCHAR(255) NULL,
+  external_url VARCHAR(255) NULL,
+  status ENUM('pending', 'sent', 'failed') NOT NULL DEFAULT 'pending',
+  error_message TEXT NULL,
+  sent_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_lead_responses_lead_id (lead_id),
+  INDEX idx_lead_responses_admin_user_id (admin_user_id),
+  INDEX idx_lead_responses_status (status),
+  CONSTRAINT fk_lead_responses_lead
+    FOREIGN KEY (lead_id) REFERENCES leads(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_lead_responses_admin
+    FOREIGN KEY (admin_user_id) REFERENCES admin_users(id)
+    ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_lead_responses_content
+    FOREIGN KEY (content_post_id) REFERENCES content_posts(id)
+    ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_lead_responses_test
+    FOREIGN KEY (test_id) REFERENCES tests(id)
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

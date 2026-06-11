@@ -15,7 +15,7 @@ if (isset($_GET['id'])) {
 }
 
 $categoryId = $_GET['category_id'] ?? null;
-$sql = 'SELECT id, category_id, title, slug, short_description, image_path, price FROM products WHERE is_active = 1';
+$sql = 'SELECT id, category_id, title, slug, short_description, image_path, document_path, video_url, purchase_url, price FROM products WHERE is_active = 1';
 $params = [];
 if ($categoryId) {
     $sql .= ' AND category_id = :category_id';

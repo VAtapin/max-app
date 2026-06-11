@@ -18,6 +18,11 @@ cd "$PROJECT_ROOT"
 echo "Pulling latest code..."
 git pull --ff-only
 
+if [[ -f "$ENV_FILE" ]]; then
+  echo "Applying database migrations..."
+  bash deploy/plesk/migrate-db.sh "$ENV_FILE"
+fi
+
 echo "Checking PHP syntax..."
 find admin api -name '*.php' -print0 | xargs -0 -n1 "$PHP_BIN" -l >/tmp/max-app-php-lint.log
 cat /tmp/max-app-php-lint.log
