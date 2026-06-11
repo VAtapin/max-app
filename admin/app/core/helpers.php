@@ -24,8 +24,14 @@ function verify_csrf(): void
 {
     $token = $_POST['csrf_token'] ?? '';
     if (!hash_equals($_SESSION['csrf_token'] ?? '', $token)) {
+        $contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && $contentLength > 0) {
+            http_response_code(413);
+            exit('Файл или форма слишком большие для текущих настроек PHP/Plesk. Увеличьте upload_max_filesize и post_max_size или загрузите файл меньшего размера.');
+        }
+
         http_response_code(419);
-        exit('Invalid CSRF token');
+        exit('Сессия формы устарела или токен безопасности не был передан. Обновите страницу и попробуйте снова.');
     }
 }
 

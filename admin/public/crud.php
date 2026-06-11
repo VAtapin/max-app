@@ -356,7 +356,7 @@ function upload_directory(string $moduleKey): string
         default => 'files',
     };
 
-    return dirname(__DIR__) . '/uploads/' . $folder;
+    return dirname(__DIR__, 2) . '/uploads/' . $folder;
 }
 
 function apply_file_uploads(string $moduleKey, array $fields, array $payload, array &$errors): array
@@ -674,6 +674,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <?php elseif ($type === 'file'): ?>
                         <?php if ($value): ?>
                             <a class="file-link" href="<?= h((string)$value) ?>" target="_blank" rel="noopener">Текущий файл</a>
+                            <?php if (($field['accept'] ?? '') === 'image/*'): ?>
+                                <img class="file-preview" src="<?= h((string)$value) ?>" alt="">
+                            <?php endif; ?>
                         <?php endif; ?>
                         <input type="hidden" name="<?= h($name) ?>_current" value="<?= h((string)$value) ?>">
                         <input type="file" name="<?= h($name) ?>" <?= isset($field['accept']) ? 'accept="' . h($field['accept']) . '"' : '' ?>>

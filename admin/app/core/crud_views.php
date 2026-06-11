@@ -136,6 +136,7 @@ function crud_display_columns(string $moduleKey): array
         ],
         'products' => [
             'id' => 'ID',
+            'image_preview' => 'Фото',
             'title' => 'Продукт',
             'category_title' => 'Категория',
             'media_summary' => 'Медиа',
@@ -161,6 +162,7 @@ function crud_display_columns(string $moduleKey): array
         ],
         'content' => [
             'id' => 'ID',
+            'image_preview' => 'Фото',
             'title' => 'Материал',
             'content_type' => 'Тип',
             'category_title' => 'Категория',
@@ -395,7 +397,13 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
                 <?php foreach ($rows as $row): ?>
                     <tr>
                         <?php foreach ($columns as $key => $label): ?>
-                            <td><?= nl2br(h(crud_cell_value($moduleKey, $key, $row))) ?></td>
+                            <td>
+                                <?php if ($key === 'image_preview' && !empty($row['image_path'])): ?>
+                                    <img class="table-thumb" src="<?= h($row['image_path']) ?>" alt="">
+                                <?php else: ?>
+                                    <?= nl2br(h(crud_cell_value($moduleKey, $key, $row))) ?>
+                                <?php endif; ?>
+                            </td>
                         <?php endforeach; ?>
                         <?php if ($canEdit || $canDelete): ?>
                             <td class="row-actions">
