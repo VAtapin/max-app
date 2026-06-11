@@ -27,11 +27,11 @@ function verify_csrf(): void
         $contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && $contentLength > 0) {
             http_response_code(413);
-            exit('Файл или форма слишком большие для текущих настроек PHP/Plesk. Увеличьте upload_max_filesize и post_max_size или загрузите файл меньшего размера.');
+            exit(app_text('auto.k_0dfe59682af3'));
         }
 
         http_response_code(419);
-        exit('Сессия формы устарела или токен безопасности не был передан. Обновите страницу и попробуйте снова.');
+        exit(app_text('auto.k_72041d871b15'));
     }
 }
 
@@ -101,5 +101,5 @@ function target_label(?string $value): string
 
 function medical_disclaimer(): string
 {
-    return 'Информация носит ознакомительный характер и не является медицинской рекомендацией. Перед применением продуктов проконсультируйтесь со специалистом.';
+    return app_text('auto.k_468e990acb20');
 }

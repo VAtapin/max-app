@@ -3,7 +3,7 @@
 require __DIR__ . '/bootstrap.php';
 
 json_response([
-    'name' => 'Health Sales Support API',
+    'name' => 'SWPro API',
     'endpoints' => [
         'GET /api/user.php',
         'POST /api/auth.php',

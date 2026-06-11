@@ -227,7 +227,7 @@ function telegram_api_request(string $method, array $payload): array
 {
     $token = app_config()['integrations']['telegram_bot_token'] ?? '';
     if ($token === '') {
-        return ['ok' => false, 'error' => 'TELEGRAM_BOT_TOKEN is not configured.'];
+        return ['ok' => false, 'error' => app_text('auto.telegram_token_missing')];
     }
 
     $json = json_encode($payload, JSON_UNESCAPED_UNICODE);
@@ -375,7 +375,7 @@ function vk_api_request(string $method, array $params): array
 {
     $token = app_config()['integrations']['vk_group_token'] ?? '';
     if ($token === '') {
-        return ['ok' => false, 'error' => 'VK_GROUP_TOKEN is not configured. Use a VK community access token with messages permission.'];
+        return ['ok' => false, 'error' => app_text('auto.vk_group_token_missing')];
     }
 
     $params['access_token'] = $token;

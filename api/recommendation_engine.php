@@ -50,7 +50,7 @@ function build_recommendations(int $endUserId, int $testSessionId): array
             'product_id' => $productId,
             'category_id' => $item['category_id'],
             'tag_id' => $item['tag_id'],
-            'reason_text' => 'Рекомендация сформирована по ответам теста. ' . medical_disclaimer(),
+            'reason_text' => app_text('auto.k_60697ed57a0b') . medical_disclaimer(),
             'score' => (int)$item['score'],
         ]);
 

@@ -10,159 +10,159 @@ $admin = require_auth();
 
 $modules = [
     'resellers' => [
-        'title' => 'Реселлеры',
+        'title' => app_text('auto.k_32cea47742bf'),
         'table' => 'resellers',
         'columns' => ['id', 'name', 'email', 'phone', 'referral_code', 'is_active'],
         'fields' => [
-            'name' => ['label' => 'Название', 'required' => true],
+            'name' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
             'email' => ['label' => 'Email', 'type' => 'email'],
-            'phone' => ['label' => 'Телефон'],
-            'referral_code' => ['label' => 'Реферальный код', 'required' => true],
-            'is_active' => ['label' => 'Активен', 'type' => 'checkbox', 'default' => 1],
+            'phone' => ['label' => app_text('auto.k_87ec4b495b56')],
+            'referral_code' => ['label' => app_text('auto.k_a9d3a61b02f2'), 'required' => true],
+            'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
         ],
     ],
     'managers' => [
-        'title' => 'Менеджеры',
+        'title' => app_text('auto.k_6756aa53b5b5'),
         'table' => 'managers',
         'columns' => ['id', 'reseller_id', 'name', 'email', 'phone', 'referral_code', 'is_active'],
         'fields' => [
-            'reseller_id' => ['label' => 'Реселлер', 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
-            'name' => ['label' => 'Имя', 'required' => true],
+            'reseller_id' => ['label' => app_text('auto.k_86469fea3a4a'), 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
+            'name' => ['label' => app_text('auto.k_aee78fe86022'), 'required' => true],
             'email' => ['label' => 'Email', 'type' => 'email'],
-            'phone' => ['label' => 'Телефон'],
+            'phone' => ['label' => app_text('auto.k_87ec4b495b56')],
             'telegram_id' => ['label' => 'Telegram ID'],
             'max_id' => ['label' => 'MAX ID'],
             'vk_id' => ['label' => 'VK ID'],
-            'referral_code' => ['label' => 'Реферальный код', 'required' => true],
-            'is_active' => ['label' => 'Активен', 'type' => 'checkbox', 'default' => 1],
+            'referral_code' => ['label' => app_text('auto.k_a9d3a61b02f2'), 'required' => true],
+            'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
         ],
     ],
     'users' => [
-        'title' => 'Пользователи',
+        'title' => app_text('auto.k_0f0b8f55edcc'),
         'table' => 'end_users',
         'columns' => ['id', 'platform', 'platform_user_id', 'username', 'reseller_id', 'manager_id', 'status'],
         'fields' => [
-            'reseller_id' => ['label' => 'Реселлер', 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
-            'manager_id' => ['label' => 'Менеджер', 'type' => 'select', 'source' => 'managers', 'nullable' => true],
-            'platform' => ['label' => 'Платформа', 'type' => 'select', 'options' => ['telegram', 'vk', 'max', 'web'], 'required' => true],
-            'platform_user_id' => ['label' => 'ID на платформе', 'required' => true],
+            'reseller_id' => ['label' => app_text('auto.k_86469fea3a4a'), 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
+            'manager_id' => ['label' => app_text('auto.k_8d98911527e4'), 'type' => 'select', 'source' => 'managers', 'nullable' => true],
+            'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['telegram', 'vk', 'max', 'web'], 'required' => true],
+            'platform_user_id' => ['label' => app_text('auto.k_c7f40b63aad7'), 'required' => true],
             'username' => ['label' => 'Username'],
-            'first_name' => ['label' => 'Имя'],
-            'last_name' => ['label' => 'Фамилия'],
-            'phone' => ['label' => 'Телефон'],
+            'first_name' => ['label' => app_text('auto.k_aee78fe86022')],
+            'last_name' => ['label' => app_text('auto.k_5aa7f892d573')],
+            'phone' => ['label' => app_text('auto.k_87ec4b495b56')],
             'email' => ['label' => 'Email', 'type' => 'email'],
-            'referral_code_used' => ['label' => 'Использованный реф. код'],
-            'status' => ['label' => 'Статус', 'type' => 'select', 'options' => ['active', 'blocked', 'unsubscribed'], 'required' => true],
+            'referral_code_used' => ['label' => app_text('auto.k_23f8d055a5d6')],
+            'status' => ['label' => app_text('auto.k_f7f293b5c58c'), 'type' => 'select', 'options' => ['active', 'blocked', 'unsubscribed'], 'required' => true],
         ],
     ],
     'platform_accounts' => [
-        'title' => 'Аккаунты платформ',
+        'title' => app_text('auto.k_68a410fd6049'),
         'table' => 'platform_accounts',
         'columns' => ['id', 'end_user_id', 'platform', 'platform_user_id', 'username'],
         'fields' => [
-            'end_user_id' => ['label' => 'Пользователь', 'type' => 'select', 'source' => 'end_users', 'required' => true],
-            'platform' => ['label' => 'Платформа', 'type' => 'select', 'options' => ['telegram', 'vk', 'max', 'web'], 'required' => true],
-            'platform_user_id' => ['label' => 'ID на платформе', 'required' => true],
+            'end_user_id' => ['label' => app_text('auto.k_51aff1853949'), 'type' => 'select', 'source' => 'end_users', 'required' => true],
+            'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['telegram', 'vk', 'max', 'web'], 'required' => true],
+            'platform_user_id' => ['label' => app_text('auto.k_c7f40b63aad7'), 'required' => true],
             'username' => ['label' => 'Username'],
         ],
     ],
     'leads' => [
-        'title' => 'Заявки',
+        'title' => app_text('auto.k_be11d71726a6'),
         'table' => 'leads',
         'columns' => ['id', 'end_user_id', 'manager_id', 'reseller_id', 'product_id', 'source_platform', 'status', 'created_at'],
         'fields' => [
-            'end_user_id' => ['label' => 'Пользователь', 'type' => 'select', 'source' => 'end_users', 'required' => true],
-            'manager_id' => ['label' => 'Менеджер', 'type' => 'select', 'source' => 'managers', 'nullable' => true],
-            'reseller_id' => ['label' => 'Реселлер', 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
-            'product_id' => ['label' => 'Продукт', 'type' => 'select', 'source' => 'products', 'nullable' => true],
-            'source_platform' => ['label' => 'Платформа', 'type' => 'select', 'options' => ['telegram', 'vk', 'max', 'web'], 'required' => true],
-            'message' => ['label' => 'Сообщение', 'type' => 'textarea'],
-            'status' => ['label' => 'Статус', 'type' => 'select', 'options' => ['new', 'contacted', 'interested', 'closed', 'lost'], 'required' => true],
+            'end_user_id' => ['label' => app_text('auto.k_51aff1853949'), 'type' => 'select', 'source' => 'end_users', 'required' => true],
+            'manager_id' => ['label' => app_text('auto.k_8d98911527e4'), 'type' => 'select', 'source' => 'managers', 'nullable' => true],
+            'reseller_id' => ['label' => app_text('auto.k_86469fea3a4a'), 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
+            'product_id' => ['label' => app_text('auto.k_82a9ca014bb8'), 'type' => 'select', 'source' => 'products', 'nullable' => true],
+            'source_platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['telegram', 'vk', 'max', 'web'], 'required' => true],
+            'message' => ['label' => app_text('auto.k_dc72346ac447'), 'type' => 'textarea'],
+            'status' => ['label' => app_text('auto.k_f7f293b5c58c'), 'type' => 'select', 'options' => ['new', 'contacted', 'interested', 'closed', 'lost'], 'required' => true],
         ],
     ],
     'categories' => [
-        'title' => 'Категории продуктов',
+        'title' => app_text('auto.k_f7d9b1c868fa'),
         'table' => 'product_categories',
         'columns' => ['id', 'title', 'slug', 'sort_order', 'is_active'],
         'fields' => [
-            'title' => ['label' => 'Название', 'required' => true],
+            'title' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
             'slug' => ['label' => 'Slug', 'required' => true],
-            'description' => ['label' => 'Описание', 'type' => 'textarea'],
-            'sort_order' => ['label' => 'Сортировка', 'type' => 'number', 'default' => 100],
-            'is_active' => ['label' => 'Активна', 'type' => 'checkbox', 'default' => 1],
+            'description' => ['label' => app_text('auto.k_f5441f6aee76'), 'type' => 'textarea'],
+            'sort_order' => ['label' => app_text('auto.k_ed030118aad8'), 'type' => 'number', 'default' => 100],
+            'is_active' => ['label' => app_text('auto.k_c1ae516375c4'), 'type' => 'checkbox', 'default' => 1],
         ],
     ],
     'products' => [
-        'title' => 'Продукты',
+        'title' => app_text('auto.k_c85756a1ae45'),
         'table' => 'products',
         'columns' => ['id', 'category_id', 'title', 'slug', 'price', 'is_active'],
         'fields' => [
-            'category_id' => ['label' => 'Категория продукта', 'type' => 'select', 'source' => 'product_categories', 'nullable' => true],
-            'title' => ['label' => 'Название', 'required' => true],
+            'category_id' => ['label' => app_text('auto.k_1cf49d95b0ed'), 'type' => 'select', 'source' => 'product_categories', 'nullable' => true],
+            'title' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
             'slug' => ['label' => 'Slug', 'required' => true],
-            'short_description' => ['label' => 'Краткое описание', 'type' => 'textarea'],
-            'full_description' => ['label' => 'Полное описание', 'type' => 'textarea'],
-            'composition' => ['label' => 'Состав', 'type' => 'textarea'],
-            'usage_text' => ['label' => 'Применение', 'type' => 'textarea'],
-            'warning_text' => ['label' => 'Предупреждение', 'type' => 'textarea'],
-            'contraindications' => ['label' => 'Противопоказания', 'type' => 'textarea'],
-            'image_path' => ['label' => 'Изображение', 'type' => 'file', 'accept' => 'image/*'],
-            'document_path' => ['label' => 'PDF/инструкция', 'type' => 'file', 'accept' => 'application/pdf'],
-            'video_url' => ['label' => 'Ссылка на видео'],
-            'price' => ['label' => 'Цена', 'type' => 'number', 'step' => '0.01', 'nullable' => true],
-            'purchase_url' => ['label' => 'Ссылка на видео/страницу с информацией'],
-            'sort_order' => ['label' => 'Сортировка', 'type' => 'number', 'default' => 100],
-            'is_active' => ['label' => 'Активен', 'type' => 'checkbox', 'default' => 1],
+            'short_description' => ['label' => app_text('auto.k_d1b43352dd0b'), 'type' => 'textarea'],
+            'full_description' => ['label' => app_text('auto.k_a6c29f1af453'), 'type' => 'textarea'],
+            'composition' => ['label' => app_text('auto.k_c37407200657'), 'type' => 'textarea'],
+            'usage_text' => ['label' => app_text('auto.k_1f14ddbb7157'), 'type' => 'textarea'],
+            'warning_text' => ['label' => app_text('auto.k_e48b13edc15f'), 'type' => 'textarea'],
+            'contraindications' => ['label' => app_text('auto.k_b4307011a15a'), 'type' => 'textarea'],
+            'image_path' => ['label' => app_text('auto.k_56a1fd52891d'), 'type' => 'file', 'accept' => 'image/*'],
+            'document_path' => ['label' => app_text('auto.k_2f76dff0da9f'), 'type' => 'file', 'accept' => 'application/pdf'],
+            'video_url' => ['label' => app_text('auto.k_54fbfaf96a2d')],
+            'price' => ['label' => app_text('auto.k_367e2792c179'), 'type' => 'number', 'step' => '0.01', 'nullable' => true],
+            'purchase_url' => ['label' => app_text('auto.k_ab281ec27935')],
+            'sort_order' => ['label' => app_text('auto.k_ed030118aad8'), 'type' => 'number', 'default' => 100],
+            'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
         ],
     ],
     'tests' => [
-        'title' => 'Тесты',
+        'title' => app_text('auto.k_663c94d30018'),
         'table' => 'tests',
         'columns' => ['id', 'title', 'category_id', 'is_active', 'sort_order'],
         'fields' => [
-            'title' => ['label' => 'Название', 'required' => true],
-            'description' => ['label' => 'Описание', 'type' => 'textarea'],
-            'category_id' => ['label' => 'Категория', 'type' => 'select', 'source' => 'product_categories', 'nullable' => true],
-            'sort_order' => ['label' => 'Сортировка', 'type' => 'number', 'default' => 100],
-            'is_active' => ['label' => 'Активен', 'type' => 'checkbox', 'default' => 1],
+            'title' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
+            'description' => ['label' => app_text('auto.k_f5441f6aee76'), 'type' => 'textarea'],
+            'category_id' => ['label' => app_text('auto.k_19c85838e63f'), 'type' => 'select', 'source' => 'product_categories', 'nullable' => true],
+            'sort_order' => ['label' => app_text('auto.k_ed030118aad8'), 'type' => 'number', 'default' => 100],
+            'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
         ],
     ],
     'broadcasts' => [
-        'title' => 'Рассылки',
+        'title' => app_text('auto.k_08a679f215bd'),
         'table' => 'broadcasts',
         'columns' => ['id', 'title', 'platform', 'target_type', 'scheduled_at', 'status'],
         'fields' => [
-            'title' => ['label' => 'Название', 'required' => true],
-            'message_text' => ['label' => 'Текст сообщения', 'type' => 'textarea', 'required' => true],
-            'image_path' => ['label' => 'Изображение', 'type' => 'file', 'accept' => 'image/*'],
-            'button_text' => ['label' => 'Текст кнопки'],
-            'button_url' => ['label' => 'Ссылка кнопки'],
-            'target_type' => ['label' => 'Кому', 'type' => 'select', 'options' => ['all', 'reseller', 'manager', 'segment'], 'required' => true],
-            'target_reseller_id' => ['label' => 'Реселлер', 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
-            'target_manager_id' => ['label' => 'Менеджер', 'type' => 'select', 'source' => 'managers', 'nullable' => true],
-            'platform' => ['label' => 'Платформа', 'type' => 'select', 'options' => ['all', 'telegram', 'vk', 'max'], 'required' => true],
-            'schedule_type' => ['label' => 'Расписание', 'type' => 'select', 'options' => ['once', 'daily', 'weekly', 'monthly'], 'required' => true],
-            'scheduled_at' => ['label' => 'Дата отправки', 'type' => 'datetime-local', 'nullable' => true],
-            'status' => ['label' => 'Статус', 'type' => 'select', 'options' => ['draft', 'scheduled', 'sent', 'cancelled'], 'required' => true],
+            'title' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
+            'message_text' => ['label' => app_text('auto.k_1ba376a71bcf'), 'type' => 'textarea', 'required' => true],
+            'image_path' => ['label' => app_text('auto.k_56a1fd52891d'), 'type' => 'file', 'accept' => 'image/*'],
+            'button_text' => ['label' => app_text('auto.k_f9fd27363780')],
+            'button_url' => ['label' => app_text('auto.k_668acad1ed4c')],
+            'target_type' => ['label' => app_text('auto.k_e9476ab1820b'), 'type' => 'select', 'options' => ['all', 'reseller', 'manager', 'segment'], 'required' => true],
+            'target_reseller_id' => ['label' => app_text('auto.k_86469fea3a4a'), 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
+            'target_manager_id' => ['label' => app_text('auto.k_8d98911527e4'), 'type' => 'select', 'source' => 'managers', 'nullable' => true],
+            'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['all', 'telegram', 'vk', 'max'], 'required' => true],
+            'schedule_type' => ['label' => app_text('auto.k_f04bd0a06491'), 'type' => 'select', 'options' => ['once', 'daily', 'weekly', 'monthly'], 'required' => true],
+            'scheduled_at' => ['label' => app_text('auto.k_854ba1dc86aa'), 'type' => 'datetime-local', 'nullable' => true],
+            'status' => ['label' => app_text('auto.k_f7f293b5c58c'), 'type' => 'select', 'options' => ['draft', 'scheduled', 'sent', 'cancelled'], 'required' => true],
         ],
     ],
     'content' => [
-        'title' => 'Материалы',
+        'title' => app_text('auto.k_5e30f01694b5'),
         'table' => 'content_posts',
         'columns' => ['id', 'title', 'status', 'publish_at', 'created_by'],
         'fields' => [
-            'content_type' => ['label' => 'Тип материала', 'type' => 'select', 'options' => ['article', 'image', 'pdf', 'video', 'link'], 'required' => true],
-            'title' => ['label' => 'Заголовок', 'required' => true],
-            'short_text' => ['label' => 'Краткий текст', 'type' => 'textarea'],
-            'full_text' => ['label' => 'Полный текст', 'type' => 'textarea'],
-            'image_path' => ['label' => 'Изображение', 'type' => 'file', 'accept' => 'image/*'],
-            'attachment_path' => ['label' => 'PDF/файл', 'type' => 'file', 'accept' => 'application/pdf,video/mp4,image/*'],
-            'video_url' => ['label' => 'Ссылка на видео'],
-            'button_text' => ['label' => 'Текст кнопки'],
-            'button_url' => ['label' => 'Ссылка кнопки'],
-            'category_id' => ['label' => 'Категория продукта', 'type' => 'select', 'source' => 'product_categories', 'nullable' => true],
-            'status' => ['label' => 'Статус', 'type' => 'select', 'options' => ['draft', 'published', 'hidden'], 'required' => true],
-            'publish_at' => ['label' => 'Дата публикации', 'type' => 'datetime-local', 'nullable' => true],
+            'content_type' => ['label' => app_text('auto.k_ef19578bced0'), 'type' => 'select', 'options' => ['article', 'image', 'pdf', 'video', 'link'], 'required' => true],
+            'title' => ['label' => app_text('auto.k_a8504d513adf'), 'required' => true],
+            'short_text' => ['label' => app_text('auto.k_45cab8e7b9f1'), 'type' => 'textarea'],
+            'full_text' => ['label' => app_text('auto.k_88a3ec931c4d'), 'type' => 'textarea'],
+            'image_path' => ['label' => app_text('auto.k_56a1fd52891d'), 'type' => 'file', 'accept' => 'image/*'],
+            'attachment_path' => ['label' => app_text('auto.k_1e51e67e49b3'), 'type' => 'file', 'accept' => 'application/pdf,video/mp4,image/*'],
+            'video_url' => ['label' => app_text('auto.k_54fbfaf96a2d')],
+            'button_text' => ['label' => app_text('auto.k_f9fd27363780')],
+            'button_url' => ['label' => app_text('auto.k_668acad1ed4c')],
+            'category_id' => ['label' => app_text('auto.k_1cf49d95b0ed'), 'type' => 'select', 'source' => 'product_categories', 'nullable' => true],
+            'status' => ['label' => app_text('auto.k_f7f293b5c58c'), 'type' => 'select', 'options' => ['draft', 'published', 'hidden'], 'required' => true],
+            'publish_at' => ['label' => app_text('auto.k_8ad0765b3c02'), 'type' => 'datetime-local', 'nullable' => true],
         ],
     ],
 ];
@@ -266,7 +266,7 @@ function safe_select_options(string $source, array $admin, array &$errors): arra
     try {
         return select_options($source, $admin);
     } catch (Throwable $e) {
-        $errors[] = 'Не удалось загрузить список для поля: ' . $source . '. ' . $e->getMessage();
+        $errors[] = app_text('auto.k_e81a65169eba') . $source . '. ' . $e->getMessage();
         return [];
     }
 }
@@ -291,7 +291,7 @@ function form_option_label(string $fieldName, string $option): string
 function format_cell_value(mixed $value): string
 {
     if ($value === null || $value === '') {
-        return '—';
+        return app_text('auto.k_1b93795b9768');
     }
 
     if (is_bool($value)) {
@@ -401,12 +401,12 @@ function apply_file_uploads(string $moduleKey, array $fields, array $payload, ar
         }
 
         if ($file['error'] !== UPLOAD_ERR_OK) {
-            $errors[] = 'Не удалось загрузить файл для поля: ' . ($field['label'] ?? $name);
+            $errors[] = app_text('auto.k_ad245cc4b64e') . ($field['label'] ?? $name);
             continue;
         }
 
         if ($maxBytes > 0 && (int)$file['size'] > $maxBytes) {
-            $errors[] = 'Файл слишком большой. Максимум: ' . round($maxBytes / 1024 / 1024, 1) . ' МБ.';
+            $errors[] = app_text('auto.k_016932bbc64e') . round($maxBytes / 1024 / 1024, 1) . app_text('auto.k_e9f54a42c9f8');
             continue;
         }
 
@@ -416,8 +416,8 @@ function apply_file_uploads(string $moduleKey, array $fields, array $payload, ar
         $allowedTypes = $accept === 'image/*' ? $allowedImageTypes : $allowedAttachmentTypes;
         if (!in_array($mime, $allowedTypes, true)) {
             $errors[] = $accept === 'image/*'
-                ? 'Поддерживаются только изображения JPG, PNG или WebP.'
-                : 'Поддерживаются JPG, PNG, WebP, PDF или MP4.';
+                ? app_text('auto.k_9b79f0e123f2')
+                : app_text('auto.k_56dab6d101ae');
             continue;
         }
 
@@ -430,20 +430,20 @@ function apply_file_uploads(string $moduleKey, array $fields, array $payload, ar
             default => null,
         };
         if (!$extension) {
-            $errors[] = 'Не удалось определить тип изображения.';
+            $errors[] = app_text('auto.k_0d13c589d224');
             continue;
         }
 
         $directory = upload_directory($moduleKey);
         if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
-            $errors[] = 'Не удалось создать папку для загрузок.';
+            $errors[] = app_text('auto.k_2365f1af5b59');
             continue;
         }
 
         $filename = date('YmdHis') . '-' . bin2hex(random_bytes(6)) . '.' . $extension;
         $target = $directory . '/' . $filename;
         if (!move_uploaded_file($file['tmp_name'], $target)) {
-            $errors[] = 'Не удалось сохранить загруженный файл.';
+            $errors[] = app_text('auto.k_efb84954029f');
             continue;
         }
 
@@ -458,10 +458,10 @@ function validate_payload(array $fields, array $payload): array
     $errors = [];
     foreach ($fields as $name => $field) {
         if (($field['required'] ?? false) && (($payload[$name] ?? null) === null || $payload[$name] === '')) {
-            $errors[] = 'Заполните поле: ' . ($field['label'] ?? $name);
+            $errors[] = app_text('auto.k_2dc144adf452') . ($field['label'] ?? $name);
         }
         if (isset($field['options']) && ($payload[$name] ?? '') !== '' && !in_array($payload[$name], $field['options'], true)) {
-            $errors[] = 'Некорректное значение поля: ' . ($field['label'] ?? $name);
+            $errors[] = app_text('auto.k_337d46ded7e2') . ($field['label'] ?? $name);
         }
     }
 
@@ -474,7 +474,7 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin)
     if (in_array($moduleKey, ['leads', 'platform_accounts'], true)) {
         $endUserId = (int)($payload['end_user_id'] ?? 0);
         if ($endUserId && !scoped_end_user_exists($endUserId, $admin)) {
-            $errors[] = 'Выбранный пользователь недоступен для вашей роли.';
+            $errors[] = app_text('auto.k_34b1bedb5064');
         }
     }
 
@@ -534,12 +534,12 @@ $canDelete = crud_delete_enabled($moduleKey);
 $formFields = crud_form_fields($moduleKey, $module['fields']);
 
 if ($action === 'create' && !$canCreate) {
-    $errors[] = 'Этот раздел заполняется автоматически из Telegram, VK, MAX или мини-приложения. Создание вручную отключено.';
+    $errors[] = app_text('auto.k_868d1fd837c9');
     $action = 'list';
 }
 
 if ($action === 'edit' && !$canEdit) {
-    $errors[] = 'Этот раздел доступен только для просмотра. Изменения делаются через карточку пользователя или канал подключения.';
+    $errors[] = app_text('auto.k_e26ff1144bac');
     $action = 'list';
 }
 
@@ -558,7 +558,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $responseId = create_and_send_lead_response($postId, $admin, $errors);
         } catch (Throwable $e) {
             $responseId = null;
-            $errors[] = 'Не удалось отправить ответ по заявке: ' . $e->getMessage();
+            $errors[] = app_text('auto.k_5cececf97899') . $e->getMessage();
         }
         if ($responseId && !$errors) {
             redirect('crud.php?module=leads&action=edit&id=' . $postId . '&success=response_sent');
@@ -581,7 +581,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($postAction === 'delete') {
         if (!$canDelete) {
-            $errors[] = 'Удаление в этом разделе отключено, чтобы не потерять историю пользователей, платформ и заявок.';
+            $errors[] = app_text('auto.k_da5ca3c5fc80');
         } else {
         if (!$postId || !scoped_row_exists($moduleKey, $module, $postId, $admin)) {
             http_response_code(404);
@@ -594,7 +594,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             log_activity('admin', (int)$admin['id'], 'delete_' . $module['table'], $module['table'], $postId);
             redirect('crud.php?module=' . urlencode($moduleKey) . '&success=deleted');
         } catch (Throwable $e) {
-            $errors[] = 'Не удалось удалить запись: ' . $e->getMessage();
+            $errors[] = app_text('auto.k_cdec27146810') . $e->getMessage();
         }
         }
         $action = 'list';
@@ -603,8 +603,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($postAction === 'save') {
     if (($postId && !$canEdit) || (!$postId && !$canCreate)) {
         $errors[] = $postId
-            ? 'Редактирование в этом разделе отключено.'
-            : 'Создание вручную в этом разделе отключено.';
+            ? app_text('auto.k_fd8f8d50baa8')
+            : app_text('auto.k_6eaca3d4de92');
         $action = 'list';
     } else {
     if ($postId && !scoped_row_exists($moduleKey, $module, $postId, $admin)) {
@@ -621,7 +621,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             save_record($moduleKey, $module, $payload, $postId, $admin);
             redirect('crud.php?module=' . urlencode($moduleKey) . '&success=saved');
         } catch (Throwable $e) {
-            $errors[] = 'Не удалось сохранить запись: ' . $e->getMessage();
+            $errors[] = app_text('auto.k_02613f541f5f') . $e->getMessage();
         }
     }
 
@@ -651,8 +651,8 @@ try {
     $rows = $stmt->fetchAll();
     $listHtml = render_crud_list($moduleKey, $displayColumns, $rows, $canEdit, $canDelete);
 } catch (Throwable $e) {
-    $errors[] = 'Не удалось загрузить список записей: ' . $e->getMessage();
-    $listHtml = '<div class="empty-state">Список временно недоступен. Подробность показана выше.</div>';
+    $errors[] = app_text('auto.k_49fb23bb29cf') . $e->getMessage();
+    $listHtml = app_text('auto.k_fda0c24ca2e9');
 }
 
 require __DIR__ . '/../app/views/layouts/header.php';
@@ -660,15 +660,15 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <div class="toolbar">
     <h1><?= h($title) ?></h1>
     <?php if ($canCreate): ?>
-        <a class="button" href="crud.php?module=<?= h($moduleKey) ?>&action=create">Добавить</a>
+        <a class="button" href="crud.php?module=<?= h($moduleKey) ?>&action=create"><?= h(app_text('auto.k_559a87f7cc13')) ?></a>
     <?php endif; ?>
 </div>
 <?php if ($success === 'saved'): ?>
-    <div class="notice success">Запись сохранена.</div>
+    <div class="notice success"><?= h(app_text('auto.k_ead4c298eba3')) ?></div>
 <?php elseif ($success === 'deleted'): ?>
-    <div class="notice success">Запись удалена.</div>
+    <div class="notice success"><?= h(app_text('auto.k_5db71cdc4927')) ?></div>
 <?php elseif ($success === 'response_sent'): ?>
-    <div class="notice success">Ответ отправлен пользователю в Telegram.</div>
+    <div class="notice success"><?= h(app_text('auto.k_0184f257cbfc')) ?></div>
 <?php endif; ?>
 <?php foreach ($errors as $error): ?>
     <div class="alert"><?= h($error) ?></div>
@@ -692,7 +692,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <?php elseif ($type === 'select'): ?>
                         <select name="<?= h($name) ?>">
                             <?php if ($field['nullable'] ?? false): ?>
-                                <option value="">Не выбрано</option>
+                                <option value=""><?= h(app_text('auto.k_24da5932344a')) ?></option>
                             <?php endif; ?>
                             <?php if (isset($field['options'])): ?>
                                 <?php foreach ($field['options'] as $option): ?>
@@ -708,7 +708,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         </select>
                     <?php elseif ($type === 'file'): ?>
                         <?php if ($value): ?>
-                            <a class="file-link" href="<?= h((string)$value) ?>" target="_blank" rel="noopener">Текущий файл</a>
+                            <a class="file-link" href="<?= h((string)$value) ?>" target="_blank" rel="noopener"><?= h(app_text('auto.k_ffa20070c6e2')) ?></a>
                             <?php if (($field['accept'] ?? '') === 'image/*'): ?>
                                 <img class="file-preview" src="<?= h((string)$value) ?>" alt="">
                             <?php endif; ?>
@@ -729,8 +729,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 </label>
             <?php endforeach; ?>
             <div class="form-actions">
-                <button type="submit">Сохранить</button>
-                <a class="button secondary-button" href="crud.php?module=<?= h($moduleKey) ?>">Отмена</a>
+                <button type="submit"><?= h(app_text('auto.k_4864057d626a')) ?></button>
+                <a class="button secondary-button" href="crud.php?module=<?= h($moduleKey) ?>"><?= h(app_text('auto.k_0ec753be8df9')) ?></a>
             </div>
         </form>
     </section>
@@ -739,21 +739,21 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <?php endif; ?>
     <?php if ($moduleKey === 'leads' && $action === 'edit' && $editRow): ?>
         <section class="panel form-panel">
-            <h2>Ответить пользователю</h2>
+            <h2><?= h(app_text('auto.k_e33268c4b97d')) ?></h2>
             <form method="post" class="crud-form" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
                 <input type="hidden" name="action" value="send_lead_response">
                 <input type="hidden" name="id" value="<?= h((string)$editRow['id']) ?>">
 
                 <label class="field">
-                    <span>Текст ответа</span>
-                    <textarea name="response_text" rows="4" placeholder="Напишите сообщение пользователю"></textarea>
+                    <span><?= h(app_text('auto.k_a76a99a18c25')) ?></span>
+                    <textarea name="response_text" rows="4" placeholder="<?= h(app_text('auto.response_placeholder')) ?>"></textarea>
                 </label>
 
                 <label class="field">
-                    <span>Материал</span>
+                    <span><?= h(app_text('auto.k_19114f713f60')) ?></span>
                     <select name="response_content_id">
-                        <option value="">Не выбран</option>
+                        <option value=""><?= h(app_text('auto.k_92250813ceb7')) ?></option>
                         <?php foreach (safe_select_options('content_posts', $admin, $errors) as $option): ?>
                             <option value="<?= (int)$option['id'] ?>">#<?= (int)$option['id'] ?> <?= h($option['label']) ?></option>
                         <?php endforeach; ?>
@@ -761,9 +761,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 </label>
 
                 <label class="field">
-                    <span>Предложить тест</span>
+                    <span><?= h(app_text('auto.k_3e644b83e4f3')) ?></span>
                     <select name="response_test_id">
-                        <option value="">Не выбран</option>
+                        <option value=""><?= h(app_text('auto.k_92250813ceb7')) ?></option>
                         <?php foreach (safe_select_options('tests', $admin, $errors) as $option): ?>
                             <option value="<?= (int)$option['id'] ?>">#<?= (int)$option['id'] ?> <?= h($option['label']) ?></option>
                         <?php endforeach; ?>
@@ -771,40 +771,40 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 </label>
 
                 <label class="field">
-                    <span>Файл: изображение, PDF или MP4</span>
+                    <span><?= h(app_text('auto.k_4012dea6eccf')) ?></span>
                     <input type="file" name="response_attachments[]" accept="image/*,application/pdf,video/mp4" multiple>
                 </label>
 
                 <label class="field">
-                    <span>Ссылка на видео, PDF или страницу</span>
+                    <span><?= h(app_text('auto.k_e6877b1b589a')) ?></span>
                     <input type="url" name="response_external_url" placeholder="https://...">
                 </label>
 
                 <div class="form-actions">
-                    <button type="submit">Отправить ответ</button>
+                    <button type="submit"><?= h(app_text('auto.k_18523c1df9fa')) ?></button>
                 </div>
             </form>
         </section>
 
         <section class="panel">
-            <h2>История ответов</h2>
+            <h2><?= h(app_text('auto.k_238615f19976')) ?></h2>
             <?php
             try {
                 $responses = lead_response_history((int)$editRow['id']);
             } catch (Throwable $e) {
                 $responses = [];
-                echo '<div class="alert">Не удалось загрузить историю ответов: ' . h($e->getMessage()) . '</div>';
+                echo app_text('auto.k_8646540328ff') . h($e->getMessage()) . '</div>';
             }
             ?>
             <?php if ($responses): ?>
                 <table class="data-table">
                     <thead>
                     <tr>
-                        <th>Дата</th>
-                        <th>Менеджер</th>
-                        <th>Ответ</th>
-                        <th>Материал/тест</th>
-                        <th>Статус</th>
+                        <th><?= h(app_text('auto.k_a5b49d2ebad2')) ?></th>
+                        <th><?= h(app_text('auto.k_8d98911527e4')) ?></th>
+                        <th><?= h(app_text('auto.k_e9d7bdd83831')) ?></th>
+                        <th><?= h(app_text('auto.k_8963194b107f')) ?></th>
+                        <th><?= h(app_text('auto.k_f7f293b5c58c')) ?></th>
                     </tr>
                     </thead>
                     <tbody>
@@ -817,7 +817,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                                 <?= h($response['content_title'] ?? '') ?>
                                 <?= $response['test_title'] ? '<br>' . h($response['test_title']) : '' ?>
                                 <?php foreach (lead_response_attachment_paths($response['attachment_path'] ?? null) as $fileIndex => $attachmentPath): ?>
-                                    <br><a href="<?= h($attachmentPath) ?>" target="_blank" rel="noopener">Файл <?= $fileIndex + 1 ?></a>
+                                    <br><a href="<?= h($attachmentPath) ?>" target="_blank" rel="noopener"><?= h(app_text('auto.k_94b8df93b6ec')) ?><?= $fileIndex + 1 ?></a>
                                 <?php endforeach; ?>
                             </td>
                             <td>
@@ -829,7 +829,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     </tbody>
                 </table>
             <?php else: ?>
-                <div class="empty-state">Ответов по этой заявке пока нет.</div>
+                <div class="empty-state"><?= h(app_text('auto.k_06fe678de6fe')) ?></div>
             <?php endif; ?>
         </section>
     <?php endif; ?>
@@ -838,11 +838,11 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <?= $listHtml ?>
 </section>
 <section class="panel">
-    <h2>Права доступа</h2>
+    <h2><?= h(app_text('auto.k_770fa6d360ac')) ?></h2>
     <div class="access-rules">
-        <p><strong>Супер-админ:</strong> видит всю систему, управляет продуктами, тестами, материалами, рассылками, реселлерами, менеджерами, пользователями и заявками.</p>
-        <p><strong>Реселлер:</strong> видит своих менеджеров, пользователей, аккаунты платформ, заявки и рассылки в рамках своей структуры. Продукты и тесты не меняет.</p>
-        <p><strong>Менеджер:</strong> видит только назначенных ему пользователей, их платформы и заявки. Может обрабатывать заявки, но не управляет каталогом и тестами.</p>
+        <p><strong><?= h(app_text('auto.k_58b681fd4d17')) ?></strong><?= h(app_text('auto.k_15250cf3f350')) ?></p>
+        <p><strong><?= h(app_text('auto.k_674627c4bad0')) ?></strong><?= h(app_text('auto.k_344db6faf528')) ?></p>
+        <p><strong><?= h(app_text('auto.k_839732a73e8e')) ?></strong><?= h(app_text('auto.k_73dde519a420')) ?></p>
     </div>
 </section>
 <?php require __DIR__ . '/../app/views/layouts/footer.php'; ?>

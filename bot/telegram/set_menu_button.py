@@ -5,6 +5,7 @@ from pathlib import Path
 from aiogram.types import MenuButtonWebApp, WebAppInfo
 from dotenv import load_dotenv
 
+from bot.core.i18n import tr
 from bot.telegram.adapter import build_bot
 
 
@@ -20,7 +21,7 @@ async def main() -> None:
     try:
         await bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(
-                text="Открыть SWPro",
+                text=tr("menu.open_swpro"),
                 web_app=WebAppInfo(url=mini_app_url),
             )
         )

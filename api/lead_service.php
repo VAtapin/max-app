@@ -17,7 +17,7 @@ function create_lead_for_user(array $user, array $data): int
         'reseller_id' => $user['reseller_id'],
         'product_id' => isset($data['product_id']) && $data['product_id'] !== '' ? (int)$data['product_id'] : null,
         'source_platform' => $sourcePlatform,
-        'message' => $data['message'] ?? 'Пользователь запросил связь с менеджером.',
+        'message' => $data['message'] ?? app_text('auto.k_d169a041af9d'),
     ]);
     $leadId = (int)db()->lastInsertId();
 

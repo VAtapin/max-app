@@ -36,5 +36,15 @@
   "leads.platform": "Платформа",
   "leads.manager_response": "Ответ менеджера",
   "leads.empty": "Заявок пока нет.",
-  "common.loading": "Загрузка..."
+  "common.loading": "Загрузка...",
+  "app.eyebrow": "SWPro Ассистент",
+  "app.title": "SWPro",
+  "nav.aria": "Навигация",
+  "nav.home": "Главная",
+  "nav.tests": "Тесты",
+  "nav.products": "Продукты",
+  "nav.recommendations": "Рекомендации",
+  "nav.leads": "Заявки",
+  "nav.profile": "Профиль",
+  "medical_disclaimer": "Информация носит ознакомительный характер и не является медицинской рекомендацией. Перед применением продуктов проконсультируйтесь со специалистом."
 }

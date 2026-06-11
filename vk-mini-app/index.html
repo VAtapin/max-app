@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Health Support</title>
+    <title>SWPro</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
 </head>
@@ -11,26 +11,23 @@
     <main class="app">
         <header class="app-header">
             <div>
-                <span class="eyebrow">Health Support</span>
-                <h1>Поддержка самочувствия</h1>
+                <span class="eyebrow" data-i18n="app.eyebrow"></span>
+                <h1 data-i18n="app.title">SWPro</h1>
             </div>
         </header>
 
-        <nav class="tabs" aria-label="Навигация">
-            <button data-page="home" class="active">Главная</button>
-            <button data-page="tests">Тесты</button>
-            <button data-page="products">Продукты</button>
-            <button data-page="recommendations">Рекомендации</button>
-            <button data-page="leads">Заявки</button>
-            <button data-page="profile">Профиль</button>
+        <nav class="tabs" aria-label="" data-i18n-attr="aria-label:nav.aria">
+            <button data-page="home" data-i18n="nav.home" class="active"></button>
+            <button data-page="tests" data-i18n="nav.tests"></button>
+            <button data-page="products" data-i18n="nav.products"></button>
+            <button data-page="recommendations" data-i18n="nav.recommendations"></button>
+            <button data-page="leads" data-i18n="nav.leads"></button>
+            <button data-page="profile" data-i18n="nav.profile"></button>
         </nav>
 
         <section id="page" class="page"></section>
 
-        <p class="disclaimer">
-            Информация носит ознакомительный характер и не является медицинской рекомендацией.
-            Перед применением продуктов проконсультируйтесь со специалистом.
-        </p>
+        <p class="disclaimer" data-i18n="medical_disclaimer"></p>
     </main>
     <script src="app.js"></script>
 </body>

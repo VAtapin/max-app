@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('index.php');
     }
 
-    $error = 'Неверный email или пароль.';
+    $error = app_text('auto.k_370c97feae9b');
 }
 ?>
 <!doctype html>
@@ -21,21 +21,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Вход</title>
+    <title><?= h(app_text('auto.k_07205a06c301')) ?></title>
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body class="login-page">
     <form method="post" class="login-card">
-        <h1>Вход в админку</h1>
+        <h1><?= h(app_text('auto.k_53407b712a93')) ?></h1>
         <?php if ($error): ?>
             <div class="alert"><?= h($error) ?></div>
         <?php endif; ?>
         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
         <label>Email</label>
         <input type="email" name="email" value="admin@example.com" required>
-        <label>Пароль</label>
+        <label><?= h(app_text('auto.k_14f7c63cc128')) ?></label>
         <input type="password" name="password" required>
-        <button type="submit">Войти</button>
+        <button type="submit"><?= h(app_text('auto.k_939e95a11ddd')) ?></button>
     </form>
 </body>
 </html>

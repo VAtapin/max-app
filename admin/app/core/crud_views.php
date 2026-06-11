@@ -18,9 +18,9 @@ function crud_edit_enabled(string $moduleKey): bool
 function crud_action_label(string $moduleKey): string
 {
     return match ($moduleKey) {
-        'users' => 'Настроить',
-        'leads' => 'Обработать',
-        default => 'Редактировать',
+        'users' => app_text('auto.k_8960ddc30e73'),
+        'leads' => app_text('auto.k_eeae8354f40d'),
+        default => app_text('auto.k_901beb5fcd38'),
     };
 }
 
@@ -28,28 +28,28 @@ function crud_form_title(string $moduleKey, string $action): string
 {
     if ($action === 'create') {
         return match ($moduleKey) {
-            'resellers' => 'Добавить реселлера',
-            'managers' => 'Добавить менеджера',
-            'categories' => 'Добавить категорию',
-            'products' => 'Добавить продукт',
-            'tests' => 'Добавить тест',
-            'broadcasts' => 'Создать рассылку',
-            'content' => 'Добавить материал',
-            default => 'Добавить запись',
+            'resellers' => app_text('auto.k_7ec48194f4ef'),
+            'managers' => app_text('auto.k_8b7415ecc1e9'),
+            'categories' => app_text('auto.k_31426d435c63'),
+            'products' => app_text('auto.k_ea41540b34c3'),
+            'tests' => app_text('auto.k_74f8257e9b63'),
+            'broadcasts' => app_text('auto.k_e822b9f8ad3a'),
+            'content' => app_text('auto.k_f257071b2057'),
+            default => app_text('auto.k_909a83238c9a'),
         };
     }
 
     return match ($moduleKey) {
-        'users' => 'Настройка пользователя',
-        'leads' => 'Обработка заявки',
-        'resellers' => 'Редактировать реселлера',
-        'managers' => 'Редактировать менеджера',
-        'categories' => 'Редактировать категорию',
-        'products' => 'Редактировать продукт',
-        'tests' => 'Редактировать тест',
-        'broadcasts' => 'Редактировать рассылку',
-        'content' => 'Редактировать материал',
-        default => 'Редактировать запись',
+        'users' => app_text('auto.k_02173687ed70'),
+        'leads' => app_text('auto.k_f4dc966338c1'),
+        'resellers' => app_text('auto.k_915c922fc34c'),
+        'managers' => app_text('auto.k_d13578d48831'),
+        'categories' => app_text('auto.k_00f82cbbb66d'),
+        'products' => app_text('auto.k_f2e67b1e156f'),
+        'tests' => app_text('auto.k_058863fd2c04'),
+        'broadcasts' => app_text('auto.k_3a60e45259e0'),
+        'content' => app_text('auto.k_1fc7d815c49f'),
+        default => app_text('auto.k_e99ceeeb190e'),
     };
 }
 
@@ -85,90 +85,90 @@ function crud_display_columns(string $moduleKey): array
     return [
         'resellers' => [
             'id' => 'ID',
-            'name' => 'Реселлер',
-            'contacts' => 'Контакты',
-            'referral_code' => 'Реф. код',
-            'managers_count' => 'Менеджеры',
-            'users_count' => 'Пользователи',
-            'state' => 'Статус',
+            'name' => app_text('auto.k_86469fea3a4a'),
+            'contacts' => app_text('auto.k_dba0fcb2cbbb'),
+            'referral_code' => app_text('auto.k_b162c37f62ea'),
+            'managers_count' => app_text('auto.k_6756aa53b5b5'),
+            'users_count' => app_text('auto.k_0f0b8f55edcc'),
+            'state' => app_text('auto.k_f7f293b5c58c'),
         ],
         'managers' => [
             'id' => 'ID',
-            'name' => 'Менеджер',
-            'reseller_name' => 'Реселлер',
-            'contacts' => 'Контакты',
-            'referral_code' => 'Реф. код',
-            'users_count' => 'Пользователи',
-            'state' => 'Статус',
+            'name' => app_text('auto.k_8d98911527e4'),
+            'reseller_name' => app_text('auto.k_86469fea3a4a'),
+            'contacts' => app_text('auto.k_dba0fcb2cbbb'),
+            'referral_code' => app_text('auto.k_b162c37f62ea'),
+            'users_count' => app_text('auto.k_0f0b8f55edcc'),
+            'state' => app_text('auto.k_f7f293b5c58c'),
         ],
         'users' => [
             'id' => 'ID',
-            'display_name' => 'Пользователь',
-            'platform_account' => 'Платформа',
-            'reseller_name' => 'Реселлер',
-            'manager_name' => 'Менеджер',
-            'status' => 'Статус',
-            'created_at' => 'Создан',
+            'display_name' => app_text('auto.k_51aff1853949'),
+            'platform_account' => app_text('auto.k_89009febe5c6'),
+            'reseller_name' => app_text('auto.k_86469fea3a4a'),
+            'manager_name' => app_text('auto.k_8d98911527e4'),
+            'status' => app_text('auto.k_f7f293b5c58c'),
+            'created_at' => app_text('auto.k_33415c6ac49e'),
         ],
         'platform_accounts' => [
             'id' => 'ID',
-            'user_name' => 'Пользователь',
-            'platform_account' => 'Платформа',
+            'user_name' => app_text('auto.k_51aff1853949'),
+            'platform_account' => app_text('auto.k_89009febe5c6'),
             'username' => 'Username',
-            'created_at' => 'Создан',
+            'created_at' => app_text('auto.k_33415c6ac49e'),
         ],
         'leads' => [
             'id' => 'ID',
-            'lead_status' => 'Статус',
-            'lead_summary' => 'Заявка',
-            'user_name' => 'Пользователь',
-            'product_title' => 'Продукт',
-            'response_summary' => 'Ответ',
-            'created_at' => 'Создана',
+            'lead_status' => app_text('auto.k_f7f293b5c58c'),
+            'lead_summary' => app_text('auto.k_ca87acdc9c19'),
+            'user_name' => app_text('auto.k_51aff1853949'),
+            'product_title' => app_text('auto.k_82a9ca014bb8'),
+            'response_summary' => app_text('auto.k_e9d7bdd83831'),
+            'created_at' => app_text('auto.k_2ca3cb47e1d9'),
         ],
         'categories' => [
             'id' => 'ID',
-            'title' => 'Категория',
+            'title' => app_text('auto.k_19c85838e63f'),
             'slug' => 'Slug',
-            'products_count' => 'Продукты',
-            'sort_order' => 'Сорт.',
-            'state' => 'Статус',
+            'products_count' => app_text('auto.k_c85756a1ae45'),
+            'sort_order' => app_text('auto.k_c00d5a4cbda0'),
+            'state' => app_text('auto.k_f7f293b5c58c'),
         ],
         'products' => [
             'id' => 'ID',
-            'image_preview' => 'Фото',
-            'title' => 'Продукт',
-            'category_title' => 'Категория',
-            'media_summary' => 'Медиа',
-            'price' => 'Цена',
-            'sort_order' => 'Сорт.',
-            'state' => 'Статус',
+            'image_preview' => app_text('auto.k_fb8ffc7377b8'),
+            'title' => app_text('auto.k_82a9ca014bb8'),
+            'category_title' => app_text('auto.k_19c85838e63f'),
+            'media_summary' => app_text('auto.k_198be2a9a816'),
+            'price' => app_text('auto.k_367e2792c179'),
+            'sort_order' => app_text('auto.k_c00d5a4cbda0'),
+            'state' => app_text('auto.k_f7f293b5c58c'),
         ],
         'tests' => [
             'id' => 'ID',
-            'title' => 'Тест',
-            'category_title' => 'Категория',
-            'questions_count' => 'Вопросы',
-            'sort_order' => 'Сорт.',
-            'state' => 'Статус',
+            'title' => app_text('auto.k_ec1868c5a7fb'),
+            'category_title' => app_text('auto.k_19c85838e63f'),
+            'questions_count' => app_text('auto.k_beeac564c743'),
+            'sort_order' => app_text('auto.k_c00d5a4cbda0'),
+            'state' => app_text('auto.k_f7f293b5c58c'),
         ],
         'broadcasts' => [
             'id' => 'ID',
-            'title' => 'Рассылка',
-            'platform' => 'Платформа',
-            'target_type' => 'Кому',
-            'scheduled_at' => 'Когда',
-            'status' => 'Статус',
+            'title' => app_text('auto.k_38090ead89f2'),
+            'platform' => app_text('auto.k_89009febe5c6'),
+            'target_type' => app_text('auto.k_e9476ab1820b'),
+            'scheduled_at' => app_text('auto.k_725347e42525'),
+            'status' => app_text('auto.k_f7f293b5c58c'),
         ],
         'content' => [
             'id' => 'ID',
-            'image_preview' => 'Фото',
-            'title' => 'Материал',
-            'content_type' => 'Тип',
-            'category_title' => 'Категория',
-            'media_summary' => 'Файлы/ссылки',
-            'status' => 'Статус',
-            'publish_at' => 'Публикация',
+            'image_preview' => app_text('auto.k_fb8ffc7377b8'),
+            'title' => app_text('auto.k_19114f713f60'),
+            'content_type' => app_text('auto.k_d25691ca401e'),
+            'category_title' => app_text('auto.k_19c85838e63f'),
+            'media_summary' => app_text('auto.k_012475a7b6b0'),
+            'status' => app_text('auto.k_f7f293b5c58c'),
+            'publish_at' => app_text('auto.k_eb8ec7038ec2'),
         ],
     ][$moduleKey] ?? [];
 }
@@ -293,7 +293,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     if ($moduleKey === 'resellers') {
         return [
             "SELECT r.id, r.name, r.email, r.phone, r.referral_code,
-                    IF(r.is_active = 1, 'активен', 'выключен') AS state,
+                    IF(r.is_active = 1, 'active', 'inactive') AS state,
                     COUNT(DISTINCT m.id) AS managers_count,
                     COUNT(DISTINCT eu.id) AS users_count
              FROM resellers r
@@ -310,7 +310,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
         [$where, $params] = scoped_where_with_alias(scope_where_for_module($moduleKey, $admin), 'm');
         return [
             "SELECT m.id, m.name, m.email, m.phone, m.referral_code,
-                    IF(m.is_active = 1, 'активен', 'выключен') AS state,
+                    IF(m.is_active = 1, 'active', 'inactive') AS state,
                     r.name AS reseller_name,
                     COUNT(DISTINCT eu.id) AS users_count
              FROM managers m
@@ -327,7 +327,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     if ($moduleKey === 'categories') {
         return [
             "SELECT c.id, c.title, c.slug, c.sort_order,
-                    IF(c.is_active = 1, 'активна', 'выключена') AS state,
+                    IF(c.is_active = 1, 'active', 'inactive') AS state,
                     COUNT(p.id) AS products_count
              FROM product_categories c
              LEFT JOIN products p ON p.category_id = c.id
@@ -341,7 +341,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     if ($moduleKey === 'products') {
         return [
             "SELECT p.id, p.title, c.title AS category_title, p.image_path, p.document_path, p.video_url, p.purchase_url, p.price, p.sort_order,
-                    IF(p.is_active = 1, 'активен', 'выключен') AS state
+                    IF(p.is_active = 1, 'active', 'inactive') AS state
              FROM products p
              LEFT JOIN product_categories c ON c.id = p.category_id
              ORDER BY p.sort_order ASC, p.id DESC
@@ -353,7 +353,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     if ($moduleKey === 'tests') {
         return [
             "SELECT t.id, t.title, c.title AS category_title, t.sort_order,
-                    IF(t.is_active = 1, 'активен', 'выключен') AS state,
+                    IF(t.is_active = 1, 'active', 'inactive') AS state,
                     COUNT(q.id) AS questions_count
              FROM tests t
              LEFT JOIN product_categories c ON c.id = t.category_id
@@ -392,20 +392,20 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
 function crud_cell_value(string $moduleKey, string $column, array $row): string
 {
     if ($column === 'contacts') {
-        return trim(($row['email'] ?? '') . "\n" . ($row['phone'] ?? '')) ?: '—';
+        return trim(($row['email'] ?? '') . "\n" . ($row['phone'] ?? '')) ?: app_text('auto.k_1b93795b9768');
     }
 
     if ($column === 'display_name' || $column === 'user_name') {
-        return trim(($row['full_name'] ?? '') ?: ($row['user_username'] ?? '') ?: ($row['username'] ?? '')) ?: '—';
+        return trim(($row['full_name'] ?? '') ?: ($row['user_username'] ?? '') ?: ($row['username'] ?? '')) ?: app_text('auto.k_1b93795b9768');
     }
 
     if ($column === 'platform_account') {
-        return trim(($row['platform'] ?? '') . "\n" . ($row['platform_user_id'] ?? '')) ?: '—';
+        return trim(($row['platform'] ?? '') . "\n" . ($row['platform_user_id'] ?? '')) ?: app_text('auto.k_1b93795b9768');
     }
 
     if ($column === 'lead_summary') {
         $message = trim((string)($row['message'] ?? ''));
-        $message = $message !== '' ? $message : 'Без сообщения';
+        $message = $message !== '' ? $message : app_text('auto.k_503360e76342');
         return $message . "\n" . ($row['source_platform'] ?? '');
     }
 
@@ -426,19 +426,19 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
     if ($column === 'media_summary') {
         $items = [];
         if (!empty($row['image_path'])) {
-            $items[] = 'изображение';
+            $items[] = app_text('auto.k_a9b4dacfde04');
         }
         if (!empty($row['document_path']) || !empty($row['attachment_path'])) {
-            $items[] = 'файл/PDF';
+            $items[] = app_text('auto.k_11cb1cfa1861');
         }
         if (!empty($row['video_url'])) {
-            $items[] = 'видео';
+            $items[] = app_text('auto.k_be5983f0a49d');
         }
         if (!empty($row['purchase_url']) || !empty($row['button_url'])) {
-            $items[] = 'ссылка';
+            $items[] = app_text('auto.k_11f4c398ee04');
         }
 
-        return $items ? implode("\n", $items) : '—';
+        return $items ? implode("\n", $items) : app_text('auto.k_1b93795b9768');
     }
 
     return format_cell_value($row[$column] ?? null);
@@ -481,7 +481,7 @@ function render_lead_filters(): string
 {
     $filters = lead_filters_from_request();
     $statuses = [
-        'all' => 'Все статусы',
+        'all' => app_text('auto.k_dad15ae6903a'),
         'new' => status_label('new'),
         'contacted' => status_label('contacted'),
         'interested' => status_label('interested'),
@@ -489,14 +489,14 @@ function render_lead_filters(): string
         'lost' => status_label('lost'),
     ];
     $platforms = ['all' => platform_label('all'), 'telegram' => platform_label('telegram'), 'vk' => platform_label('vk'), 'max' => platform_label('max'), 'web' => platform_label('web')];
-    $responses = ['all' => 'Все ответы', 'none' => status_label('none'), 'sent' => status_label('sent'), 'pending' => status_label('pending'), 'failed' => status_label('failed')];
+    $responses = ['all' => app_text('auto.k_a51484b486a9'), 'none' => status_label('none'), 'sent' => status_label('sent'), 'pending' => status_label('pending'), 'failed' => status_label('failed')];
 
     ob_start();
     ?>
     <form method="get" class="filters">
         <input type="hidden" name="module" value="leads">
         <label>
-            <span>Статус</span>
+            <span><?= h(app_text('auto.k_f7f293b5c58c')) ?></span>
             <select name="status">
                 <?php foreach ($statuses as $value => $label): ?>
                     <option value="<?= h($value) ?>" <?= $filters['status'] === $value ? 'selected' : '' ?>><?= h($label) ?></option>
@@ -504,7 +504,7 @@ function render_lead_filters(): string
             </select>
         </label>
         <label>
-            <span>Платформа</span>
+            <span><?= h(app_text('auto.k_89009febe5c6')) ?></span>
             <select name="platform">
                 <?php foreach ($platforms as $value => $label): ?>
                     <option value="<?= h($value) ?>" <?= $filters['platform'] === $value ? 'selected' : '' ?>><?= h($label) ?></option>
@@ -512,15 +512,15 @@ function render_lead_filters(): string
             </select>
         </label>
         <label>
-            <span>Ответ</span>
+            <span><?= h(app_text('auto.k_e9d7bdd83831')) ?></span>
             <select name="response">
                 <?php foreach ($responses as $value => $label): ?>
                     <option value="<?= h($value) ?>" <?= $filters['response'] === $value ? 'selected' : '' ?>><?= h($label) ?></option>
                 <?php endforeach; ?>
             </select>
         </label>
-        <button type="submit">Показать</button>
-        <a class="button secondary-button" href="crud.php?module=leads">Сбросить</a>
+        <button type="submit"><?= h(app_text('auto.k_7788a11e4dbf')) ?></button>
+        <a class="button secondary-button" href="crud.php?module=leads"><?= h(app_text('auto.k_058f162d2926')) ?></a>
     </form>
     <?php
     return trim(ob_get_clean());
@@ -538,12 +538,12 @@ function render_lead_pagination(int $rowCount): string
     <div class="pagination">
         <?php if ($page > 1): ?>
             <?php $params['page'] = $page - 1; ?>
-            <a class="button secondary-button" href="crud.php?<?= h(http_build_query($params)) ?>">Назад</a>
+            <a class="button secondary-button" href="crud.php?<?= h(http_build_query($params)) ?>"><?= h(app_text('auto.k_f6dab074d7bb')) ?></a>
         <?php endif; ?>
-        <span>Страница <?= (int)$page ?></span>
+        <span><?= h(app_text('auto.k_97e20f8391be')) ?><?= (int)$page ?></span>
         <?php if ($rowCount >= $filters['per_page']): ?>
             <?php $params['page'] = $page + 1; ?>
-            <a class="button secondary-button" href="crud.php?<?= h(http_build_query($params)) ?>">Дальше</a>
+            <a class="button secondary-button" href="crud.php?<?= h(http_build_query($params)) ?>"><?= h(app_text('auto.k_e3b933130129')) ?></a>
         <?php endif; ?>
     </div>
     <?php
@@ -557,7 +557,7 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
     <?php if ($moduleKey === 'leads'): ?>
         <?= render_lead_filters() ?>
     <?php endif; ?>
-    <div class="table-summary">Найдено записей: <?= count($rows) ?></div>
+    <div class="table-summary"><?= h(app_text('auto.k_b1062a5651c3')) ?><?= count($rows) ?></div>
     <?php if ($rows): ?>
         <table class="data-table <?= $moduleKey === 'leads' ? 'compact-table' : '' ?>">
             <thead>
@@ -566,7 +566,7 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
                         <th><?= h($label) ?></th>
                     <?php endforeach; ?>
                     <?php if ($canEdit || $canDelete): ?>
-                        <th>Действия</th>
+                        <th><?= h(app_text('auto.k_9978ac34b293')) ?></th>
                     <?php endif; ?>
                 </tr>
             </thead>
@@ -582,11 +582,11 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
                                     <a class="link-button" href="crud.php?module=<?= h($moduleKey) ?>&action=edit&id=<?= (int)$row['id'] ?>"><?= h(crud_action_label($moduleKey)) ?></a>
                                 <?php endif; ?>
                                 <?php if ($canDelete): ?>
-                                    <form method="post" class="inline-form" onsubmit="return confirm('Удалить запись #<?= (int)$row['id'] ?>?');">
+                                    <form method="post" class="inline-form" onsubmit="return confirm('<?= h(app_text('auto.k_112417195434', ['id' => (int)$row['id']])) ?>');">
                                         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
                                         <input type="hidden" name="action" value="delete">
                                         <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-                                        <button type="submit" class="link-button danger">Удалить</button>
+                                        <button type="submit" class="link-button danger"><?= h(app_text('auto.k_86ea33aef5e9')) ?></button>
                                     </form>
                                 <?php endif; ?>
                             </td>
@@ -596,7 +596,7 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
             </tbody>
         </table>
     <?php else: ?>
-        <div class="empty-state">Записей в этом разделе пока нет или они недоступны для вашей роли.</div>
+        <div class="empty-state"><?= h(app_text('auto.k_488eec688217')) ?></div>
     <?php endif; ?>
     <?php if ($moduleKey === 'leads'): ?>
         <?= render_lead_pagination(count($rows)) ?>

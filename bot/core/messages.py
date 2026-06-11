@@ -1,22 +1,17 @@
-MEDICAL_DISCLAIMER = (
-    "Информация носит ознакомительный характер и не является медицинской рекомендацией. "
-    "Перед применением продуктов проконсультируйтесь со специалистом."
-)
+from bot.core.i18n import tr
+
+MEDICAL_DISCLAIMER = tr("medical_disclaimer")
 
 MAIN_MENU = [
-    "Пройти тест",
-    "Мои рекомендации",
-    "Каталог продуктов",
-    "Связаться с менеджером",
-    "Мой профиль",
-    "Помощь",
+    tr("menu.tests"),
+    tr("menu.recommendations"),
+    tr("menu.products"),
+    tr("menu.contact_manager"),
+    tr("menu.profile"),
+    tr("menu.help"),
 ]
 
 
 def welcome_text(first_name: str | None = None) -> str:
     name = f", {first_name}" if first_name else ""
-    return (
-        f"Здравствуйте{name}. Я SWPro Ассистент. Помогу пройти короткий тест, "
-        f"показать рекомендации и связаться с менеджером.\n\n"
-        f"{MEDICAL_DISCLAIMER}"
-    )
+    return tr("welcome", name=name, disclaimer=MEDICAL_DISCLAIMER)

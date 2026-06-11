@@ -23,7 +23,7 @@ function test_result_for_score(int $testId, int $totalScore): ?array
 function build_result_summary(?array $result): string
 {
     if (!$result) {
-        return 'Подобраны направления поддержки. ' . medical_disclaimer();
+        return app_text('auto.k_2a2863ee4b8f') . medical_disclaimer();
     }
 
     $parts = [$result['title']];

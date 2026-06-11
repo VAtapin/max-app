@@ -2,7 +2,7 @@
 
 $config = [
     'app' => [
-        'name' => 'Health Sales Support',
+        'name' => 'SWPro',
         'base_url' => '/admin/public',
         'session_name' => 'health_admin_session',
     ],

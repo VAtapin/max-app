@@ -79,8 +79,15 @@ fi
 
 if command -v systemctl >/dev/null 2>&1; then
   if systemctl list-unit-files | grep -q '^max-app-telegram.service'; then
-    echo "Restarting Telegram bot service..."
-    sudo systemctl restart max-app-telegram.service
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+      echo "Restarting Telegram bot service..."
+      systemctl restart max-app-telegram.service
+    elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+      echo "Restarting Telegram bot service..."
+      sudo systemctl restart max-app-telegram.service
+    else
+      echo "Skipping Telegram bot restart: run systemctl restart max-app-telegram.service as root if bot code changed."
+    fi
   fi
 fi
 

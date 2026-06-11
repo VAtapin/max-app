@@ -35,13 +35,29 @@ async function loadI18n() {
     try {
         const response = await fetch('i18n/ru.json', {cache: 'no-store'});
         state.i18n = response.ok ? await response.json() : {};
+        applyStaticI18n();
     } catch (_) {
         state.i18n = {};
+        applyStaticI18n();
     }
 }
 
 function ui(key, fallback = '') {
     return state.i18n[key] || fallback || key;
+}
+
+function applyStaticI18n() {
+    document.querySelectorAll('[data-i18n]').forEach((element) => {
+        element.textContent = ui(element.dataset.i18n, element.textContent);
+    });
+    document.querySelectorAll('[data-i18n-attr]').forEach((element) => {
+        element.dataset.i18nAttr.split(';').forEach((pair) => {
+            const [attribute, key] = pair.split(':').map((part) => part.trim());
+            if (attribute && key) {
+                element.setAttribute(attribute, ui(key, element.getAttribute(attribute) || ''));
+            }
+        });
+    });
 }
 
 function formatUi(key, params = {}, fallback = '') {

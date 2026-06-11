@@ -1,3 +1,4 @@
+from bot.core.i18n import tr
 from bot.db.mysql import cursor
 from bot.core.recommendations import build_recommendations
 
@@ -65,7 +66,7 @@ async def save_test_result(end_user_id: int, test_id: int, answers: list[dict]) 
             SET completed_at = NOW(), total_score = %s, result_summary = %s
             WHERE id = %s
             """,
-            (total_score, "Подобраны направления поддержки.", session_id),
+            (total_score, tr("test.result_summary"), session_id),
         )
         await cur.execute(
             """

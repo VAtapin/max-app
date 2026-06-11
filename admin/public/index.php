@@ -4,7 +4,7 @@ require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
 
 $admin = require_auth();
-$title = 'Dashboard';
+$title = app_text('auto.dashboard');
 
 function count_table(string $sql, array $params = []): int
 {
@@ -40,19 +40,19 @@ $platforms = $platformStmt->fetchAll();
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
 <div class="grid stats-grid">
-    <div class="stat"><span>Пользователи</span><strong><?= $stats['users'] ?></strong></div>
-    <div class="stat"><span>Новые сегодня</span><strong><?= $stats['new_today'] ?></strong></div>
-    <div class="stat"><span>Менеджеры</span><strong><?= $stats['managers'] ?></strong></div>
-    <div class="stat"><span>Реселлеры</span><strong><?= $stats['resellers'] ?></strong></div>
-    <div class="stat"><span>Пройденные тесты</span><strong><?= $stats['tests'] ?></strong></div>
-    <div class="stat"><span>Заявки</span><strong><?= $stats['leads'] ?></strong></div>
+    <div class="stat"><span><?= h(app_text('auto.k_0f0b8f55edcc')) ?></span><strong><?= $stats['users'] ?></strong></div>
+    <div class="stat"><span><?= h(app_text('auto.k_735d9fb6be56')) ?></span><strong><?= $stats['new_today'] ?></strong></div>
+    <div class="stat"><span><?= h(app_text('auto.k_6756aa53b5b5')) ?></span><strong><?= $stats['managers'] ?></strong></div>
+    <div class="stat"><span><?= h(app_text('auto.k_32cea47742bf')) ?></span><strong><?= $stats['resellers'] ?></strong></div>
+    <div class="stat"><span><?= h(app_text('auto.k_953522b53414')) ?></span><strong><?= $stats['tests'] ?></strong></div>
+    <div class="stat"><span><?= h(app_text('auto.k_be11d71726a6')) ?></span><strong><?= $stats['leads'] ?></strong></div>
 </div>
 
 <div class="two-columns">
     <section class="panel">
-        <h2>Последние регистрации</h2>
+        <h2><?= h(app_text('auto.k_be171d445786')) ?></h2>
         <table>
-            <thead><tr><th>ID</th><th>Платформа</th><th>Имя</th><th>Дата</th></tr></thead>
+            <thead><tr><th>ID</th><th><?= h(app_text('auto.k_89009febe5c6')) ?></th><th><?= h(app_text('auto.k_aee78fe86022')) ?></th><th><?= h(app_text('auto.k_a5b49d2ebad2')) ?></th></tr></thead>
             <tbody>
             <?php foreach ($recentUsers as $user): ?>
                 <tr>
@@ -66,9 +66,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
         </table>
     </section>
     <section class="panel">
-        <h2>Активность по платформам</h2>
+        <h2><?= h(app_text('auto.k_ac1bdba05b4e')) ?></h2>
         <table>
-            <thead><tr><th>Платформа</th><th>Пользователи</th></tr></thead>
+            <thead><tr><th><?= h(app_text('auto.k_89009febe5c6')) ?></th><th><?= h(app_text('auto.k_0f0b8f55edcc')) ?></th></tr></thead>
             <tbody>
             <?php foreach ($platforms as $platform): ?>
                 <tr>
