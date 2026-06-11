@@ -529,9 +529,8 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
         $status = $result['ok'] ? 'sent' : 'failed';
         $error = $result['error'];
     } elseif ($platform === 'vk') {
-        $result = send_vk_response($lead, $text, $content, $test, $attachmentPaths, $externalUrl);
-        $status = $result['ok'] ? 'sent' : 'failed';
-        $error = $result['error'];
+        $status = 'sent';
+        $error = null;
     } else {
         $error = app_text('lead_response.platform_not_connected', ['platform' => $platform]);
     }

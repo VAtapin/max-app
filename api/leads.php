@@ -21,6 +21,33 @@ function response_attachment_paths(?string $value): array
     return array_values(array_filter(array_map('trim', $paths), static fn($path) => $path !== ''));
 }
 
+if (($_GET['action'] ?? '') === 'mark_read' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $data = input_json() ?: $_POST;
+    $leadId = (int)($data['lead_id'] ?? 0);
+
+    if (!$leadId) {
+        json_response(['error' => 'lead_id is required'], 422);
+    }
+
+    $stmt = db()->prepare(
+        'UPDATE lead_responses lr
+         INNER JOIN leads l ON l.id = lr.lead_id
+         SET lr.read_at = NOW()
+         WHERE lr.lead_id = :lead_id
+           AND l.end_user_id = :end_user_id
+           AND lr.read_at IS NULL'
+    );
+
+    $stmt->execute([
+        'lead_id' => $leadId,
+        'end_user_id' => $user['id'],
+    ]);
+
+    json_response([
+        'ok' => true,
+        'updated' => $stmt->rowCount(),
+    ]);
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = input_json() ?: $_POST;
@@ -47,7 +74,7 @@ if ($leads) {
     $leadIds = array_map(static fn($lead) => (int)$lead['id'], $leads);
     $placeholders = implode(',', array_fill(0, count($leadIds), '?'));
     $responsesStmt = db()->prepare(
-        "SELECT id, lead_id, message_text, attachment_path, external_url, status, sent_at, created_at
+        "SELECT id, lead_id, message_text, attachment_path, external_url, status, sent_at, read_at, created_at
          FROM lead_responses
          WHERE lead_id IN ($placeholders)
          ORDER BY id ASC"
