@@ -266,6 +266,12 @@ button:disabled {
     justify-self: start;
 }
 
+.file-link {
+    display: inline-block;
+    font-size: 13px;
+    margin-bottom: 4px;
+}
+
 .form-actions {
     display: flex;
     flex-wrap: wrap;

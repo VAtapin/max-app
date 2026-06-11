@@ -41,7 +41,7 @@ function crud_form_title(string $moduleKey, string $action): string
 
     return match ($moduleKey) {
         'users' => 'Настройка пользователя',
-        'leads' => 'Обработка лида',
+        'leads' => 'Обработка заявки',
         'resellers' => 'Редактировать реселлера',
         'managers' => 'Редактировать менеджера',
         'categories' => 'Редактировать категорию',

@@ -65,7 +65,7 @@ $modules = [
         ],
     ],
     'leads' => [
-        'title' => 'Лиды',
+        'title' => 'Заявки',
         'table' => 'leads',
         'columns' => ['id', 'end_user_id', 'manager_id', 'reseller_id', 'product_id', 'source_platform', 'status', 'created_at'],
         'fields' => [
@@ -79,7 +79,7 @@ $modules = [
         ],
     ],
     'categories' => [
-        'title' => 'Категории',
+        'title' => 'Категории продуктов',
         'table' => 'product_categories',
         'columns' => ['id', 'title', 'slug', 'sort_order', 'is_active'],
         'fields' => [
@@ -95,7 +95,7 @@ $modules = [
         'table' => 'products',
         'columns' => ['id', 'category_id', 'title', 'slug', 'price', 'is_active'],
         'fields' => [
-            'category_id' => ['label' => 'Категория', 'type' => 'select', 'source' => 'product_categories', 'nullable' => true],
+            'category_id' => ['label' => 'Категория продукта', 'type' => 'select', 'source' => 'product_categories', 'nullable' => true],
             'title' => ['label' => 'Название', 'required' => true],
             'slug' => ['label' => 'Slug', 'required' => true],
             'short_description' => ['label' => 'Краткое описание', 'type' => 'textarea'],
@@ -104,9 +104,9 @@ $modules = [
             'usage_text' => ['label' => 'Применение', 'type' => 'textarea'],
             'warning_text' => ['label' => 'Предупреждение', 'type' => 'textarea'],
             'contraindications' => ['label' => 'Противопоказания', 'type' => 'textarea'],
-            'image_path' => ['label' => 'Путь к изображению'],
+            'image_path' => ['label' => 'Изображение', 'type' => 'file', 'accept' => 'image/*'],
             'price' => ['label' => 'Цена', 'type' => 'number', 'step' => '0.01', 'nullable' => true],
-            'purchase_url' => ['label' => 'Ссылка для покупки/информации'],
+            'purchase_url' => ['label' => 'Ссылка на видео/страницу с информацией'],
             'sort_order' => ['label' => 'Сортировка', 'type' => 'number', 'default' => 100],
             'is_active' => ['label' => 'Активен', 'type' => 'checkbox', 'default' => 1],
         ],
@@ -130,7 +130,7 @@ $modules = [
         'fields' => [
             'title' => ['label' => 'Название', 'required' => true],
             'message_text' => ['label' => 'Текст сообщения', 'type' => 'textarea', 'required' => true],
-            'image_path' => ['label' => 'Путь к изображению'],
+            'image_path' => ['label' => 'Изображение', 'type' => 'file', 'accept' => 'image/*'],
             'button_text' => ['label' => 'Текст кнопки'],
             'button_url' => ['label' => 'Ссылка кнопки'],
             'target_type' => ['label' => 'Кому', 'type' => 'select', 'options' => ['all', 'reseller', 'manager', 'segment'], 'required' => true],
@@ -143,15 +143,15 @@ $modules = [
         ],
     ],
     'content' => [
-        'title' => 'Контент',
+        'title' => 'Материалы',
         'table' => 'content_posts',
         'columns' => ['id', 'title', 'status', 'publish_at', 'created_by'],
         'fields' => [
             'title' => ['label' => 'Заголовок', 'required' => true],
             'short_text' => ['label' => 'Краткий текст', 'type' => 'textarea'],
             'full_text' => ['label' => 'Полный текст', 'type' => 'textarea'],
-            'image_path' => ['label' => 'Путь к изображению'],
-            'category_id' => ['label' => 'Категория', 'type' => 'select', 'source' => 'product_categories', 'nullable' => true],
+            'image_path' => ['label' => 'Изображение', 'type' => 'file', 'accept' => 'image/*'],
+            'category_id' => ['label' => 'Категория продукта', 'type' => 'select', 'source' => 'product_categories', 'nullable' => true],
             'status' => ['label' => 'Статус', 'type' => 'select', 'options' => ['draft', 'published', 'hidden'], 'required' => true],
             'publish_at' => ['label' => 'Дата публикации', 'type' => 'datetime-local', 'nullable' => true],
         ],
@@ -296,6 +296,12 @@ function collect_payload(array $fields): array
     $payload = [];
     foreach ($fields as $name => $field) {
         $type = $field['type'] ?? 'text';
+        if ($type === 'file') {
+            $current = trim((string)($_POST[$name . '_current'] ?? ''));
+            $payload[$name] = $current !== '' ? $current : null;
+            continue;
+        }
+
         if ($type === 'checkbox') {
             $payload[$name] = isset($_POST[$name]) ? 1 : 0;
             continue;
@@ -312,6 +318,93 @@ function collect_payload(array $fields): array
             $value = str_contains($value, '.') ? (float)$value : (int)$value;
         }
         $payload[$name] = $value;
+    }
+
+    return $payload;
+}
+
+function public_upload_path(string $moduleKey, string $filename): string
+{
+    $folder = match ($moduleKey) {
+        'products' => 'products',
+        'broadcasts' => 'broadcasts',
+        'content' => 'content',
+        default => 'files',
+    };
+
+    return '/admin/uploads/' . $folder . '/' . $filename;
+}
+
+function upload_directory(string $moduleKey): string
+{
+    $folder = match ($moduleKey) {
+        'products' => 'products',
+        'broadcasts' => 'broadcasts',
+        'content' => 'content',
+        default => 'files',
+    };
+
+    return dirname(__DIR__) . '/uploads/' . $folder;
+}
+
+function apply_file_uploads(string $moduleKey, array $fields, array $payload, array &$errors): array
+{
+    $config = app_config();
+    $allowedTypes = $config['security']['allowed_image_types'] ?? ['image/jpeg', 'image/png', 'image/webp'];
+    $maxBytes = (int)($config['security']['upload_max_bytes'] ?? 5242880);
+
+    foreach ($fields as $name => $field) {
+        if (($field['type'] ?? 'text') !== 'file') {
+            continue;
+        }
+
+        $file = $_FILES[$name] ?? null;
+        if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            continue;
+        }
+
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            $errors[] = 'Не удалось загрузить файл для поля: ' . ($field['label'] ?? $name);
+            continue;
+        }
+
+        if ((int)$file['size'] > $maxBytes) {
+            $errors[] = 'Файл слишком большой. Максимум: ' . round($maxBytes / 1024 / 1024, 1) . ' МБ.';
+            continue;
+        }
+
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        if (!in_array($mime, $allowedTypes, true)) {
+            $errors[] = 'Поддерживаются только изображения JPG, PNG или WebP.';
+            continue;
+        }
+
+        $extension = match ($mime) {
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            default => null,
+        };
+        if (!$extension) {
+            $errors[] = 'Не удалось определить тип изображения.';
+            continue;
+        }
+
+        $directory = upload_directory($moduleKey);
+        if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
+            $errors[] = 'Не удалось создать папку для загрузок.';
+            continue;
+        }
+
+        $filename = date('YmdHis') . '-' . bin2hex(random_bytes(6)) . '.' . $extension;
+        $target = $directory . '/' . $filename;
+        if (!move_uploaded_file($file['tmp_name'], $target)) {
+            $errors[] = 'Не удалось сохранить загруженный файл.';
+            continue;
+        }
+
+        $payload[$name] = public_upload_path($moduleKey, $filename);
     }
 
     return $payload;
@@ -446,7 +539,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $payload = collect_payload($formFields);
-    $errors = validate_payload($formFields, $payload);
+    $payload = apply_file_uploads($moduleKey, $formFields, $payload, $errors);
+    $errors = array_merge($errors, validate_payload($formFields, $payload));
     $errors = array_merge($errors, validate_scope_payload($moduleKey, $payload, $admin));
     if (!$errors) {
         try {
@@ -506,7 +600,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php if ($action === 'create' || $action === 'edit'): ?>
     <section class="panel form-panel">
         <h2><?= h(crud_form_title($moduleKey, $action)) ?></h2>
-        <form method="post" class="crud-form">
+        <form method="post" class="crud-form" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="id" value="<?= h((string)($editRow['id'] ?? '')) ?>">
@@ -536,6 +630,12 @@ require __DIR__ . '/../app/views/layouts/header.php';
                                 <?php endforeach; ?>
                             <?php endif; ?>
                         </select>
+                    <?php elseif ($type === 'file'): ?>
+                        <?php if ($value): ?>
+                            <a class="file-link" href="<?= h((string)$value) ?>" target="_blank" rel="noopener">Текущий файл</a>
+                        <?php endif; ?>
+                        <input type="hidden" name="<?= h($name) ?>_current" value="<?= h((string)$value) ?>">
+                        <input type="file" name="<?= h($name) ?>" <?= isset($field['accept']) ? 'accept="' . h($field['accept']) . '"' : '' ?>>
                     <?php elseif ($type === 'checkbox'): ?>
                         <input type="checkbox" name="<?= h($name) ?>" value="1" <?= (int)$value === 1 ? 'checked' : '' ?>>
                     <?php else: ?>
@@ -562,9 +662,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <section class="panel">
     <h2>Права доступа</h2>
     <div class="access-rules">
-        <p><strong>Супер-админ:</strong> видит всю систему, управляет продуктами, тестами, контентом, рассылками, реселлерами, менеджерами, пользователями и лидами.</p>
-        <p><strong>Реселлер:</strong> видит своих менеджеров, пользователей, аккаунты платформ, лиды и рассылки в рамках своей структуры. Продукты и тесты не меняет.</p>
-        <p><strong>Менеджер:</strong> видит только назначенных ему пользователей, их платформы и лиды. Может обрабатывать заявки, но не управляет каталогом и тестами.</p>
+        <p><strong>Супер-админ:</strong> видит всю систему, управляет продуктами, тестами, материалами, рассылками, реселлерами, менеджерами, пользователями и заявками.</p>
+        <p><strong>Реселлер:</strong> видит своих менеджеров, пользователей, аккаунты платформ, заявки и рассылки в рамках своей структуры. Продукты и тесты не меняет.</p>
+        <p><strong>Менеджер:</strong> видит только назначенных ему пользователей, их платформы и заявки. Может обрабатывать заявки, но не управляет каталогом и тестами.</p>
     </div>
 </section>
 <?php require __DIR__ . '/../app/views/layouts/footer.php'; ?>

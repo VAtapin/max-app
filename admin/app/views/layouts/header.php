@@ -19,12 +19,12 @@
                 'managers' => ['Менеджеры', 'crud.php?module=managers'],
                 'users' => ['Пользователи', 'crud.php?module=users'],
                 'platform_accounts' => ['Аккаунты платформ', 'crud.php?module=platform_accounts'],
-                'leads' => ['Лиды', 'crud.php?module=leads'],
-                'categories' => ['Категории', 'crud.php?module=categories'],
+                'leads' => ['Заявки', 'crud.php?module=leads'],
+                'categories' => ['Категории продуктов', 'crud.php?module=categories'],
                 'products' => ['Продукты', 'crud.php?module=products'],
                 'tests' => ['Тесты', 'crud.php?module=tests'],
                 'broadcasts' => ['Рассылки', 'crud.php?module=broadcasts'],
-                'content' => ['Контент', 'crud.php?module=content'],
+                'content' => ['Материалы', 'crud.php?module=content'],
             ];
             ?>
             <?php foreach ($navItems as $module => [$label, $href]): ?>

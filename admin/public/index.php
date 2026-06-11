@@ -45,7 +45,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <div class="stat"><span>Менеджеры</span><strong><?= $stats['managers'] ?></strong></div>
     <div class="stat"><span>Реселлеры</span><strong><?= $stats['resellers'] ?></strong></div>
     <div class="stat"><span>Пройденные тесты</span><strong><?= $stats['tests'] ?></strong></div>
-    <div class="stat"><span>Лиды</span><strong><?= $stats['leads'] ?></strong></div>
+    <div class="stat"><span>Заявки</span><strong><?= $stats['leads'] ?></strong></div>
 </div>
 
 <div class="two-columns">
