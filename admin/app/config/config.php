@@ -15,7 +15,7 @@ $config = [
         'charset' => 'utf8mb4',
     ],
     'security' => [
-        'upload_max_bytes' => 30 * 1024 * 1024,
+        'upload_max_bytes' => 0,
         'allowed_image_types' => ['image/jpeg', 'image/png', 'image/webp'],
         'allowed_attachment_types' => [
             'image/jpeg',

@@ -18,11 +18,11 @@ httpdocs
 
 Enable PHP-FPM with PHP 8.3.
 
-Recommended upload limits for product images, PDFs and videos:
+Upload limits are controlled by PHP/Plesk. Example values for product images, PDFs and videos:
 
 ```text
-upload_max_filesize = 30M
-post_max_size = 32M
+upload_max_filesize = 300M
+post_max_size = 320M
 ```
 
 Recommended PHP extensions:

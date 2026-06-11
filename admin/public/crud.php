@@ -387,7 +387,7 @@ function apply_file_uploads(string $moduleKey, array $fields, array $payload, ar
             continue;
         }
 
-        if ((int)$file['size'] > $maxBytes) {
+        if ($maxBytes > 0 && (int)$file['size'] > $maxBytes) {
             $errors[] = 'Файл слишком большой. Максимум: ' . round($maxBytes / 1024 / 1024, 1) . ' МБ.';
             continue;
         }

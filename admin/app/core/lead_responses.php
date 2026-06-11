@@ -46,7 +46,7 @@ function save_response_attachment(array &$errors): ?string
         'video/mp4',
     ];
 
-    if ((int)$file['size'] > $maxBytes) {
+    if ($maxBytes > 0 && (int)$file['size'] > $maxBytes) {
         $errors[] = 'Вложение слишком большое. Максимум: ' . round($maxBytes / 1024 / 1024, 1) . ' МБ.';
         return null;
     }
