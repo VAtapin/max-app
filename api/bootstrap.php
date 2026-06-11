@@ -24,9 +24,9 @@ function input_json(): array
     return is_array($data) ? $data : [];
 }
 
-function require_platform_user(): array
+function require_platform_user(?array $data = null): array
 {
-    $data = input_json();
+    $data = $data ?? input_json();
     $platform = $_GET['platform'] ?? $_POST['platform'] ?? $data['platform'] ?? null;
     $platformUserId = $_GET['platform_user_id'] ?? $_POST['platform_user_id'] ?? $data['platform_user_id'] ?? null;
     $authToken = $_GET['auth_token'] ?? $_POST['auth_token'] ?? $data['auth_token'] ?? null;
@@ -212,4 +212,23 @@ function verify_platform_auth(string $platform, string $platformUserId, ?string 
     if (!$authToken || !hash_equals($expected, $authToken)) {
         json_response(['error' => 'telegram auth token is invalid'], 403);
     }
+}
+
+
+function client_owner_scope(array $user, string $alias = ''): array
+{
+    $prefix = $alias !== '' ? $alias . '.' : '';
+    $parts = [$prefix . 'owner_type IS NULL'];
+    $params = [];
+
+    if (!empty($user['reseller_id'])) {
+        $parts[] = '(' . $prefix . 'owner_type = "reseller" AND ' . $prefix . 'owner_id = :client_reseller_id)';
+        $params['client_reseller_id'] = (int)$user['reseller_id'];
+    }
+    if (!empty($user['manager_id'])) {
+        $parts[] = '(' . $prefix . 'owner_type = "manager" AND ' . $prefix . 'owner_id = :client_manager_id)';
+        $params['client_manager_id'] = (int)$user['manager_id'];
+    }
+
+    return ['(' . implode(' OR ', $parts) . ')', $params];
 }

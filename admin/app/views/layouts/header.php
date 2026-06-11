@@ -25,6 +25,7 @@
                 'tests' => [app_text('auto.k_663c94d30018'), 'crud.php?module=tests'],
                 'broadcasts' => [app_text('auto.k_08a679f215bd'), 'crud.php?module=broadcasts'],
                 'content' => [app_text('auto.k_5e30f01694b5'), 'crud.php?module=content'],
+                'integrations' => [app_text('integrations.title'), 'crud.php?module=integrations'],
             ];
             ?>
             <?php foreach ($navItems as $module => [$label, $href]): ?>

@@ -31,7 +31,6 @@ $config = [
         'vk_app_id' => getenv('VK_APP_ID') ?: '',
         'vk_secure_key' => getenv('VK_SECURE_KEY') ?: '',
         'vk_service_token' => getenv('VK_SERVICE_TOKEN') ?: '',
-        'vk_group_token' => getenv('VK_GROUP_TOKEN') ?: '',
     ],
 ];
 

@@ -371,11 +371,37 @@ function send_telegram_response(string $chatId, string $text, ?array $content, ?
 }
 
 
-function vk_api_request(string $method, array $params): array
+function vk_integration_for_lead(array $lead): ?array
 {
-    $token = app_config()['integrations']['vk_group_token'] ?? '';
+    $queries = [];
+    if (!empty($lead['manager_id'])) {
+        $queries[] = ['manager', (int)$lead['manager_id']];
+    }
+    if (!empty($lead['reseller_id'])) {
+        $queries[] = ['reseller', (int)$lead['reseller_id']];
+    }
+
+    foreach ($queries as [$ownerType, $ownerId]) {
+        $stmt = db()->prepare(
+            'SELECT * FROM messaging_integrations
+             WHERE platform = "vk" AND owner_type = :owner_type AND owner_id = :owner_id AND is_active = 1
+             ORDER BY id DESC
+             LIMIT 1'
+        );
+        $stmt->execute(['owner_type' => $ownerType, 'owner_id' => $ownerId]);
+        $integration = $stmt->fetch();
+        if ($integration && trim((string)($integration['access_token'] ?? '')) !== '') {
+            return $integration;
+        }
+    }
+
+    return null;
+}
+
+function vk_api_request(string $method, array $params, string $token): array
+{
     if ($token === '') {
-        return ['ok' => false, 'error' => app_text('auto.vk_group_token_missing')];
+        return ['ok' => false, 'error' => app_text('integrations.vk_token_missing')];
     }
 
     $params['access_token'] = $token;
@@ -436,13 +462,18 @@ function build_vk_response_text(string $text, ?array $content, ?array $test, arr
     return trim(implode("\n\n", array_filter($parts))) ?: app_text('lead_response.default_response_text');
 }
 
-function send_vk_response(string $userId, string $text, ?array $content, ?array $test, array $attachmentPaths, ?string $externalUrl): array
+function send_vk_response(array $lead, string $text, ?array $content, ?array $test, array $attachmentPaths, ?string $externalUrl): array
 {
+    $integration = vk_integration_for_lead($lead);
+    if (!$integration) {
+        return ['ok' => false, 'error' => app_text('integrations.vk_connection_missing')];
+    }
+
     return vk_api_request('messages.send', [
-        'user_id' => $userId,
+        'user_id' => (string)$lead['platform_user_id'],
         'random_id' => random_int(1, PHP_INT_MAX),
         'message' => build_vk_response_text($text, $content, $test, $attachmentPaths, $externalUrl),
-    ]);
+    ], trim((string)$integration['access_token']));
 }
 
 function create_and_send_lead_response(int $leadId, array $admin, array &$errors): ?int
@@ -498,7 +529,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
         $status = $result['ok'] ? 'sent' : 'failed';
         $error = $result['error'];
     } elseif ($platform === 'vk') {
-        $result = send_vk_response((string)$lead['platform_user_id'], $text, $content, $test, $attachmentPaths, $externalUrl);
+        $result = send_vk_response($lead, $text, $content, $test, $attachmentPaths, $externalUrl);
         $status = $result['ok'] ? 'sent' : 'failed';
         $error = $result['error'];
     } else {

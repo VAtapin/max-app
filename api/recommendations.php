@@ -15,13 +15,16 @@ $stmt->execute(['end_user_id' => $user['id']]);
 $recommendations = $stmt->fetchAll();
 
 if (!$recommendations) {
-    $fallback = db()->query(
-        'SELECT p.id AS product_id, p.title AS product_title, p.short_description, p.image_path
+    [$ownerWhere, $ownerParams] = client_owner_scope($user, 'p');
+    $fallbackStmt = db()->prepare(
+        "SELECT p.id AS product_id, p.title AS product_title, p.short_description, p.image_path
          FROM products p
-         WHERE p.is_active = 1
+         WHERE p.is_active = 1 AND $ownerWhere
          ORDER BY p.sort_order, p.id
-         LIMIT 5'
-    )->fetchAll();
+         LIMIT 5"
+    );
+    $fallbackStmt->execute($ownerParams);
+    $fallback = $fallbackStmt->fetchAll();
     json_response(['recommendations' => $fallback, 'disclaimer' => medical_disclaimer()]);
 }
 

@@ -165,6 +165,20 @@ $modules = [
             'publish_at' => ['label' => app_text('auto.k_8ad0765b3c02'), 'type' => 'datetime-local', 'nullable' => true],
         ],
     ],
+    'integrations' => [
+        'title' => app_text('integrations.title'),
+        'table' => 'messaging_integrations',
+        'columns' => ['id', 'owner_type', 'owner_id', 'platform', 'title', 'external_id', 'is_active'],
+        'fields' => [
+            'owner_type' => ['label' => app_text('integrations.owner_type'), 'type' => 'select', 'options' => ['reseller', 'manager'], 'required' => true],
+            'owner_id' => ['label' => app_text('integrations.owner_id'), 'type' => 'number', 'required' => true],
+            'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['vk', 'telegram', 'max'], 'required' => true],
+            'title' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
+            'external_id' => ['label' => app_text('integrations.external_id')],
+            'access_token' => ['label' => app_text('integrations.access_token'), 'type' => 'textarea'],
+            'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
+        ],
+    ],
 ];
 
 $moduleKey = $_GET['module'] ?? 'users';
@@ -201,6 +215,14 @@ function scope_where_for_module(string $moduleKey, array $admin): array
         return ['WHERE reseller_id = :scope_reseller_id', ['scope_reseller_id' => $admin['reseller_id']]];
     }
 
+    if (in_array($moduleKey, owned_modules(), true)) {
+        return owner_scope_condition($admin);
+    }
+
+    if ($moduleKey === 'integrations') {
+        return integration_scope_condition($admin);
+    }
+
     return ['', []];
 }
 
@@ -215,6 +237,48 @@ function scoped_row_exists(string $moduleKey, array $module, int $id, array $adm
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
     return (int)$stmt->fetchColumn() > 0;
+}
+
+
+function owned_modules(): array
+{
+    return ['categories', 'products', 'tests', 'content', 'broadcasts'];
+}
+
+function owner_scope_condition(array $admin, string $alias = ''): array
+{
+    $prefix = $alias !== '' ? $alias . '.' : '';
+    if ($admin['role'] === 'superadmin') {
+        return ['', []];
+    }
+
+    if ($admin['role'] === 'reseller') {
+        return [
+            'WHERE (' . $prefix . 'owner_type IS NULL OR (' . $prefix . 'owner_type = "reseller" AND ' . $prefix . 'owner_id = :owner_reseller_id) OR (' . $prefix . 'owner_type = "manager" AND ' . $prefix . 'owner_id IN (SELECT id FROM managers WHERE reseller_id = :owner_reseller_id_sub)))',
+            ['owner_reseller_id' => $admin['reseller_id'], 'owner_reseller_id_sub' => $admin['reseller_id']],
+        ];
+    }
+
+    return [
+        'WHERE (' . $prefix . 'owner_type IS NULL OR (' . $prefix . 'owner_type = "manager" AND ' . $prefix . 'owner_id = :owner_manager_id))',
+        ['owner_manager_id' => $admin['manager_id']],
+    ];
+}
+
+function integration_scope_condition(array $admin): array
+{
+    if ($admin['role'] === 'superadmin') {
+        return ['', []];
+    }
+
+    if ($admin['role'] === 'reseller') {
+        return [
+            'WHERE ((owner_type = "reseller" AND owner_id = :scope_reseller_id) OR (owner_type = "manager" AND owner_id IN (SELECT id FROM managers WHERE reseller_id = :scope_reseller_id_sub)))',
+            ['scope_reseller_id' => $admin['reseller_id'], 'scope_reseller_id_sub' => $admin['reseller_id']],
+        ];
+    }
+
+    return ['WHERE owner_type = "manager" AND owner_id = :scope_manager_id', ['scope_manager_id' => $admin['manager_id']]];
 }
 
 function scoped_end_user_exists(int $endUserId, array $admin): bool
@@ -254,6 +318,16 @@ function select_options(string $source, array $admin): array
     }
     if ($source === 'end_users') {
         [$where, $params] = scope_where_for_users($admin);
+    }
+    if (in_array($source, ['products', 'product_categories', 'content_posts', 'tests'], true)) {
+        $moduleForSource = match ($source) {
+            'products' => 'products',
+            'product_categories' => 'categories',
+            'content_posts' => 'content',
+            'tests' => 'tests',
+            default => '',
+        };
+        [$where, $params] = scope_where_for_module($moduleForSource, $admin);
     }
 
     $stmt = db()->prepare("SELECT id, {$item['label']} AS label FROM {$item['table']} $where ORDER BY id DESC LIMIT 500");
@@ -478,6 +552,24 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin)
         }
     }
 
+    if ($moduleKey === 'integrations' && $admin['role'] !== 'superadmin') {
+        $ownerType = (string)($payload['owner_type'] ?? '');
+        $ownerId = (int)($payload['owner_id'] ?? 0);
+        if ($admin['role'] === 'reseller') {
+            $allowed = ($ownerType === 'reseller' && $ownerId === (int)$admin['reseller_id']);
+            if (!$allowed && $ownerType === 'manager') {
+                $stmt = db()->prepare('SELECT COUNT(*) FROM managers WHERE id = :id AND reseller_id = :reseller_id');
+                $stmt->execute(['id' => $ownerId, 'reseller_id' => $admin['reseller_id']]);
+                $allowed = (int)$stmt->fetchColumn() > 0;
+            }
+            if (!$allowed) {
+                $errors[] = app_text('integrations.owner_forbidden');
+            }
+        } elseif ($admin['role'] === 'manager' && !($ownerType === 'manager' && $ownerId === (int)$admin['manager_id'])) {
+            $errors[] = app_text('integrations.owner_forbidden');
+        }
+    }
+
     return $errors;
 }
 
@@ -489,6 +581,18 @@ function apply_role_defaults(string $moduleKey, array $payload, array $admin): a
     if ($admin['role'] === 'manager' && in_array($moduleKey, ['users', 'leads'], true)) {
         $payload['manager_id'] = $admin['manager_id'];
         $payload['reseller_id'] = $admin['reseller_id'];
+    }
+    if (in_array($moduleKey, owned_modules(), true) && empty($payload['owner_type']) && $admin['role'] !== 'superadmin') {
+        $payload['owner_type'] = $admin['role'];
+        $payload['owner_id'] = $admin['role'] === 'reseller' ? $admin['reseller_id'] : $admin['manager_id'];
+    }
+    if ($moduleKey === 'integrations' && $admin['role'] === 'manager') {
+        $payload['owner_type'] = 'manager';
+        $payload['owner_id'] = $admin['manager_id'];
+    }
+    if ($moduleKey === 'integrations' && $admin['role'] === 'reseller' && empty($payload['owner_type'])) {
+        $payload['owner_type'] = 'reseller';
+        $payload['owner_id'] = $admin['reseller_id'];
     }
     if ($moduleKey === 'broadcasts') {
         $payload['created_by'] = $admin['id'];

@@ -6,8 +6,8 @@ function can_manage(string $module, array $user): bool
         return true;
     }
 
-    $resellerModules = ['dashboard', 'managers', 'users', 'platform_accounts', 'broadcasts', 'leads'];
-    $managerModules = ['dashboard', 'users', 'platform_accounts', 'leads'];
+    $resellerModules = ['dashboard', 'managers', 'users', 'platform_accounts', 'broadcasts', 'leads', 'categories', 'products', 'tests', 'content', 'integrations'];
+    $managerModules = ['dashboard', 'users', 'platform_accounts', 'leads', 'categories', 'products', 'tests', 'content', 'broadcasts', 'integrations'];
 
     if ($user['role'] === 'reseller') {
         return in_array($module, $resellerModules, true);

@@ -170,6 +170,14 @@ function crud_display_columns(string $moduleKey): array
             'status' => app_text('auto.k_f7f293b5c58c'),
             'publish_at' => app_text('auto.k_eb8ec7038ec2'),
         ],
+        'integrations' => [
+            'id' => 'ID',
+            'title' => app_text('auto.k_3de49828e86a'),
+            'owner_label' => app_text('integrations.owner'),
+            'platform' => app_text('auto.k_89009febe5c6'),
+            'external_id' => app_text('integrations.external_id'),
+            'state' => app_text('auto.k_f7f293b5c58c'),
+        ],
     ][$moduleKey] ?? [];
 }
 
@@ -325,32 +333,37 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     }
 
     if ($moduleKey === 'categories') {
+        [$where, $params] = owner_scope_condition($admin, 'c');
         return [
             "SELECT c.id, c.title, c.slug, c.sort_order,
                     IF(c.is_active = 1, 'active', 'inactive') AS state,
                     COUNT(p.id) AS products_count
              FROM product_categories c
              LEFT JOIN products p ON p.category_id = c.id
+             $where
              GROUP BY c.id
              ORDER BY c.sort_order ASC, c.id DESC
              LIMIT 100",
-            [],
+            $params,
         ];
     }
 
     if ($moduleKey === 'products') {
+        [$where, $params] = owner_scope_condition($admin, 'p');
         return [
             "SELECT p.id, p.title, c.title AS category_title, p.image_path, p.document_path, p.video_url, p.purchase_url, p.price, p.sort_order,
                     IF(p.is_active = 1, 'active', 'inactive') AS state
              FROM products p
              LEFT JOIN product_categories c ON c.id = p.category_id
+             $where
              ORDER BY p.sort_order ASC, p.id DESC
              LIMIT 100",
-            [],
+            $params,
         ];
     }
 
     if ($moduleKey === 'tests') {
+        [$where, $params] = owner_scope_condition($admin, 't');
         return [
             "SELECT t.id, t.title, c.title AS category_title, t.sort_order,
                     IF(t.is_active = 1, 'active', 'inactive') AS state,
@@ -358,29 +371,45 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
              FROM tests t
              LEFT JOIN product_categories c ON c.id = t.category_id
              LEFT JOIN test_questions q ON q.test_id = t.id
+             $where
              GROUP BY t.id
              ORDER BY t.sort_order ASC, t.id DESC
              LIMIT 100",
-            [],
+            $params,
         ];
     }
 
     if ($moduleKey === 'broadcasts') {
+        [$where, $params] = owner_scope_condition($admin);
         return [
-            'SELECT id, title, platform, target_type, scheduled_at, status FROM broadcasts ORDER BY id DESC LIMIT 100',
-            [],
+            "SELECT id, title, platform, target_type, scheduled_at, status FROM broadcasts $where ORDER BY id DESC LIMIT 100",
+            $params,
         ];
     }
 
     if ($moduleKey === 'content') {
+        [$where, $params] = owner_scope_condition($admin, 'cp');
         return [
             "SELECT cp.id, cp.title, cp.content_type, c.title AS category_title, cp.image_path,
                     cp.attachment_path, cp.video_url, cp.button_url, cp.status, cp.publish_at
              FROM content_posts cp
              LEFT JOIN product_categories c ON c.id = cp.category_id
+             $where
              ORDER BY cp.id DESC
              LIMIT 100",
-            [],
+            $params,
+        ];
+    }
+
+    if ($moduleKey === 'integrations') {
+        [$where, $params] = integration_scope_condition($admin);
+        return [
+            "SELECT id, title, CONCAT(owner_type, ' #', owner_id) AS owner_label, platform, external_id, IF(is_active = 1, 'active', 'inactive') AS state
+             FROM messaging_integrations
+             $where
+             ORDER BY id DESC
+             LIMIT 100",
+            $params,
         ];
     }
 

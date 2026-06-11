@@ -72,8 +72,8 @@ function add_result_recommendation(int $endUserId, int $sessionId, ?array $resul
 
 
 if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $data = input_json();
-    $user = require_platform_user();
+    $data = input_json() ?: $_POST;
+    $user = require_platform_user($data);
     $testId = (int)($data['test_id'] ?? 0);
     $answers = $data['answers'] ?? [];
 
@@ -81,43 +81,94 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
         json_response(['error' => 'test_id and answers are required'], 422);
     }
 
-    db()->beginTransaction();
-    $sessionStmt = db()->prepare('INSERT INTO user_test_sessions (end_user_id, test_id) VALUES (:end_user_id, :test_id)');
-    $sessionStmt->execute(['end_user_id' => $user['id'], 'test_id' => $testId]);
-    $sessionId = (int)db()->lastInsertId();
-
-    $total = 0;
-    foreach ($answers as $answer) {
-        $answerId = isset($answer['answer_id']) ? (int)$answer['answer_id'] : null;
-        $questionId = (int)($answer['question_id'] ?? 0);
-        $score = 0;
-        if ($answerId) {
-            $scoreStmt = db()->prepare('SELECT score FROM test_answers WHERE id = :id');
-            $scoreStmt->execute(['id' => $answerId]);
-            $score = (int)($scoreStmt->fetchColumn() ?: 0);
-        }
-        $total += $score;
-
-        $insert = db()->prepare(
-            'INSERT INTO user_test_answers (session_id, question_id, answer_id, text_answer, score)
-             VALUES (:session_id, :question_id, :answer_id, :text_answer, :score)'
-        );
-        $insert->execute([
-            'session_id' => $sessionId,
-            'question_id' => $questionId,
-            'answer_id' => $answerId,
-            'text_answer' => $answer['text_answer'] ?? null,
-            'score' => $score,
-        ]);
+    [$ownerWhere, $ownerParams] = client_owner_scope($user, 't');
+    $testStmt = db()->prepare("SELECT t.id FROM tests t WHERE t.id = :id AND t.is_active = 1 AND $ownerWhere LIMIT 1");
+    $testStmt->execute(['id' => $testId] + $ownerParams);
+    if (!$testStmt->fetchColumn()) {
+        json_response(['error' => 'test not found'], 404);
     }
 
-    $resultRule = test_result_for_score($testId, $total);
-    $summary = build_result_summary($resultRule);
-    $done = db()->prepare('UPDATE user_test_sessions SET completed_at = NOW(), total_score = :total, result_summary = :summary WHERE id = :id');
-    $done->execute(['total' => $total, 'summary' => $summary, 'id' => $sessionId]);
-    $recommendations = build_recommendations((int)$user['id'], $sessionId);
-    add_result_recommendation((int)$user['id'], $sessionId, $resultRule);
-    db()->commit();
+    $questionStmt = db()->prepare('SELECT id, question_type, is_required FROM test_questions WHERE test_id = :test_id');
+    $questionStmt->execute(['test_id' => $testId]);
+    $questions = [];
+    foreach ($questionStmt->fetchAll() as $question) {
+        $questions[(int)$question['id']] = $question;
+    }
+
+    if (!$questions) {
+        json_response(['error' => 'test has no questions'], 422);
+    }
+
+    $answerIds = [];
+    foreach ($answers as $answer) {
+        if (isset($answer['answer_id'])) {
+            $answerIds[] = (int)$answer['answer_id'];
+        }
+    }
+    $answerMap = [];
+    if ($answerIds) {
+        $placeholders = implode(',', array_fill(0, count($answerIds), '?'));
+        $answerStmt = db()->prepare(
+            "SELECT a.id, a.question_id, a.score
+             FROM test_answers a
+             INNER JOIN test_questions q ON q.id = a.question_id
+             WHERE q.test_id = ? AND a.id IN ($placeholders)"
+        );
+        $answerStmt->execute(array_merge([$testId], $answerIds));
+        foreach ($answerStmt->fetchAll() as $item) {
+            $answerMap[(int)$item['id']] = $item;
+        }
+    }
+
+    try {
+        db()->beginTransaction();
+        $sessionStmt = db()->prepare('INSERT INTO user_test_sessions (end_user_id, test_id) VALUES (:end_user_id, :test_id)');
+        $sessionStmt->execute(['end_user_id' => $user['id'], 'test_id' => $testId]);
+        $sessionId = (int)db()->lastInsertId();
+
+        $total = 0;
+        foreach ($answers as $answer) {
+            $answerId = isset($answer['answer_id']) ? (int)$answer['answer_id'] : null;
+            $questionId = (int)($answer['question_id'] ?? 0);
+            if (!$questionId || !isset($questions[$questionId])) {
+                throw new RuntimeException('question does not belong to this test');
+            }
+
+            $score = 0;
+            if ($answerId) {
+                if (!isset($answerMap[$answerId]) || (int)$answerMap[$answerId]['question_id'] !== $questionId) {
+                    throw new RuntimeException('answer does not belong to this question');
+                }
+                $score = (int)$answerMap[$answerId]['score'];
+            }
+            $total += $score;
+
+            $insert = db()->prepare(
+                'INSERT INTO user_test_answers (session_id, question_id, answer_id, text_answer, score)
+                 VALUES (:session_id, :question_id, :answer_id, :text_answer, :score)'
+            );
+            $insert->execute([
+                'session_id' => $sessionId,
+                'question_id' => $questionId,
+                'answer_id' => $answerId,
+                'text_answer' => $answer['text_answer'] ?? null,
+                'score' => $score,
+            ]);
+        }
+
+        $resultRule = test_result_for_score($testId, $total);
+        $summary = build_result_summary($resultRule);
+        $done = db()->prepare('UPDATE user_test_sessions SET completed_at = NOW(), total_score = :total, result_summary = :summary WHERE id = :id');
+        $done->execute(['total' => $total, 'summary' => $summary, 'id' => $sessionId]);
+        $recommendations = build_recommendations((int)$user['id'], $sessionId);
+        add_result_recommendation((int)$user['id'], $sessionId, $resultRule);
+        db()->commit();
+    } catch (Throwable $e) {
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+        json_response(['error' => 'test submit failed: ' . $e->getMessage()], 500);
+    }
 
     $log = db()->prepare(
         'INSERT INTO activity_logs (actor_type, actor_id, action, entity_type, entity_id, details)
@@ -143,8 +194,15 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
 }
 
 if (isset($_GET['id'])) {
-    $stmt = db()->prepare('SELECT * FROM tests WHERE id = :id AND is_active = 1');
-    $stmt->execute(['id' => (int)$_GET['id']]);
+    $user = null;
+    $ownerWhere = 't.owner_type IS NULL';
+    $ownerParams = [];
+    if (isset($_GET['platform'], $_GET['platform_user_id'])) {
+        $user = require_platform_user();
+        [$ownerWhere, $ownerParams] = client_owner_scope($user, 't');
+    }
+    $stmt = db()->prepare("SELECT t.* FROM tests t WHERE t.id = :id AND t.is_active = 1 AND $ownerWhere");
+    $stmt->execute(['id' => (int)$_GET['id']] + $ownerParams);
     $test = $stmt->fetch();
     if (!$test) {
         json_response(['error' => 'not found'], 404);
@@ -163,5 +221,13 @@ if (isset($_GET['id'])) {
     json_response(['test' => $test, 'questions' => $items]);
 }
 
-$stmt = db()->query('SELECT id, title, description FROM tests WHERE is_active = 1 ORDER BY sort_order, title');
+$user = null;
+$ownerWhere = 'owner_type IS NULL';
+$ownerParams = [];
+if (isset($_GET['platform'], $_GET['platform_user_id'])) {
+    $user = require_platform_user();
+    [$ownerWhere, $ownerParams] = client_owner_scope($user);
+}
+$stmt = db()->prepare("SELECT id, title, description FROM tests WHERE is_active = 1 AND $ownerWhere ORDER BY sort_order, title");
+$stmt->execute($ownerParams);
 json_response(['tests' => $stmt->fetchAll()]);

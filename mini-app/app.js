@@ -235,7 +235,7 @@ async function renderProfile() {
 }
 
 async function renderTests() {
-    const result = await api('tests.php');
+    const result = await api(`tests.php?${userQuery()}`);
     page.innerHTML = result.tests.length
         ? result.tests.map((test) => `
             <article class="item">
@@ -248,7 +248,7 @@ async function renderTests() {
 }
 
 async function renderTest(testId) {
-    const result = await api(`tests.php?id=${encodeURIComponent(testId)}`);
+    const result = await api(`tests.php?id=${encodeURIComponent(testId)}&${userQuery()}`);
     state.activeTest = result;
     page.innerHTML = `
         <section class="panel">
@@ -284,6 +284,12 @@ function renderQuestion(question) {
 }
 
 async function submitTest(form) {
+    const submitButton = form.querySelector('button[type="submit"]');
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.dataset.originalText = submitButton.textContent || '';
+        submitButton.textContent = ui('tests.submitting', '...');
+    }
     const answers = [];
     form.querySelectorAll('.question').forEach((question) => {
         const questionId = Number(question.dataset.questionId);
@@ -299,14 +305,24 @@ async function submitTest(form) {
         }
     });
 
-    const result = await api('tests.php?action=submit', {
-        method: 'POST',
-        body: JSON.stringify({
-            ...userPayload(),
-            test_id: state.activeTest.test.id,
-            answers,
-        }),
-    });
+    let result;
+    try {
+        result = await api('tests.php?action=submit', {
+            method: 'POST',
+            body: JSON.stringify({
+                ...userPayload(),
+                test_id: state.activeTest.test.id,
+                answers,
+            }),
+        });
+    } catch (error) {
+        form.insertAdjacentHTML('afterbegin', `<div class="empty">${escapeHtml(error.message)}</div>`);
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent = submitButton.dataset.originalText || ui('tests.submit');
+        }
+        return;
+    }
 
     page.innerHTML = `
         <section class="panel">
@@ -322,7 +338,7 @@ async function submitTest(form) {
 }
 
 async function renderProducts() {
-    const result = await api('products.php');
+    const result = await api(`products.php?${userQuery()}`);
     page.innerHTML = result.products.length
         ? result.products.map((product) => `
             <article class="item">

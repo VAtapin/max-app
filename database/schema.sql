@@ -158,6 +158,8 @@ CREATE TABLE product_categories (
   title VARCHAR(190) NOT NULL,
   slug VARCHAR(190) NOT NULL UNIQUE,
   description TEXT NULL,
+  owner_type ENUM('superadmin', 'reseller', 'manager') NULL,
+  owner_id BIGINT UNSIGNED NULL,
   sort_order INT NOT NULL DEFAULT 100,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -167,6 +169,8 @@ CREATE TABLE product_categories (
 CREATE TABLE products (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   category_id BIGINT UNSIGNED NULL,
+  owner_type ENUM('superadmin', 'reseller', 'manager') NULL,
+  owner_id BIGINT UNSIGNED NULL,
   title VARCHAR(190) NOT NULL,
   slug VARCHAR(190) NOT NULL UNIQUE,
   short_description TEXT NULL,
@@ -217,6 +221,8 @@ CREATE TABLE tests (
   title VARCHAR(190) NOT NULL,
   description TEXT NULL,
   category_id BIGINT UNSIGNED NULL,
+  owner_type ENUM('superadmin', 'reseller', 'manager') NULL,
+  owner_id BIGINT UNSIGNED NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   sort_order INT NOT NULL DEFAULT 100,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -378,6 +384,8 @@ CREATE TABLE content_posts (
   button_text VARCHAR(100) NULL,
   button_url VARCHAR(255) NULL,
   category_id BIGINT UNSIGNED NULL,
+  owner_type ENUM('superadmin', 'reseller', 'manager') NULL,
+  owner_id BIGINT UNSIGNED NULL,
   status ENUM('draft', 'published', 'hidden') NOT NULL DEFAULT 'draft',
   publish_at DATETIME NULL,
   created_by BIGINT UNSIGNED NULL,
@@ -453,6 +461,21 @@ CREATE TABLE lead_responses (
   CONSTRAINT fk_lead_responses_test
     FOREIGN KEY (test_id) REFERENCES tests(id)
     ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE messaging_integrations (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  owner_type ENUM('reseller', 'manager') NOT NULL,
+  owner_id BIGINT UNSIGNED NOT NULL,
+  platform ENUM('vk', 'telegram', 'max') NOT NULL,
+  title VARCHAR(190) NOT NULL,
+  external_id VARCHAR(190) NULL,
+  access_token TEXT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_messaging_integrations_owner (owner_type, owner_id),
+  INDEX idx_messaging_integrations_platform (platform, is_active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE broadcasts (
