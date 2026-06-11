@@ -259,6 +259,19 @@ function safe_select_options(string $source, array $admin, array &$errors): arra
     }
 }
 
+function format_cell_value(mixed $value): string
+{
+    if ($value === null || $value === '') {
+        return '—';
+    }
+
+    if (is_bool($value)) {
+        return $value ? '1' : '0';
+    }
+
+    return (string)$value;
+}
+
 function normalize_datetime(?string $value): ?string
 {
     if (!$value) {
@@ -433,9 +446,14 @@ if ($action === 'edit' && $id) {
 
 $columnsSql = implode(', ', array_map(static fn($column) => "`$column`", $module['columns']));
 [$where, $params] = scope_where_for_module($moduleKey, $admin);
-$stmt = db()->prepare("SELECT $columnsSql FROM {$module['table']} $where ORDER BY id DESC LIMIT 100");
-$stmt->execute($params);
-$rows = $stmt->fetchAll();
+$rows = [];
+try {
+    $stmt = db()->prepare("SELECT $columnsSql FROM {$module['table']} $where ORDER BY id DESC LIMIT 100");
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+} catch (Throwable $e) {
+    $errors[] = 'Не удалось загрузить список записей: ' . $e->getMessage();
+}
 
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
@@ -505,37 +523,39 @@ require __DIR__ . '/../app/views/layouts/header.php';
     </section>
 <?php endif; ?>
 <section class="panel">
-    <table>
-        <thead>
-            <tr>
-                <?php foreach ($module['columns'] as $column): ?>
-                    <th><?= h($column) ?></th>
-                <?php endforeach; ?>
-                <th>Действия</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php foreach ($rows as $row): ?>
+    <div class="table-summary">Найдено записей: <?= count($rows) ?></div>
+    <?php if ($rows): ?>
+        <table>
+            <thead>
                 <tr>
                     <?php foreach ($module['columns'] as $column): ?>
-                        <td><?= h((string)($row[$column] ?? '')) ?></td>
+                        <th><?= h($column) ?></th>
                     <?php endforeach; ?>
-                    <td>
-                        <a class="link-button" href="crud.php?module=<?= h($moduleKey) ?>&action=edit&id=<?= (int)$row['id'] ?>">Редактировать</a>
-                        <form method="post" class="inline-form" onsubmit="return confirm('Удалить запись #<?= (int)$row['id'] ?>?');">
-                            <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                            <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-                            <button type="submit" class="link-button danger">Удалить</button>
-                        </form>
-                    </td>
+                    <th>Действия</th>
                 </tr>
-            <?php endforeach; ?>
-            <?php if (!$rows): ?>
-                <tr><td colspan="<?= count($module['columns']) + 1 ?>">Записей пока нет.</td></tr>
-            <?php endif; ?>
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                <?php foreach ($rows as $row): ?>
+                    <tr>
+                        <?php foreach ($module['columns'] as $column): ?>
+                            <td><?= h(format_cell_value($row[$column] ?? null)) ?></td>
+                        <?php endforeach; ?>
+                        <td>
+                            <a class="link-button" href="crud.php?module=<?= h($moduleKey) ?>&action=edit&id=<?= (int)$row['id'] ?>">Редактировать</a>
+                            <form method="post" class="inline-form" onsubmit="return confirm('Удалить запись #<?= (int)$row['id'] ?>?');">
+                                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+                                <button type="submit" class="link-button danger">Удалить</button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php else: ?>
+        <div class="empty-state">Записей в этом разделе пока нет или они недоступны для вашей роли.</div>
+    <?php endif; ?>
 </section>
 <section class="panel">
     <h2>Правила доступа</h2>

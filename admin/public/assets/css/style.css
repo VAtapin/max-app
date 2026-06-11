@@ -149,6 +149,19 @@ table {
     font-size: 14px;
 }
 
+.table-summary {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.empty-state {
+    border: 1px dashed var(--line);
+    border-radius: 6px;
+    color: var(--muted);
+    padding: 16px;
+}
+
 th,
 td {
     border-bottom: 1px solid var(--line);
