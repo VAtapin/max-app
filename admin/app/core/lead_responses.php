@@ -260,12 +260,13 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
 
     $stmt = db()->prepare(
         'UPDATE lead_responses
-         SET status = :status, error_message = :error_message, sent_at = IF(:status = "sent", NOW(), sent_at)
+         SET status = :status, error_message = :error_message, sent_at = :sent_at
          WHERE id = :id'
     );
     $stmt->execute([
         'status' => $status,
         'error_message' => $error,
+        'sent_at' => $status === 'sent' ? date('Y-m-d H:i:s') : null,
         'id' => $responseId,
     ]);
 
@@ -298,4 +299,3 @@ function lead_response_history(int $leadId): array
     $stmt->execute(['lead_id' => $leadId]);
     return $stmt->fetchAll();
 }
-

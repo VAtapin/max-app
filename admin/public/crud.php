@@ -536,7 +536,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit('Record not found');
         }
 
-        $responseId = create_and_send_lead_response($postId, $admin, $errors);
+        try {
+            $responseId = create_and_send_lead_response($postId, $admin, $errors);
+        } catch (Throwable $e) {
+            $responseId = null;
+            $errors[] = 'Не удалось отправить ответ по заявке: ' . $e->getMessage();
+        }
         if ($responseId && !$errors) {
             redirect('crud.php?module=leads&action=edit&id=' . $postId . '&success=response_sent');
         }
@@ -750,7 +755,14 @@ require __DIR__ . '/../app/views/layouts/header.php';
 
         <section class="panel">
             <h2>История ответов</h2>
-            <?php $responses = lead_response_history((int)$editRow['id']); ?>
+            <?php
+            try {
+                $responses = lead_response_history((int)$editRow['id']);
+            } catch (Throwable $e) {
+                $responses = [];
+                echo '<div class="alert">Не удалось загрузить историю ответов: ' . h($e->getMessage()) . '</div>';
+            }
+            ?>
             <?php if ($responses): ?>
                 <table class="data-table">
                     <thead>
