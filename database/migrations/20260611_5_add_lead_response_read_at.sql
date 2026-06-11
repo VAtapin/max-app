@@ -1,0 +1,2 @@
+ALTER TABLE lead_responses
+ADD COLUMN IF NOT EXISTS read_at2 DATETIME NULL AFTER sent_at;
