@@ -119,11 +119,11 @@ function crud_display_columns(string $moduleKey): array
         ],
         'leads' => [
             'id' => 'ID',
+            'lead_status' => 'Статус',
             'lead_summary' => 'Заявка',
             'user_name' => 'Пользователь',
             'product_title' => 'Продукт',
-            'manager_name' => 'Менеджер',
-            'reseller_name' => 'Реселлер',
+            'response_summary' => 'Ответ',
             'created_at' => 'Создана',
         ],
         'categories' => [
@@ -173,6 +173,49 @@ function crud_display_columns(string $moduleKey): array
     ][$moduleKey] ?? [];
 }
 
+function lead_filters_from_request(): array
+{
+    $allowedStatuses = ['new', 'contacted', 'interested', 'closed', 'lost'];
+    $allowedPlatforms = ['telegram', 'vk', 'max', 'web'];
+    $allowedResponse = ['all', 'none', 'sent', 'pending', 'failed'];
+
+    $status = $_GET['status'] ?? 'new';
+    $platform = $_GET['platform'] ?? 'all';
+    $response = $_GET['response'] ?? 'all';
+    $page = max(1, (int)($_GET['page'] ?? 1));
+
+    return [
+        'status' => in_array($status, $allowedStatuses, true) ? $status : 'all',
+        'platform' => in_array($platform, $allowedPlatforms, true) ? $platform : 'all',
+        'response' => in_array($response, $allowedResponse, true) ? $response : 'all',
+        'page' => $page,
+        'per_page' => 25,
+    ];
+}
+
+function append_lead_filter_sql(string $sql, array $filters, array &$params): string
+{
+    if (($filters['status'] ?? 'all') !== 'all') {
+        $sql .= ' AND l.status = :lead_status_filter';
+        $params['lead_status_filter'] = $filters['status'];
+    }
+
+    if (($filters['platform'] ?? 'all') !== 'all') {
+        $sql .= ' AND l.source_platform = :lead_platform_filter';
+        $params['lead_platform_filter'] = $filters['platform'];
+    }
+
+    $response = $filters['response'] ?? 'all';
+    if ($response === 'none') {
+        $sql .= ' AND lr.response_count IS NULL';
+    } elseif (in_array($response, ['sent', 'pending', 'failed'], true)) {
+        $sql .= ' AND lr.last_response_status = :lead_response_filter';
+        $params['lead_response_filter'] = $response;
+    }
+
+    return $sql;
+}
+
 function scoped_where_with_alias(array $scope, string $alias): array
 {
     [$where, $params] = $scope;
@@ -219,19 +262,30 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
 
     if ($moduleKey === 'leads') {
         [$where, $params] = scoped_where_with_alias(scope_where_for_leads($admin), 'l');
+        $filters = lead_filters_from_request();
+        $offset = ($filters['page'] - 1) * $filters['per_page'];
+        $baseWhere = $where ?: 'WHERE 1=1';
+        $baseWhere = append_lead_filter_sql($baseWhere, $filters, $params);
         return [
             "SELECT l.id, l.status, l.source_platform, l.message, l.created_at,
                     CONCAT_WS(' ', NULLIF(eu.first_name, ''), NULLIF(eu.last_name, '')) AS full_name,
                     eu.username AS user_username,
-                    p.title AS product_title, m.name AS manager_name, r.name AS reseller_name
+                    p.title AS product_title, m.name AS manager_name, r.name AS reseller_name,
+                    lr.response_count, lr.last_response_status, lr.last_response_at
              FROM leads l
              LEFT JOIN end_users eu ON eu.id = l.end_user_id
              LEFT JOIN products p ON p.id = l.product_id
              LEFT JOIN managers m ON m.id = l.manager_id
              LEFT JOIN resellers r ON r.id = l.reseller_id
-             $where
+             LEFT JOIN (
+                SELECT lead_id, COUNT(*) AS response_count, MAX(id) AS last_response_id
+                FROM lead_responses
+                GROUP BY lead_id
+             ) lrc ON lrc.lead_id = l.id
+             LEFT JOIN lead_responses lr ON lr.id = lrc.last_response_id
+             $baseWhere
              ORDER BY l.id DESC
-             LIMIT 100",
+             LIMIT {$filters['per_page']} OFFSET $offset",
             $params,
         ];
     }
@@ -352,7 +406,21 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
     if ($column === 'lead_summary') {
         $message = trim((string)($row['message'] ?? ''));
         $message = $message !== '' ? $message : 'Без сообщения';
-        return ($row['status'] ?? 'new') . "\n" . $message . "\n" . ($row['source_platform'] ?? '');
+        return $message . "\n" . ($row['source_platform'] ?? '');
+    }
+
+    if ($column === 'lead_status') {
+        return (string)($row['status'] ?? 'new');
+    }
+
+    if ($column === 'response_summary') {
+        if (empty($row['response_count'])) {
+            return 'нет ответа';
+        }
+
+        $status = (string)($row['last_response_status'] ?? 'pending');
+        $date = (string)($row['last_response_at'] ?? '');
+        return $status . ($date ? "\n" . $date : '');
     }
 
     if ($column === 'media_summary') {
@@ -376,13 +444,122 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
     return format_cell_value($row[$column] ?? null);
 }
 
+function status_badge_class(string $value): string
+{
+    return match ($value) {
+        'new', 'none', 'нет ответа' => 'badge badge-new',
+        'contacted', 'sent' => 'badge badge-sent',
+        'interested', 'pending' => 'badge badge-pending',
+        'closed' => 'badge badge-closed',
+        'lost', 'failed' => 'badge badge-failed',
+        default => 'badge',
+    };
+}
+
+function render_cell(string $moduleKey, string $key, array $row): string
+{
+    if ($key === 'image_preview' && !empty($row['image_path'])) {
+        return '<img class="table-thumb" src="' . h($row['image_path']) . '" alt="">';
+    }
+
+    if ($moduleKey === 'leads' && in_array($key, ['lead_status', 'response_summary'], true)) {
+        $value = crud_cell_value($moduleKey, $key, $row);
+        $firstLine = strtok($value, "\n") ?: $value;
+        $rest = trim(substr($value, strlen($firstLine)));
+        return '<span class="' . h(status_badge_class($firstLine)) . '">' . h($firstLine) . '</span>'
+            . ($rest !== '' ? '<div class="cell-muted">' . nl2br(h($rest)) . '</div>' : '');
+    }
+
+    if ($moduleKey === 'leads' && $key === 'lead_summary') {
+        return '<div class="lead-message">' . nl2br(h(crud_cell_value($moduleKey, $key, $row))) . '</div>';
+    }
+
+    return nl2br(h(crud_cell_value($moduleKey, $key, $row)));
+}
+
+function render_lead_filters(): string
+{
+    $filters = lead_filters_from_request();
+    $statuses = [
+        'all' => 'Все статусы',
+        'new' => 'Новые',
+        'contacted' => 'Есть контакт',
+        'interested' => 'Интерес',
+        'closed' => 'Закрытые',
+        'lost' => 'Потерянные',
+    ];
+    $platforms = ['all' => 'Все платформы', 'telegram' => 'Telegram', 'vk' => 'VK', 'max' => 'MAX', 'web' => 'Web'];
+    $responses = ['all' => 'Все ответы', 'none' => 'Без ответа', 'sent' => 'Отправлено', 'pending' => 'Ожидает', 'failed' => 'Ошибка'];
+
+    ob_start();
+    ?>
+    <form method="get" class="filters">
+        <input type="hidden" name="module" value="leads">
+        <label>
+            <span>Статус</span>
+            <select name="status">
+                <?php foreach ($statuses as $value => $label): ?>
+                    <option value="<?= h($value) ?>" <?= $filters['status'] === $value ? 'selected' : '' ?>><?= h($label) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
+        <label>
+            <span>Платформа</span>
+            <select name="platform">
+                <?php foreach ($platforms as $value => $label): ?>
+                    <option value="<?= h($value) ?>" <?= $filters['platform'] === $value ? 'selected' : '' ?>><?= h($label) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
+        <label>
+            <span>Ответ</span>
+            <select name="response">
+                <?php foreach ($responses as $value => $label): ?>
+                    <option value="<?= h($value) ?>" <?= $filters['response'] === $value ? 'selected' : '' ?>><?= h($label) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
+        <button type="submit">Показать</button>
+        <a class="button secondary-button" href="crud.php?module=leads">Сбросить</a>
+    </form>
+    <?php
+    return trim(ob_get_clean());
+}
+
+function render_lead_pagination(int $rowCount): string
+{
+    $filters = lead_filters_from_request();
+    $page = $filters['page'];
+    $params = $_GET;
+    $params['module'] = 'leads';
+
+    ob_start();
+    ?>
+    <div class="pagination">
+        <?php if ($page > 1): ?>
+            <?php $params['page'] = $page - 1; ?>
+            <a class="button secondary-button" href="crud.php?<?= h(http_build_query($params)) ?>">Назад</a>
+        <?php endif; ?>
+        <span>Страница <?= (int)$page ?></span>
+        <?php if ($rowCount >= $filters['per_page']): ?>
+            <?php $params['page'] = $page + 1; ?>
+            <a class="button secondary-button" href="crud.php?<?= h(http_build_query($params)) ?>">Дальше</a>
+        <?php endif; ?>
+    </div>
+    <?php
+    return trim(ob_get_clean());
+}
+
 function render_crud_list(string $moduleKey, array $columns, array $rows, bool $canEdit, bool $canDelete): string
 {
     ob_start();
     ?>
+    <?php if ($moduleKey === 'leads'): ?>
+        <?= render_lead_filters() ?>
+    <?php endif; ?>
     <div class="table-summary">Найдено записей: <?= count($rows) ?></div>
     <?php if ($rows): ?>
-        <table class="data-table">
+        <table class="data-table <?= $moduleKey === 'leads' ? 'compact-table' : '' ?>">
             <thead>
                 <tr>
                     <?php foreach ($columns as $label): ?>
@@ -397,13 +574,7 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
                 <?php foreach ($rows as $row): ?>
                     <tr>
                         <?php foreach ($columns as $key => $label): ?>
-                            <td>
-                                <?php if ($key === 'image_preview' && !empty($row['image_path'])): ?>
-                                    <img class="table-thumb" src="<?= h($row['image_path']) ?>" alt="">
-                                <?php else: ?>
-                                    <?= nl2br(h(crud_cell_value($moduleKey, $key, $row))) ?>
-                                <?php endif; ?>
-                            </td>
+                            <td><?= render_cell($moduleKey, $key, $row) ?></td>
                         <?php endforeach; ?>
                         <?php if ($canEdit || $canDelete): ?>
                             <td class="row-actions">
@@ -426,6 +597,9 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
         </table>
     <?php else: ?>
         <div class="empty-state">Записей в этом разделе пока нет или они недоступны для вашей роли.</div>
+    <?php endif; ?>
+    <?php if ($moduleKey === 'leads'): ?>
+        <?= render_lead_pagination(count($rows)) ?>
     <?php endif; ?>
     <?php
     return trim(ob_get_clean());
