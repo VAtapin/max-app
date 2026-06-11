@@ -638,7 +638,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php elseif ($success === 'deleted'): ?>
     <div class="notice success">Запись удалена.</div>
 <?php elseif ($success === 'response_sent'): ?>
-    <div class="notice success">Ответ отправлен пользователю.</div>
+    <div class="notice success">Ответ отправлен пользователю в Telegram.</div>
 <?php endif; ?>
 <?php foreach ($errors as $error): ?>
     <div class="alert"><?= h($error) ?></div>

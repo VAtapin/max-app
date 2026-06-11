@@ -275,6 +275,8 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
         $stmt->execute(['id' => $leadId]);
     } elseif ($status === 'failed') {
         $errors[] = 'Ответ сохранен, но не отправлен: ' . $error;
+    } elseif ($status === 'pending' && $error) {
+        $errors[] = $error;
     }
 
     log_activity('admin', (int)$admin['id'], 'send_lead_response', 'lead_responses', $responseId, [

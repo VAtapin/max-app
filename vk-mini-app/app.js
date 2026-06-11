@@ -223,6 +223,30 @@ async function renderRecommendations() {
         : '<div class="empty">Рекомендаций пока нет.</div>';
 }
 
+async function renderLeads() {
+    const result = await api(`leads.php?${userQuery()}`);
+    page.innerHTML = result.leads.length
+        ? result.leads.map((lead) => `
+            <article class="item">
+                <strong>Заявка #${lead.id}</strong>
+                <span class="muted">Статус: ${escapeHtml(lead.status)}</span>
+                <span class="muted">Платформа: ${escapeHtml(lead.source_platform)}</span>
+                ${lead.product_title ? `<span>${escapeHtml(lead.product_title)}</span>` : ''}
+                ${lead.message ? `<span class="muted">${escapeHtml(lead.message)}</span>` : ''}
+                ${(lead.responses || []).map((response) => `
+                    <div class="response">
+                        <strong>Ответ менеджера</strong>
+                        <span>${escapeHtml(response.message_text || '')}</span>
+                        ${response.attachment_path ? `<a href="${escapeHtml(response.attachment_path)}" target="_blank" rel="noopener">Файл</a>` : ''}
+                        ${response.external_url ? `<a href="${escapeHtml(response.external_url)}" target="_blank" rel="noopener">Ссылка</a>` : ''}
+                        <span class="muted">${escapeHtml(response.sent_at || response.created_at || '')}</span>
+                    </div>
+                `).join('')}
+            </article>
+        `).join('')
+        : '<div class="empty">Заявок пока нет.</div>';
+}
+
 async function contactManager(productId = null) {
     const payload = {
         ...userPayload(),
@@ -244,6 +268,7 @@ async function render() {
         if (state.page === 'tests') await renderTests();
         if (state.page === 'products') await renderProducts();
         if (state.page === 'recommendations') await renderRecommendations();
+        if (state.page === 'leads') await renderLeads();
     } catch (error) {
         page.innerHTML = `<div class="empty">${error.message}</div>`;
     }

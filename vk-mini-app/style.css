@@ -52,7 +52,7 @@ h2 {
 
 .tabs {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, minmax(86px, 1fr));
     gap: 6px;
     margin-bottom: 14px;
     overflow-x: auto;
@@ -112,6 +112,19 @@ h2 {
     color: var(--accent-dark);
     font-size: 13px;
     padding: 6px 8px;
+}
+
+.response {
+    background: #f4f7f6;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    display: grid;
+    gap: 6px;
+    padding: 10px;
+}
+
+.response a {
+    color: var(--accent-dark);
 }
 
 .muted {

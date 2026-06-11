@@ -24,5 +24,27 @@ $stmt = db()->prepare(
      LIMIT 50'
 );
 $stmt->execute(['end_user_id' => $user['id']]);
+$leads = $stmt->fetchAll();
 
-json_response(['leads' => $stmt->fetchAll()]);
+if ($leads) {
+    $leadIds = array_map(static fn($lead) => (int)$lead['id'], $leads);
+    $placeholders = implode(',', array_fill(0, count($leadIds), '?'));
+    $responsesStmt = db()->prepare(
+        "SELECT id, lead_id, message_text, attachment_path, external_url, status, sent_at, created_at
+         FROM lead_responses
+         WHERE lead_id IN ($placeholders)
+         ORDER BY id ASC"
+    );
+    $responsesStmt->execute($leadIds);
+    $responsesByLead = [];
+    foreach ($responsesStmt->fetchAll() as $response) {
+        $responsesByLead[(int)$response['lead_id']][] = $response;
+    }
+
+    foreach ($leads as &$lead) {
+        $lead['responses'] = $responsesByLead[(int)$lead['id']] ?? [];
+    }
+    unset($lead);
+}
+
+json_response(['leads' => $leads]);

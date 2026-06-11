@@ -308,6 +308,15 @@ async function renderLeads() {
                 <span class="muted">Платформа: ${escapeHtml(lead.source_platform)}</span>
                 ${lead.product_title ? `<span>${escapeHtml(lead.product_title)}</span>` : ''}
                 ${lead.message ? `<span class="muted">${escapeHtml(lead.message)}</span>` : ''}
+                ${(lead.responses || []).map((response) => `
+                    <div class="response">
+                        <strong>Ответ менеджера</strong>
+                        <span>${escapeHtml(response.message_text || '')}</span>
+                        ${response.attachment_path ? `<a href="${escapeHtml(response.attachment_path)}" target="_blank" rel="noopener">Файл</a>` : ''}
+                        ${response.external_url ? `<a href="${escapeHtml(response.external_url)}" target="_blank" rel="noopener">Ссылка</a>` : ''}
+                        <span class="muted">${escapeHtml(response.sent_at || response.created_at || '')}</span>
+                    </div>
+                `).join('')}
             </article>
         `).join('')
         : '<div class="empty">Заявок пока нет.</div>';
