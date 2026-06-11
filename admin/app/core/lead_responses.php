@@ -134,7 +134,19 @@ function test_snippet(?int $testId): ?array
     return $test ?: null;
 }
 
-function build_lead_response_text(string $message, ?array $content, ?array $test, ?string $attachmentPath, ?string $externalUrl): string
+function mini_app_url(?int $testId = null): string
+{
+    $configured = app_config()['integrations']['mini_app_url'] ?? '';
+    $url = $configured !== '' ? $configured : (absolute_public_url('/mini-app/index.html') ?: '/mini-app/index.html');
+    if ($testId) {
+        $separator = str_contains($url, '?') ? '&' : '?';
+        $url .= $separator . 'page=tests&test_id=' . $testId;
+    }
+
+    return $url;
+}
+
+function build_lead_response_text(string $message, ?array $content, ?array $test): string
 {
     $parts = [];
     if (trim($message) !== '') {
@@ -147,55 +159,35 @@ function build_lead_response_text(string $message, ?array $content, ?array $test
         if ($contentText !== '') {
             $parts[] = $contentText;
         }
-        foreach (['image_path', 'attachment_path', 'video_url', 'button_url'] as $field) {
-            $url = absolute_public_url($content[$field] ?? null);
-            if ($url) {
-                $parts[] = $url;
-            }
-        }
     }
 
     if ($test) {
         $parts[] = 'Рекомендуем пройти тест: ' . $test['title'];
-        $parts[] = absolute_public_url('/mini-app/index.html') ?: '/mini-app/index.html';
-    }
-
-    $attachmentUrl = absolute_public_url($attachmentPath);
-    if ($attachmentUrl) {
-        $parts[] = 'Файл: ' . $attachmentUrl;
-    }
-
-    if (trim((string)$externalUrl) !== '') {
-        $parts[] = trim((string)$externalUrl);
     }
 
     return trim(implode("\n\n", array_filter($parts)));
 }
 
-function send_telegram_text(string $chatId, string $text): array
+function telegram_api_request(string $method, array $payload): array
 {
     $token = app_config()['integrations']['telegram_bot_token'] ?? '';
     if ($token === '') {
         return ['ok' => false, 'error' => 'TELEGRAM_BOT_TOKEN is not configured.'];
     }
 
-    $payload = json_encode([
-        'chat_id' => $chatId,
-        'text' => $text,
-        'disable_web_page_preview' => false,
-    ], JSON_UNESCAPED_UNICODE);
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE);
 
     $context = stream_context_create([
         'http' => [
             'method' => 'POST',
             'header' => "Content-Type: application/json\r\n",
-            'content' => $payload,
+            'content' => $json,
             'timeout' => 15,
             'ignore_errors' => true,
         ],
     ]);
 
-    $response = @file_get_contents('https://api.telegram.org/bot' . $token . '/sendMessage', false, $context);
+    $response = @file_get_contents('https://api.telegram.org/bot' . $token . '/' . $method, false, $context);
     $decoded = $response ? json_decode($response, true) : null;
     if (is_array($decoded) && ($decoded['ok'] ?? false)) {
         return ['ok' => true, 'error' => null];
@@ -205,6 +197,116 @@ function send_telegram_text(string $chatId, string $text): array
         'ok' => false,
         'error' => is_array($decoded) ? ($decoded['description'] ?? 'Telegram API error') : 'Telegram API request failed',
     ];
+}
+
+function telegram_buttons(?array $content, ?array $test, ?string $externalUrl): array
+{
+    $buttons = [];
+    if ($test) {
+        $buttons[] = [[
+            'text' => 'Пройти тест',
+            'web_app' => ['url' => mini_app_url((int)$test['id'])],
+        ]];
+    }
+
+    $videoUrl = trim((string)($content['video_url'] ?? ''));
+    if ($videoUrl !== '') {
+        $buttons[] = [[
+            'text' => 'Открыть видео',
+            'url' => $videoUrl,
+        ]];
+    }
+
+    $buttonUrl = trim((string)($content['button_url'] ?? ''));
+    if ($buttonUrl !== '') {
+        $buttons[] = [[
+            'text' => trim((string)($content['button_text'] ?? 'Открыть материал')) ?: 'Открыть материал',
+            'url' => $buttonUrl,
+        ]];
+    }
+
+    if (trim((string)$externalUrl) !== '') {
+        $buttons[] = [[
+            'text' => 'Открыть ссылку',
+            'url' => trim((string)$externalUrl),
+        ]];
+    }
+
+    return $buttons;
+}
+
+function send_telegram_text(string $chatId, string $text, array $buttons = []): array
+{
+    $payload = [
+        'chat_id' => $chatId,
+        'text' => $text !== '' ? $text : 'Материалы по вашей заявке.',
+        'disable_web_page_preview' => false,
+    ];
+
+    if ($buttons) {
+        $payload['reply_markup'] = ['inline_keyboard' => $buttons];
+    }
+
+    return telegram_api_request('sendMessage', $payload);
+}
+
+function telegram_media_method(string $path): ?array
+{
+    $extension = strtolower(pathinfo(parse_url($path, PHP_URL_PATH) ?: $path, PATHINFO_EXTENSION));
+    return match ($extension) {
+        'jpg', 'jpeg', 'png', 'webp' => ['method' => 'sendPhoto', 'field' => 'photo'],
+        'mp4' => ['method' => 'sendVideo', 'field' => 'video'],
+        'pdf' => ['method' => 'sendDocument', 'field' => 'document'],
+        default => ['method' => 'sendDocument', 'field' => 'document'],
+    };
+}
+
+function send_telegram_media(string $chatId, ?string $path, string $caption = ''): array
+{
+    $url = absolute_public_url($path);
+    if (!$url) {
+        return ['ok' => true, 'error' => null];
+    }
+
+    $media = telegram_media_method($url);
+    if (!$media) {
+        return ['ok' => false, 'error' => 'Unsupported attachment type.'];
+    }
+
+    $payload = [
+        'chat_id' => $chatId,
+        $media['field'] => $url,
+    ];
+    if ($caption !== '') {
+        $payload['caption'] = function_exists('mb_substr') ? mb_substr($caption, 0, 1024) : substr($caption, 0, 1024);
+    }
+
+    return telegram_api_request($media['method'], $payload);
+}
+
+function send_telegram_response(string $chatId, string $text, ?array $content, ?array $test, ?string $attachmentPath, ?string $externalUrl): array
+{
+    $errors = [];
+    $messageResult = send_telegram_text($chatId, $text, telegram_buttons($content, $test, $externalUrl));
+    if (!$messageResult['ok']) {
+        $errors[] = $messageResult['error'];
+    }
+
+    foreach ([
+        ['path' => $content['image_path'] ?? null, 'caption' => $content ? (string)$content['title'] : ''],
+        ['path' => $content['attachment_path'] ?? null, 'caption' => $content ? (string)$content['title'] : ''],
+        ['path' => $attachmentPath, 'caption' => 'Файл по заявке'],
+    ] as $item) {
+        if (!$item['path']) {
+            continue;
+        }
+        $result = send_telegram_media($chatId, $item['path'], $item['caption']);
+        if (!$result['ok']) {
+            $errors[] = $result['error'];
+        }
+    }
+
+    return $errors ? ['ok' => false, 'error' => implode('; ', array_filter($errors))] : ['ok' => true, 'error' => null];
 }
 
 function create_and_send_lead_response(int $leadId, array $admin, array &$errors): ?int
@@ -223,7 +325,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
 
     $content = content_snippet($contentId);
     $test = test_snippet($testId);
-    $text = build_lead_response_text($message, $content, $test, $attachmentPath, $externalUrl);
+    $text = build_lead_response_text($message, $content, $test);
     if ($text === '') {
         $errors[] = 'Добавьте текст, материал, тест, файл или ссылку для ответа.';
         return null;
@@ -251,7 +353,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
     $status = 'pending';
     $error = null;
     if ($platform === 'telegram') {
-        $result = send_telegram_text((string)$lead['platform_user_id'], $text);
+        $result = send_telegram_response((string)$lead['platform_user_id'], $text, $content, $test, $attachmentPath, $externalUrl);
         $status = $result['ok'] ? 'sent' : 'failed';
         $error = $result['error'];
     } else {

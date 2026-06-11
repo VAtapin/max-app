@@ -27,6 +27,7 @@ $config = [
     ],
     'integrations' => [
         'telegram_bot_token' => getenv('TELEGRAM_BOT_TOKEN') ?: '',
+        'mini_app_url' => getenv('SWPRO_MINI_APP_URL') ?: '',
         'vk_app_id' => getenv('VK_APP_ID') ?: '',
         'vk_secure_key' => getenv('VK_SECURE_KEY') ?: '',
         'vk_service_token' => getenv('VK_SERVICE_TOKEN') ?: '',

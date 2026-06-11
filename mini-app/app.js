@@ -6,6 +6,7 @@ const state = {
     platform: 'web',
     page: 'home',
     activeTest: null,
+    initialTestId: null,
 };
 
 const page = document.querySelector('#page');
@@ -15,6 +16,19 @@ function getReferralCode() {
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
     const search = new URLSearchParams(window.location.search);
     return hash.get('ref') || search.get('ref') || search.get('startapp') || null;
+}
+
+function applyInitialRoute() {
+    const search = new URLSearchParams(window.location.search);
+    const page = search.get('page');
+    const testId = Number(search.get('test_id') || 0);
+    if (['home', 'profile', 'tests', 'products', 'recommendations', 'leads'].includes(page || '')) {
+        state.page = page;
+    }
+    if (testId > 0) {
+        state.page = 'tests';
+        state.initialTestId = testId;
+    }
 }
 
 async function api(path, options = {}) {
@@ -345,7 +359,15 @@ async function render() {
     try {
         if (state.page === 'home') renderHome();
         if (state.page === 'profile') await renderProfile();
-        if (state.page === 'tests') await renderTests();
+        if (state.page === 'tests') {
+            if (state.initialTestId) {
+                const testId = state.initialTestId;
+                state.initialTestId = null;
+                await renderTest(testId);
+            } else {
+                await renderTests();
+            }
+        }
         if (state.page === 'products') await renderProducts();
         if (state.page === 'recommendations') await renderRecommendations();
         if (state.page === 'leads') await renderLeads();
@@ -375,6 +397,8 @@ page.addEventListener('submit', async (event) => {
     event.preventDefault();
     await submitTest(target);
 });
+
+applyInitialRoute();
 
 authorize()
     .then(render)

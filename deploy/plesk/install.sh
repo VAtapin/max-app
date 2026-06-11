@@ -60,6 +60,7 @@ return [
     ],
     'integrations' => [
         'telegram_bot_token' => $(php_quote "${TELEGRAM_BOT_TOKEN:-}"),
+        'mini_app_url' => $(php_quote "${SWPRO_MINI_APP_URL:-https://swpro.ru/mini-app/index.html}"),
         'vk_app_id' => $(php_quote "${VK_APP_ID:-}"),
         'vk_secure_key' => $(php_quote "${VK_SECURE_KEY:-}"),
         'vk_service_token' => $(php_quote "${VK_SERVICE_TOKEN:-}"),
