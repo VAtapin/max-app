@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
+require_once __DIR__ . '/../app/core/crud_views.php';
 
 $admin = require_auth();
 
@@ -386,18 +387,104 @@ function save_record(string $moduleKey, array $module, array $payload, ?int $id,
     return $newId;
 }
 
+function unique_referral_code(string $prefix): string
+{
+    for ($i = 0; $i < 10; $i++) {
+        $code = $prefix . strtoupper(substr(bin2hex(random_bytes(6)), 0, 8));
+        $stmt = db()->prepare(
+            'SELECT
+                (SELECT COUNT(*) FROM resellers WHERE referral_code = :code) +
+                (SELECT COUNT(*) FROM managers WHERE referral_code = :code) +
+                (SELECT COUNT(*) FROM admin_users WHERE referral_code = :code) AS total'
+        );
+        $stmt->execute(['code' => $code]);
+        if ((int)$stmt->fetchColumn() === 0) {
+            return $code;
+        }
+    }
+
+    return $prefix . strtoupper(substr(bin2hex(random_bytes(10)), 0, 12));
+}
+
+function promote_user_to_reseller(int $endUserId, array $admin): int
+{
+    if (($admin['role'] ?? '') !== 'superadmin') {
+        throw new RuntimeException('Только супер-админ может создавать реселлеров из пользователей.');
+    }
+
+    $stmt = db()->prepare('SELECT * FROM end_users WHERE id = :id LIMIT 1');
+    $stmt->execute(['id' => $endUserId]);
+    $user = $stmt->fetch();
+    if (!$user) {
+        throw new RuntimeException('Пользователь не найден.');
+    }
+
+    if (!empty($user['reseller_id'])) {
+        return (int)$user['reseller_id'];
+    }
+
+    $name = trim((string)($user['first_name'] ?? '') . ' ' . (string)($user['last_name'] ?? ''));
+    if ($name === '') {
+        $name = (string)($user['username'] ?? '');
+    }
+    if ($name === '') {
+        $name = strtoupper((string)$user['platform']) . ' ' . (string)$user['platform_user_id'];
+    }
+
+    $stmt = db()->prepare(
+        'INSERT INTO resellers (name, email, phone, referral_code, is_active)
+         VALUES (:name, :email, :phone, :referral_code, 1)'
+    );
+    $stmt->execute([
+        'name' => $name,
+        'email' => $user['email'] ?: null,
+        'phone' => $user['phone'] ?: null,
+        'referral_code' => unique_referral_code('RS'),
+    ]);
+    $resellerId = (int)db()->lastInsertId();
+
+    $stmt = db()->prepare('UPDATE end_users SET reseller_id = :reseller_id WHERE id = :id');
+    $stmt->execute(['reseller_id' => $resellerId, 'id' => $endUserId]);
+
+    log_activity('admin', (int)$admin['id'], 'promote_user_to_reseller', 'resellers', $resellerId, [
+        'end_user_id' => $endUserId,
+    ]);
+
+    return $resellerId;
+}
+
 $action = $_GET['action'] ?? 'list';
 $id = isset($_GET['id']) ? (int)$_GET['id'] : null;
 $errors = [];
 $success = $_GET['success'] ?? null;
 $editRow = null;
+$canCreate = crud_create_enabled($moduleKey);
+$canDelete = crud_delete_enabled($moduleKey);
+
+if ($action === 'create' && !$canCreate) {
+    $errors[] = 'Этот раздел заполняется автоматически из Telegram, VK, MAX или мини-приложения. Создание вручную отключено.';
+    $action = 'list';
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $postAction = $_POST['action'] ?? 'save';
     $postId = isset($_POST['id']) && $_POST['id'] !== '' ? (int)$_POST['id'] : null;
 
+    if ($postAction === 'promote_reseller') {
+        try {
+            promote_user_to_reseller((int)$postId, $admin);
+            redirect('crud.php?module=users&success=promoted_reseller');
+        } catch (Throwable $e) {
+            $errors[] = 'Не удалось создать реселлера: ' . $e->getMessage();
+            $action = 'list';
+        }
+    }
+
     if ($postAction === 'delete') {
+        if (!$canDelete) {
+            $errors[] = 'Удаление в этом разделе отключено, чтобы не потерять историю пользователей, платформ и заявок.';
+        } else {
         if (!$postId || !scoped_row_exists($moduleKey, $module, $postId, $admin)) {
             http_response_code(404);
             exit('Record not found');
@@ -411,8 +498,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Throwable $e) {
             $errors[] = 'Не удалось удалить запись: ' . $e->getMessage();
         }
+        }
+        $action = 'list';
     }
 
+    if ($postAction === 'save') {
+    if (!$postId && !$canCreate) {
+        $errors[] = 'Создание вручную в этом разделе отключено.';
+        $action = 'list';
+    } else {
     if ($postId && !scoped_row_exists($moduleKey, $module, $postId, $admin)) {
         http_response_code(404);
         exit('Record not found');
@@ -432,6 +526,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $editRow = $payload + ['id' => $postId];
     $action = $postId ? 'edit' : 'create';
+    }
+    }
 }
 
 if ($action === 'edit' && $id) {
@@ -444,27 +540,34 @@ if ($action === 'edit' && $id) {
     $editRow = $stmt->fetch();
 }
 
-$columnsSql = implode(', ', array_map(static fn($column) => "`$column`", $module['columns']));
-[$where, $params] = scope_where_for_module($moduleKey, $admin);
 $rows = [];
+$listHtml = '';
+$displayColumns = crud_display_columns($moduleKey);
 try {
-    $stmt = db()->prepare("SELECT $columnsSql FROM {$module['table']} $where ORDER BY id DESC LIMIT 100");
+    [$listSql, $params] = crud_list_query($moduleKey, $module, $admin);
+    $stmt = db()->prepare($listSql);
     $stmt->execute($params);
     $rows = $stmt->fetchAll();
+    $listHtml = render_crud_list($moduleKey, $displayColumns, $rows, $canDelete, $admin);
 } catch (Throwable $e) {
     $errors[] = 'Не удалось загрузить список записей: ' . $e->getMessage();
+    $listHtml = '<div class="empty-state">Список временно недоступен. Подробность показана выше.</div>';
 }
 
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
 <div class="toolbar">
     <h1><?= h($title) ?></h1>
-    <a class="button" href="crud.php?module=<?= h($moduleKey) ?>&action=create">Добавить</a>
+    <?php if ($canCreate): ?>
+        <a class="button" href="crud.php?module=<?= h($moduleKey) ?>&action=create">Добавить</a>
+    <?php endif; ?>
 </div>
 <?php if ($success === 'saved'): ?>
     <div class="notice success">Запись сохранена.</div>
 <?php elseif ($success === 'deleted'): ?>
     <div class="notice success">Запись удалена.</div>
+<?php elseif ($success === 'promoted_reseller'): ?>
+    <div class="notice success">Реселлер создан и привязан к пользователю.</div>
 <?php endif; ?>
 <?php foreach ($errors as $error): ?>
     <div class="alert"><?= h($error) ?></div>
@@ -523,42 +626,14 @@ require __DIR__ . '/../app/views/layouts/header.php';
     </section>
 <?php endif; ?>
 <section class="panel">
-    <div class="table-summary">Найдено записей: <?= count($rows) ?></div>
-    <?php if ($rows): ?>
-        <table>
-            <thead>
-                <tr>
-                    <?php foreach ($module['columns'] as $column): ?>
-                        <th><?= h($column) ?></th>
-                    <?php endforeach; ?>
-                    <th>Действия</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($rows as $row): ?>
-                    <tr>
-                        <?php foreach ($module['columns'] as $column): ?>
-                            <td><?= h(format_cell_value($row[$column] ?? null)) ?></td>
-                        <?php endforeach; ?>
-                        <td>
-                            <a class="link-button" href="crud.php?module=<?= h($moduleKey) ?>&action=edit&id=<?= (int)$row['id'] ?>">Редактировать</a>
-                            <form method="post" class="inline-form" onsubmit="return confirm('Удалить запись #<?= (int)$row['id'] ?>?');">
-                                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="delete">
-                                <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-                                <button type="submit" class="link-button danger">Удалить</button>
-                            </form>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php else: ?>
-        <div class="empty-state">Записей в этом разделе пока нет или они недоступны для вашей роли.</div>
-    <?php endif; ?>
+    <?= $listHtml ?>
 </section>
 <section class="panel">
-    <h2>Правила доступа</h2>
-    <p>Супер-админ управляет всеми разделами. Реселлер видит своих менеджеров, пользователей и лиды. Менеджер работает только со своими пользователями и лидами.</p>
+    <h2>Права доступа</h2>
+    <div class="access-rules">
+        <p><strong>Супер-админ:</strong> видит всю систему, управляет продуктами, тестами, контентом, рассылками, реселлерами, менеджерами, пользователями и лидами.</p>
+        <p><strong>Реселлер:</strong> видит своих менеджеров, пользователей, аккаунты платформ, лиды и рассылки в рамках своей структуры. Продукты и тесты не меняет.</p>
+        <p><strong>Менеджер:</strong> видит только назначенных ему пользователей, их платформы и лиды. Может обрабатывать заявки, но не управляет каталогом и тестами.</p>
+    </div>
 </section>
 <?php require __DIR__ . '/../app/views/layouts/footer.php'; ?>

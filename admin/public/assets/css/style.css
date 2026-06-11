@@ -149,6 +149,10 @@ table {
     font-size: 14px;
 }
 
+.data-table {
+    min-width: 920px;
+}
+
 .table-summary {
     color: var(--muted);
     font-size: 13px;
@@ -168,6 +172,7 @@ td {
     padding: 10px;
     text-align: left;
     vertical-align: top;
+    white-space: pre-line;
 }
 
 th {
@@ -209,6 +214,20 @@ button:disabled {
 .inline-form {
     display: inline;
     margin-left: 10px;
+}
+
+.row-actions {
+    min-width: 180px;
+    white-space: normal;
+}
+
+.access-rules {
+    display: grid;
+    gap: 8px;
+}
+
+.access-rules p {
+    margin: 0;
 }
 
 .form-panel {
