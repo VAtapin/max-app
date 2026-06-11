@@ -404,7 +404,7 @@ CREATE TABLE lead_responses (
   test_id BIGINT UNSIGNED NULL,
   platform ENUM('telegram', 'vk', 'max', 'web') NOT NULL,
   message_text TEXT NULL,
-  attachment_path VARCHAR(255) NULL,
+  attachment_path TEXT NULL,
   external_url VARCHAR(255) NULL,
   status ENUM('pending', 'sent', 'failed') NOT NULL DEFAULT 'pending',
   error_message TEXT NULL,

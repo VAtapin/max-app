@@ -5,6 +5,23 @@ require __DIR__ . '/lead_service.php';
 
 $user = require_platform_user();
 
+function response_attachment_paths(?string $value): array
+{
+    $value = trim((string)$value);
+    if ($value === '') {
+        return [];
+    }
+
+    $decoded = json_decode($value, true);
+    if (is_array($decoded)) {
+        return array_values(array_filter(array_map('strval', $decoded), static fn($path) => trim($path) !== ''));
+    }
+
+    $paths = preg_split('/\r\n|\r|\n/', $value) ?: [];
+    return array_values(array_filter(array_map('trim', $paths), static fn($path) => $path !== ''));
+}
+
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = input_json() ?: $_POST;
     $leadId = create_lead_for_user($user, $data);
@@ -38,6 +55,7 @@ if ($leads) {
     $responsesStmt->execute($leadIds);
     $responsesByLead = [];
     foreach ($responsesStmt->fetchAll() as $response) {
+        $response['attachments'] = response_attachment_paths($response['attachment_path'] ?? null);
         $responsesByLead[(int)$response['lead_id']][] = $response;
     }
 

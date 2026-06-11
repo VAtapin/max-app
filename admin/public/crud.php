@@ -270,6 +270,23 @@ function safe_select_options(string $source, array $admin, array &$errors): arra
     }
 }
 
+function form_option_label(string $fieldName, string $option): string
+{
+    if ($fieldName === 'status') {
+        return status_label($option);
+    }
+
+    if (in_array($fieldName, ['platform', 'source_platform'], true)) {
+        return platform_label($option);
+    }
+
+    if ($fieldName === 'target_type') {
+        return target_label($option);
+    }
+
+    return $option;
+}
+
 function format_cell_value(mixed $value): string
 {
     if ($value === null || $value === '') {
@@ -666,7 +683,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                             <?php endif; ?>
                             <?php if (isset($field['options'])): ?>
                                 <?php foreach ($field['options'] as $option): ?>
-                                    <option value="<?= h($option) ?>" <?= (string)$value === (string)$option ? 'selected' : '' ?>><?= h($option) ?></option>
+                                    <option value="<?= h($option) ?>" <?= (string)$value === (string)$option ? 'selected' : '' ?>><?= h(form_option_label($name, $option)) ?></option>
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <?php foreach (safe_select_options($field['source'], $admin, $errors) as $option): ?>
@@ -739,7 +756,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 
                 <label class="field">
                     <span>Файл: изображение, PDF или MP4</span>
-                    <input type="file" name="response_attachment" accept="image/*,application/pdf,video/mp4">
+                    <input type="file" name="response_attachments[]" accept="image/*,application/pdf,video/mp4" multiple>
                 </label>
 
                 <label class="field">
@@ -783,10 +800,12 @@ require __DIR__ . '/../app/views/layouts/header.php';
                             <td>
                                 <?= h($response['content_title'] ?? '') ?>
                                 <?= $response['test_title'] ? '<br>' . h($response['test_title']) : '' ?>
-                                <?= $response['attachment_path'] ? '<br><a href="' . h($response['attachment_path']) . '" target="_blank" rel="noopener">Файл</a>' : '' ?>
+                                <?php foreach (lead_response_attachment_paths($response['attachment_path'] ?? null) as $fileIndex => $attachmentPath): ?>
+                                    <br><a href="<?= h($attachmentPath) ?>" target="_blank" rel="noopener">Файл <?= $fileIndex + 1 ?></a>
+                                <?php endforeach; ?>
                             </td>
                             <td>
-                                <?= h($response['status']) ?>
+                                <?= h(status_label($response['status'] ?? 'pending')) ?>
                                 <?= $response['error_message'] ? '<br>' . h($response['error_message']) : '' ?>
                             </td>
                         </tr>

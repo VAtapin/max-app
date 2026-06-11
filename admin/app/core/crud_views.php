@@ -410,17 +410,17 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
     }
 
     if ($column === 'lead_status') {
-        return (string)($row['status'] ?? 'new');
+        return status_label((string)($row['status'] ?? 'new'));
     }
 
     if ($column === 'response_summary') {
         if (empty($row['response_count'])) {
-            return 'нет ответа';
+            return status_label('none');
         }
 
         $status = (string)($row['last_response_status'] ?? 'pending');
         $date = (string)($row['last_response_at'] ?? '');
-        return $status . ($date ? "\n" . $date : '');
+        return status_label($status) . ($date ? "\n" . $date : '');
     }
 
     if ($column === 'media_summary') {
@@ -447,11 +447,11 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
 function status_badge_class(string $value): string
 {
     return match ($value) {
-        'new', 'none', 'нет ответа' => 'badge badge-new',
-        'contacted', 'sent' => 'badge badge-sent',
-        'interested', 'pending' => 'badge badge-pending',
-        'closed' => 'badge badge-closed',
-        'lost', 'failed' => 'badge badge-failed',
+        'new', 'none', status_label('none') => 'badge badge-new',
+        'contacted', 'sent', status_label('contacted'), status_label('sent') => 'badge badge-sent',
+        'interested', 'pending', status_label('interested'), status_label('pending') => 'badge badge-pending',
+        'closed', status_label('closed') => 'badge badge-closed',
+        'lost', 'failed', status_label('lost'), status_label('failed') => 'badge badge-failed',
         default => 'badge',
     };
 }
@@ -482,14 +482,14 @@ function render_lead_filters(): string
     $filters = lead_filters_from_request();
     $statuses = [
         'all' => 'Все статусы',
-        'new' => 'Новые',
-        'contacted' => 'Есть контакт',
-        'interested' => 'Интерес',
-        'closed' => 'Закрытые',
-        'lost' => 'Потерянные',
+        'new' => status_label('new'),
+        'contacted' => status_label('contacted'),
+        'interested' => status_label('interested'),
+        'closed' => status_label('closed'),
+        'lost' => status_label('lost'),
     ];
-    $platforms = ['all' => 'Все платформы', 'telegram' => 'Telegram', 'vk' => 'VK', 'max' => 'MAX', 'web' => 'Web'];
-    $responses = ['all' => 'Все ответы', 'none' => 'Без ответа', 'sent' => 'Отправлено', 'pending' => 'Ожидает', 'failed' => 'Ошибка'];
+    $platforms = ['all' => platform_label('all'), 'telegram' => platform_label('telegram'), 'vk' => platform_label('vk'), 'max' => platform_label('max'), 'web' => platform_label('web')];
+    $responses = ['all' => 'Все ответы', 'none' => status_label('none'), 'sent' => status_label('sent'), 'pending' => status_label('pending'), 'failed' => status_label('failed')];
 
     ob_start();
     ?>

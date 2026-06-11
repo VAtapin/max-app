@@ -312,6 +312,17 @@ async function renderRecommendations() {
         : '<div class="empty">Рекомендаций пока нет.</div>';
 }
 
+
+function responseAttachmentLinks(response) {
+    const attachments = Array.isArray(response.attachments)
+        ? response.attachments
+        : (response.attachment_path ? [response.attachment_path] : []);
+
+    return attachments.map((path, index) => (
+        `<a href="${escapeHtml(path)}" target="_blank" rel="noopener">???? ${index + 1}</a>`
+    )).join('');
+}
+
 async function renderLeads() {
     const result = await api(`leads.php?${userQuery()}`);
     page.innerHTML = result.leads.length

@@ -24,20 +24,60 @@ function lead_response_upload_dir(): string
     return dirname(__DIR__, 2) . '/uploads/responses';
 }
 
-function save_response_attachment(array &$errors): ?string
+function lead_response_attachment_paths(?string $value): array
 {
-    $file = $_FILES['response_attachment'] ?? null;
-    if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+    $value = trim((string)$value);
+    if ($value === '') {
+        return [];
+    }
+
+    $decoded = json_decode($value, true);
+    if (is_array($decoded)) {
+        return array_values(array_filter(array_map('strval', $decoded), static fn($path) => trim($path) !== ''));
+    }
+
+    $paths = preg_split('/\r\n|\r|\n/', $value) ?: [];
+    return array_values(array_filter(array_map('trim', $paths), static fn($path) => $path !== ''));
+}
+
+function normalize_uploaded_files(?array $file): array
+{
+    if (!$file) {
+        return [];
+    }
+
+    if (!is_array($file['name'] ?? null)) {
+        return [$file];
+    }
+
+    $files = [];
+    $count = count($file['name']);
+    for ($i = 0; $i < $count; $i++) {
+        $files[] = [
+            'name' => $file['name'][$i] ?? '',
+            'type' => $file['type'][$i] ?? '',
+            'tmp_name' => $file['tmp_name'][$i] ?? '',
+            'error' => $file['error'][$i] ?? UPLOAD_ERR_NO_FILE,
+            'size' => $file['size'][$i] ?? 0,
+        ];
+    }
+
+    return $files;
+}
+
+function save_single_response_attachment(array $file, array &$errors): ?string
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         return null;
     }
 
-    if ($file['error'] !== UPLOAD_ERR_OK) {
+    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
         $errors[] = 'Не удалось загрузить вложение для ответа.';
         return null;
     }
 
     $config = app_config();
-    $maxBytes = (int)($config['security']['upload_max_bytes'] ?? 5242880);
+    $maxBytes = (int)($config['security']['upload_max_bytes'] ?? 0);
     $allowedTypes = $config['security']['allowed_attachment_types'] ?? [
         'image/jpeg',
         'image/png',
@@ -85,6 +125,21 @@ function save_response_attachment(array &$errors): ?string
     }
 
     return '/admin/uploads/responses/' . $filename;
+}
+
+function save_response_attachments(array &$errors): array
+{
+    $input = $_FILES['response_attachments'] ?? ($_FILES['response_attachment'] ?? null);
+    $paths = [];
+
+    foreach (normalize_uploaded_files($input) as $file) {
+        $path = save_single_response_attachment($file, $errors);
+        if ($path) {
+            $paths[] = $path;
+        }
+    }
+
+    return $paths;
 }
 
 function lead_context(int $leadId): ?array
@@ -284,7 +339,7 @@ function send_telegram_media(string $chatId, ?string $path, string $caption = ''
     return telegram_api_request($media['method'], $payload);
 }
 
-function send_telegram_response(string $chatId, string $text, ?array $content, ?array $test, ?string $attachmentPath, ?string $externalUrl): array
+function send_telegram_response(string $chatId, string $text, ?array $content, ?array $test, array $attachmentPaths, ?string $externalUrl): array
 {
     $errors = [];
     $messageResult = send_telegram_text($chatId, $text, telegram_buttons($content, $test, $externalUrl));
@@ -292,11 +347,17 @@ function send_telegram_response(string $chatId, string $text, ?array $content, ?
         $errors[] = $messageResult['error'];
     }
 
-    foreach ([
+    $items = [
         ['path' => $content['image_path'] ?? null, 'caption' => $content ? (string)$content['title'] : ''],
         ['path' => $content['attachment_path'] ?? null, 'caption' => $content ? (string)$content['title'] : ''],
-        ['path' => $attachmentPath, 'caption' => 'Файл по заявке'],
-    ] as $item) {
+    ];
+
+    foreach ($attachmentPaths as $index => $attachmentPath) {
+        $caption = count($attachmentPaths) > 1 ? 'Файл по заявке ' . ($index + 1) . '/' . count($attachmentPaths) : 'Файл по заявке';
+        $items[] = ['path' => $attachmentPath, 'caption' => $caption];
+    }
+
+    foreach ($items as $item) {
         if (!$item['path']) {
             continue;
         }
@@ -307,6 +368,81 @@ function send_telegram_response(string $chatId, string $text, ?array $content, ?
     }
 
     return $errors ? ['ok' => false, 'error' => implode('; ', array_filter($errors))] : ['ok' => true, 'error' => null];
+}
+
+
+function vk_api_request(string $method, array $params): array
+{
+    $token = app_config()['integrations']['vk_service_token'] ?? '';
+    if ($token === '') {
+        return ['ok' => false, 'error' => 'VK_SERVICE_TOKEN is not configured.'];
+    }
+
+    $params['access_token'] = $token;
+    $params['v'] = '5.199';
+
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => "Content-Type: application/x-www-form-urlencoded\r\n",
+            'content' => http_build_query($params),
+            'timeout' => 15,
+            'ignore_errors' => true,
+        ],
+    ]);
+
+    $response = @file_get_contents('https://api.vk.com/method/' . $method, false, $context);
+    $decoded = $response ? json_decode($response, true) : null;
+    if (is_array($decoded) && isset($decoded['response'])) {
+        return ['ok' => true, 'error' => null];
+    }
+
+    $error = is_array($decoded) ? ($decoded['error']['error_msg'] ?? 'VK API error') : 'VK API request failed';
+    return ['ok' => false, 'error' => $error];
+}
+
+function build_vk_response_text(string $text, ?array $content, ?array $test, array $attachmentPaths, ?string $externalUrl): string
+{
+    $parts = [];
+    if (trim($text) !== '') {
+        $parts[] = trim($text);
+    }
+
+    if ($test) {
+        $parts[] = "Пройти тест: " . mini_app_url((int)$test['id']);
+    }
+
+    $links = [];
+    foreach ([$content['image_path'] ?? null, $content['attachment_path'] ?? null] as $path) {
+        $url = absolute_public_url($path);
+        if ($url) {
+            $links[] = $url;
+        }
+    }
+    foreach ($attachmentPaths as $path) {
+        $url = absolute_public_url($path);
+        if ($url) {
+            $links[] = $url;
+        }
+    }
+    if (trim((string)$externalUrl) !== '') {
+        $links[] = trim((string)$externalUrl);
+    }
+
+    if ($links) {
+        $parts[] = "Материалы:\n" . implode("\n", array_unique($links));
+    }
+
+    return trim(implode("\n\n", array_filter($parts))) ?: "Материалы по вашей заявке.";
+}
+
+function send_vk_response(string $userId, string $text, ?array $content, ?array $test, array $attachmentPaths, ?string $externalUrl): array
+{
+    return vk_api_request('messages.send', [
+        'user_id' => $userId,
+        'random_id' => random_int(1, PHP_INT_MAX),
+        'message' => build_vk_response_text($text, $content, $test, $attachmentPaths, $externalUrl),
+    ]);
 }
 
 function create_and_send_lead_response(int $leadId, array $admin, array &$errors): ?int
@@ -321,16 +457,21 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
     $contentId = isset($_POST['response_content_id']) && $_POST['response_content_id'] !== '' ? (int)$_POST['response_content_id'] : null;
     $testId = isset($_POST['response_test_id']) && $_POST['response_test_id'] !== '' ? (int)$_POST['response_test_id'] : null;
     $externalUrl = trim((string)($_POST['response_external_url'] ?? ''));
-    $attachmentPath = save_response_attachment($errors);
+    $attachmentPaths = save_response_attachments($errors);
 
     $content = content_snippet($contentId);
     $test = test_snippet($testId);
     $text = build_lead_response_text($message, $content, $test);
-    if ($text === '') {
+    if ($text === '' && !$attachmentPaths && $externalUrl === '') {
         $errors[] = 'Добавьте текст, материал, тест, файл или ссылку для ответа.';
         return null;
     }
 
+    if ($errors) {
+        return null;
+    }
+
+    $attachmentValue = $attachmentPaths ? json_encode($attachmentPaths, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
     $platform = (string)$lead['source_platform'];
     $stmt = db()->prepare(
         'INSERT INTO lead_responses
@@ -345,7 +486,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
         'test_id' => $testId,
         'platform' => $platform,
         'message_text' => $text,
-        'attachment_path' => $attachmentPath,
+        'attachment_path' => $attachmentValue,
         'external_url' => $externalUrl !== '' ? $externalUrl : null,
     ]);
     $responseId = (int)db()->lastInsertId();
@@ -353,7 +494,11 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
     $status = 'pending';
     $error = null;
     if ($platform === 'telegram') {
-        $result = send_telegram_response((string)$lead['platform_user_id'], $text, $content, $test, $attachmentPath, $externalUrl);
+        $result = send_telegram_response((string)$lead['platform_user_id'], $text, $content, $test, $attachmentPaths, $externalUrl);
+        $status = $result['ok'] ? 'sent' : 'failed';
+        $error = $result['error'];
+    } elseif ($platform === 'vk') {
+        $result = send_vk_response((string)$lead['platform_user_id'], $text, $content, $test, $attachmentPaths, $externalUrl);
         $status = $result['ok'] ? 'sent' : 'failed';
         $error = $result['error'];
     } else {

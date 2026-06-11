@@ -45,6 +45,39 @@ function app_config(): array
     return $config;
 }
 
+
+function app_translations(): array
+{
+    static $translations = null;
+    if ($translations === null) {
+        $translations = require __DIR__ . '/../lang/ru.php';
+    }
+
+    return $translations;
+}
+
+function t_choice(string $group, ?string $value): string
+{
+    $value = (string)$value;
+    $translations = app_translations();
+    return $translations[$group][$value] ?? $value;
+}
+
+function status_label(?string $value): string
+{
+    return t_choice('statuses', $value);
+}
+
+function platform_label(?string $value): string
+{
+    return t_choice('platforms', $value);
+}
+
+function target_label(?string $value): string
+{
+    return t_choice('targets', $value);
+}
+
 function medical_disclaimer(): string
 {
     return 'Информация носит ознакомительный характер и не является медицинской рекомендацией. Перед применением продуктов проконсультируйтесь со специалистом.';
