@@ -12,13 +12,18 @@ function test_builder_options(string $table, string $labelColumn): array
 
 function test_builder_select(string $name, array $items, ?int $selected = null): string
 {
-    $html = '<select name="' . h($name) . '"><option value="">Not selected</option>';
+    $html = '<select name="' . h($name) . '"><option value="">' . h(app_text('test_builder.not_selected')) . '</option>';
     foreach ($items as $item) {
         $id = (int)$item['id'];
         $isSelected = $selected !== null && $selected === $id ? ' selected' : '';
         $html .= '<option value="' . $id . '"' . $isSelected . '>#' . $id . ' ' . h($item['label']) . '</option>';
     }
     return $html . '</select>';
+}
+
+function test_builder_question_type_label(?string $type): string
+{
+    return t_choice('question_types', $type);
 }
 
 function test_builder_questions(int $testId): array
@@ -79,7 +84,7 @@ function handle_test_builder_action(string $postAction, int $testId, array $admi
         if ($postAction === 'test_add_question') {
             $questionText = trim((string)($_POST['question_text'] ?? ''));
             if ($questionText === '') {
-                $errors[] = 'Enter question text.';
+                $errors[] = app_text('test_builder.enter_question_text');
                 return true;
             }
 
@@ -115,14 +120,14 @@ function handle_test_builder_action(string $postAction, int $testId, array $admi
             $questionId = (int)($_POST['question_id'] ?? 0);
             $answerText = trim((string)($_POST['answer_text'] ?? ''));
             if ($questionId <= 0 || $answerText === '') {
-                $errors[] = 'Enter answer option.';
+                $errors[] = app_text('test_builder.enter_answer_option');
                 return true;
             }
 
             $check = db()->prepare('SELECT COUNT(*) FROM test_questions WHERE id = :id AND test_id = :test_id');
             $check->execute(['id' => $questionId, 'test_id' => $testId]);
             if ((int)$check->fetchColumn() === 0) {
-                $errors[] = 'Question not found.';
+                $errors[] = app_text('test_builder.question_not_found');
                 return true;
             }
 
@@ -157,14 +162,14 @@ function handle_test_builder_action(string $postAction, int $testId, array $admi
         if ($postAction === 'test_add_result') {
             $title = trim((string)($_POST['result_title'] ?? ''));
             if ($title === '') {
-                $errors[] = 'Enter result title.';
+                $errors[] = app_text('test_builder.enter_result_title');
                 return true;
             }
 
             $minScore = (int)($_POST['min_score'] ?? 0);
             $maxScore = (int)($_POST['max_score'] ?? $minScore);
             if ($maxScore < $minScore) {
-                $errors[] = 'Max score cannot be lower than min score.';
+                $errors[] = app_text('test_builder.max_score_error');
                 return true;
             }
 
@@ -197,7 +202,7 @@ function handle_test_builder_action(string $postAction, int $testId, array $admi
             return true;
         }
     } catch (Throwable $e) {
-        $errors[] = 'Could not update test builder: ' . $e->getMessage();
+        $errors[] = app_text('test_builder.update_error', ['error' => $e->getMessage()]);
         return true;
     }
 
@@ -214,33 +219,33 @@ function render_test_builder(int $testId): string
     ob_start();
     ?>
     <section class="panel form-panel test-builder">
-        <h2>Questions and answer options</h2>
+        <h2><?= h(app_text('test_builder.questions_title')) ?></h2>
         <form method="post" class="inline-grid-form">
             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
             <input type="hidden" name="action" value="test_add_question">
             <input type="hidden" name="id" value="<?= (int)$testId ?>">
-            <label class="field wide-field"><span>Question text</span><input name="question_text" required></label>
-            <label class="field"><span>Type</span><select name="question_type"><option value="single_choice">Single choice</option><option value="multiple_choice">Multiple choice</option><option value="text">Text answer</option></select></label>
-            <label class="field compact-field"><span>Sort</span><input type="number" name="sort_order" value="100"></label>
-            <label class="field checkbox-field"><span>Required</span><input type="checkbox" name="is_required" value="1" checked></label>
-            <div class="form-actions"><button type="submit">Add question</button></div>
+            <label class="field wide-field"><span><?= h(app_text('test_builder.question_text')) ?></span><input name="question_text" required></label>
+            <label class="field"><span><?= h(app_text('test_builder.type')) ?></span><select name="question_type"><option value="single_choice"><?= h(test_builder_question_type_label('single_choice')) ?></option><option value="multiple_choice"><?= h(test_builder_question_type_label('multiple_choice')) ?></option><option value="text"><?= h(test_builder_question_type_label('text')) ?></option></select></label>
+            <label class="field compact-field"><span><?= h(app_text('test_builder.sort')) ?></span><input type="number" name="sort_order" value="100"></label>
+            <label class="field checkbox-field"><span><?= h(app_text('test_builder.required')) ?></span><input type="checkbox" name="is_required" value="1" checked></label>
+            <div class="form-actions"><button type="submit"><?= h(app_text('test_builder.add_question')) ?></button></div>
         </form>
 
-        <?php if (!$questions): ?><div class="empty-state">No questions yet. Add the first question, then add answer options with scores.</div><?php endif; ?>
+        <?php if (!$questions): ?><div class="empty-state"><?= h(app_text('test_builder.no_questions')) ?></div><?php endif; ?>
 
         <div class="builder-list">
         <?php foreach ($questions as $question): ?>
             <article class="builder-card">
-                <div class="builder-card-head"><div><strong>#<?= (int)$question['id'] ?> <?= h($question['question_text']) ?></strong><span><?= h($question['question_type']) ?>, sort <?= (int)$question['sort_order'] ?></span></div><form method="post" onsubmit="return confirm('Delete question and all answers?');"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="test_delete_question"><input type="hidden" name="id" value="<?= (int)$testId ?>"><input type="hidden" name="question_id" value="<?= (int)$question['id'] ?>"><button type="submit" class="link-button danger">Delete</button></form></div>
+                <div class="builder-card-head"><div><strong>#<?= (int)$question['id'] ?> <?= h($question['question_text']) ?></strong><span><?= h(test_builder_question_type_label($question['question_type'])) ?>, <?= h(app_text('test_builder.sort')) ?> <?= (int)$question['sort_order'] ?></span></div><form method="post" onsubmit="return confirm('<?= h(app_text('test_builder.delete_question_confirm')) ?>');"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="test_delete_question"><input type="hidden" name="id" value="<?= (int)$testId ?>"><input type="hidden" name="question_id" value="<?= (int)$question['id'] ?>"><button type="submit" class="link-button danger"><?= h(app_text('test_builder.delete')) ?></button></form></div>
                 <?php if ($question['answers']): ?>
-                    <table class="builder-table"><thead><tr><th>Answer</th><th>Score</th><th>Reaction</th><th></th></tr></thead><tbody>
-                    <?php foreach ($question['answers'] as $answer): ?><tr><td><?= h($answer['answer_text']) ?></td><td><?= (int)$answer['score'] ?></td><td><?= h($answer['product_title'] ?: $answer['category_title'] ?: '-') ?></td><td><form method="post" onsubmit="return confirm('Delete answer option?');"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="test_delete_answer"><input type="hidden" name="id" value="<?= (int)$testId ?>"><input type="hidden" name="answer_id" value="<?= (int)$answer['id'] ?>"><button type="submit" class="link-button danger">Delete</button></form></td></tr><?php endforeach; ?>
+                    <table class="builder-table"><thead><tr><th><?= h(app_text('test_builder.answer')) ?></th><th><?= h(app_text('test_builder.score')) ?></th><th><?= h(app_text('test_builder.reaction')) ?></th><th></th></tr></thead><tbody>
+                    <?php foreach ($question['answers'] as $answer): ?><tr><td><?= h($answer['answer_text']) ?></td><td><?= (int)$answer['score'] ?></td><td><?= h($answer['product_title'] ?: $answer['category_title'] ?: '-') ?></td><td><form method="post" onsubmit="return confirm('<?= h(app_text('test_builder.delete_answer_confirm')) ?>');"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="test_delete_answer"><input type="hidden" name="id" value="<?= (int)$testId ?>"><input type="hidden" name="answer_id" value="<?= (int)$answer['id'] ?>"><button type="submit" class="link-button danger"><?= h(app_text('test_builder.delete')) ?></button></form></td></tr><?php endforeach; ?>
                     </tbody></table>
                 <?php endif; ?>
                 <?php if ($question['question_type'] !== 'text'): ?>
-                    <form method="post" class="inline-grid-form answer-form"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="test_add_answer"><input type="hidden" name="id" value="<?= (int)$testId ?>"><input type="hidden" name="question_id" value="<?= (int)$question['id'] ?>"><label class="field wide-field"><span>Answer option</span><input name="answer_text" required></label><label class="field compact-field"><span>Score</span><input type="number" name="score" value="0"></label><label class="field"><span>Category</span><?= test_builder_select('category_id', $categories) ?></label><label class="field"><span>Product</span><?= test_builder_select('product_id', $products) ?></label><label class="field compact-field"><span>Sort</span><input type="number" name="sort_order" value="100"></label><div class="form-actions"><button type="submit">Add answer</button></div></form>
+                    <form method="post" class="inline-grid-form answer-form"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="test_add_answer"><input type="hidden" name="id" value="<?= (int)$testId ?>"><input type="hidden" name="question_id" value="<?= (int)$question['id'] ?>"><label class="field wide-field"><span><?= h(app_text('test_builder.answer_option')) ?></span><input name="answer_text" required></label><label class="field compact-field"><span><?= h(app_text('test_builder.score')) ?></span><input type="number" name="score" value="0"></label><label class="field"><span><?= h(app_text('test_builder.category')) ?></span><?= test_builder_select('category_id', $categories) ?></label><label class="field"><span><?= h(app_text('test_builder.product')) ?></span><?= test_builder_select('product_id', $products) ?></label><label class="field compact-field"><span><?= h(app_text('test_builder.sort')) ?></span><input type="number" name="sort_order" value="100"></label><div class="form-actions"><button type="submit"><?= h(app_text('test_builder.add_answer')) ?></button></div></form>
                 <?php else: ?>
-                    <div class="empty-state">Text answers are saved in history, but scores are added only by answer options.</div>
+                    <div class="empty-state"><?= h(app_text('test_builder.text_answer_note')) ?></div>
                 <?php endif; ?>
             </article>
         <?php endforeach; ?>
@@ -248,13 +253,13 @@ function render_test_builder(int $testId): string
     </section>
 
     <section class="panel form-panel test-builder">
-        <h2>Score results</h2>
-        <form method="post" class="inline-grid-form"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="test_add_result"><input type="hidden" name="id" value="<?= (int)$testId ?>"><label class="field"><span>Result title</span><input name="result_title" required></label><label class="field compact-field"><span>From</span><input type="number" name="min_score" value="0"></label><label class="field compact-field"><span>To</span><input type="number" name="max_score" value="10"></label><label class="field wide-field"><span>Short summary</span><textarea name="summary_text" rows="2"></textarea></label><label class="field wide-field"><span>Advice for user</span><textarea name="advice_text" rows="3"></textarea></label><label class="field"><span>Category</span><?= test_builder_select('category_id', $categories) ?></label><label class="field"><span>Product</span><?= test_builder_select('product_id', $products) ?></label><label class="field compact-field"><span>Sort</span><input type="number" name="sort_order" value="100"></label><div class="form-actions"><button type="submit">Add result</button></div></form>
+        <h2><?= h(app_text('test_builder.score_results_title')) ?></h2>
+        <form method="post" class="inline-grid-form"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="test_add_result"><input type="hidden" name="id" value="<?= (int)$testId ?>"><label class="field"><span><?= h(app_text('test_builder.result_title')) ?></span><input name="result_title" required></label><label class="field compact-field"><span><?= h(app_text('test_builder.from')) ?></span><input type="number" name="min_score" value="0"></label><label class="field compact-field"><span><?= h(app_text('test_builder.to')) ?></span><input type="number" name="max_score" value="10"></label><label class="field wide-field"><span><?= h(app_text('test_builder.short_summary')) ?></span><textarea name="summary_text" rows="2"></textarea></label><label class="field wide-field"><span><?= h(app_text('test_builder.advice_for_user')) ?></span><textarea name="advice_text" rows="3"></textarea></label><label class="field"><span><?= h(app_text('test_builder.category')) ?></span><?= test_builder_select('category_id', $categories) ?></label><label class="field"><span><?= h(app_text('test_builder.product')) ?></span><?= test_builder_select('product_id', $products) ?></label><label class="field compact-field"><span><?= h(app_text('test_builder.sort')) ?></span><input type="number" name="sort_order" value="100"></label><div class="form-actions"><button type="submit"><?= h(app_text('test_builder.add_result')) ?></button></div></form>
         <?php if ($results): ?>
-            <table class="builder-table"><thead><tr><th>Score</th><th>Result</th><th>Advice/reaction</th><th></th></tr></thead><tbody>
-            <?php foreach ($results as $result): ?><tr><td><?= (int)$result['min_score'] ?>-<?= (int)$result['max_score'] ?></td><td><strong><?= h($result['title']) ?></strong><br><?= nl2br(h($result['summary_text'] ?? '')) ?></td><td><?= nl2br(h($result['advice_text'] ?? '')) ?><br><?= h($result['product_title'] ?: $result['category_title'] ?: '') ?></td><td><form method="post" onsubmit="return confirm('Delete result?');"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="test_delete_result"><input type="hidden" name="id" value="<?= (int)$testId ?>"><input type="hidden" name="result_id" value="<?= (int)$result['id'] ?>"><button type="submit" class="link-button danger">Delete</button></form></td></tr><?php endforeach; ?>
+            <table class="builder-table"><thead><tr><th><?= h(app_text('test_builder.score')) ?></th><th><?= h(app_text('test_builder.result')) ?></th><th><?= h(app_text('test_builder.advice_reaction')) ?></th><th></th></tr></thead><tbody>
+            <?php foreach ($results as $result): ?><tr><td><?= (int)$result['min_score'] ?>-<?= (int)$result['max_score'] ?></td><td><strong><?= h($result['title']) ?></strong><br><?= nl2br(h($result['summary_text'] ?? '')) ?></td><td><?= nl2br(h($result['advice_text'] ?? '')) ?><br><?= h($result['product_title'] ?: $result['category_title'] ?: '') ?></td><td><form method="post" onsubmit="return confirm('<?= h(app_text('test_builder.delete_result_confirm')) ?>');"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="test_delete_result"><input type="hidden" name="id" value="<?= (int)$testId ?>"><input type="hidden" name="result_id" value="<?= (int)$result['id'] ?>"><button type="submit" class="link-button danger"><?= h(app_text('test_builder.delete')) ?></button></form></td></tr><?php endforeach; ?>
             </tbody></table>
-        <?php else: ?><div class="empty-state">No results yet. Without ranges, users receive a general summary and recommendations from selected answers.</div><?php endif; ?>
+        <?php else: ?><div class="empty-state"><?= h(app_text('test_builder.no_results')) ?></div><?php endif; ?>
     </section>
     <?php
     return trim(ob_get_clean());

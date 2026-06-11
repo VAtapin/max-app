@@ -63,6 +63,27 @@ function t_choice(string $group, ?string $value): string
     return $translations[$group][$value] ?? $value;
 }
 
+function app_text(string $key, array $params = []): string
+{
+    $value = app_translations();
+    foreach (explode('.', $key) as $part) {
+        if (!is_array($value) || !array_key_exists($part, $value)) {
+            return $key;
+        }
+        $value = $value[$part];
+    }
+
+    if (!is_string($value)) {
+        return $key;
+    }
+
+    foreach ($params as $name => $param) {
+        $value = str_replace('{' . $name . '}', (string)$param, $value);
+    }
+
+    return $value;
+}
+
 function status_label(?string $value): string
 {
     return t_choice('statuses', $value);

@@ -7,6 +7,7 @@ const state = {
     page: 'home',
     activeTest: null,
     initialTestId: null,
+    i18n: {},
 };
 
 const page = document.querySelector('#page');
@@ -20,15 +21,36 @@ function getReferralCode() {
 
 function applyInitialRoute() {
     const search = new URLSearchParams(window.location.search);
-    const page = search.get('page');
+    const pageName = search.get('page');
     const testId = Number(search.get('test_id') || 0);
-    if (['home', 'profile', 'tests', 'products', 'recommendations', 'leads'].includes(page || '')) {
-        state.page = page;
+    if (['home', 'profile', 'tests', 'products', 'recommendations', 'leads'].includes(pageName || '')) {
+        state.page = pageName;
     }
     if (testId > 0) {
         state.page = 'tests';
         state.initialTestId = testId;
     }
+}
+
+async function loadI18n() {
+    try {
+        const response = await fetch('i18n/ru.json', {cache: 'no-store'});
+        state.i18n = response.ok ? await response.json() : {};
+    } catch (_) {
+        state.i18n = {};
+    }
+}
+
+function ui(key, fallback = '') {
+    return state.i18n[key] || fallback || key;
+}
+
+function formatUi(key, params = {}, fallback = '') {
+    let text = ui(key, fallback);
+    Object.entries(params).forEach(([name, value]) => {
+        text = text.replaceAll(`{${name}}`, String(value));
+    });
+    return text;
 }
 
 async function api(path, options = {}) {
@@ -170,14 +192,14 @@ function setPage(nextPage) {
 function renderHome() {
     page.innerHTML = `
         <section class="panel">
-            <h2>Главная</h2>
-            <p class="muted">Пройдите тест, посмотрите рекомендации или отправьте заявку менеджеру.</p>
-            <button class="primary" data-action="tests">Пройти тест</button>
+            <h2>${escapeHtml(ui('home.title'))}</h2>
+            <p class="muted">${escapeHtml(ui('home.text'))}</p>
+            <button class="primary" data-action="tests">${escapeHtml(ui('home.start_test'))}</button>
         </section>
         <section class="panel">
-            <h2>Консультация</h2>
-            <p class="muted">Оставьте заявку, если хотите уточнить информацию по продуктам.</p>
-            <button class="secondary" data-action="contact">Связаться с менеджером</button>
+            <h2>${escapeHtml(ui('consultation.title'))}</h2>
+            <p class="muted">${escapeHtml(ui('consultation.text'))}</p>
+            <button class="secondary" data-action="contact">${escapeHtml(ui('lead.contact_manager'))}</button>
         </section>
     `;
 }
@@ -187,11 +209,11 @@ async function renderProfile() {
     const user = result.user;
     page.innerHTML = `
         <section class="panel">
-            <h2>Профиль</h2>
+            <h2>${escapeHtml(ui('profile.title'))}</h2>
             <p>ID: ${user.id}</p>
-            <p>Платформа: ${escapeHtml(state.platform)}</p>
-            <p>Статус: ${escapeHtml(user.status)}</p>
-            <p class="muted">Менеджер: ${user.manager_id || 'будет назначен позже'}</p>
+            <p>${escapeHtml(ui('profile.platform'))}: ${escapeHtml(state.platform)}</p>
+            <p>${escapeHtml(ui('profile.status'))}: ${escapeHtml(user.status)}</p>
+            <p class="muted">${escapeHtml(ui('profile.manager'))}: ${escapeHtml(user.manager_id || ui('profile.manager_later'))}</p>
         </section>
     `;
 }
@@ -203,10 +225,10 @@ async function renderTests() {
             <article class="item">
                 <strong>${escapeHtml(test.title)}</strong>
                 <span class="muted">${escapeHtml(test.description || '')}</span>
-                <button class="secondary" data-open-test-id="${test.id}">Открыть тест</button>
+                <button class="secondary" data-open-test-id="${test.id}">${escapeHtml(ui('tests.open'))}</button>
             </article>
         `).join('')
-        : '<div class="empty">Активных тестов пока нет.</div>';
+        : `<div class="empty">${escapeHtml(ui('tests.empty'))}</div>`;
 }
 
 async function renderTest(testId) {
@@ -214,12 +236,12 @@ async function renderTest(testId) {
     state.activeTest = result;
     page.innerHTML = `
         <section class="panel">
-            <button class="secondary compact" data-action="back-to-tests">Назад</button>
+            <button class="secondary compact" data-action="back-to-tests">${escapeHtml(ui('tests.back'))}</button>
             <h2>${escapeHtml(result.test.title)}</h2>
             <p class="muted">${escapeHtml(result.test.description || '')}</p>
             <form id="test-form" class="test-form">
-                ${result.questions.length ? result.questions.map((question) => renderQuestion(question)).join('') : '<div class="empty">\u0412\u043e\u043f\u0440\u043e\u0441\u044b \u0434\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u0442\u0435\u0441\u0442\u0430 \u043f\u043e\u043a\u0430 \u043d\u0435 \u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u044b.</div>'}
-                <button class="primary" type="submit">Получить рекомендации</button>
+                ${result.questions.length ? result.questions.map((question) => renderQuestion(question)).join('') : `<div class="empty">${escapeHtml(ui('tests.no_questions'))}</div>`}
+                <button class="primary" type="submit">${escapeHtml(ui('tests.submit'))}</button>
             </form>
         </section>
     `;
@@ -235,7 +257,7 @@ function renderQuestion(question) {
                 <span>${escapeHtml(answer.answer_text)}</span>
             </label>
         `).join('')
-        : `<input class="text-answer" name="question_${question.id}" placeholder="Ваш ответ">`;
+        : `<input class="text-answer" name="question_${question.id}" placeholder="${escapeHtml(ui('tests.text_placeholder'))}">`;
 
     return `
         <fieldset class="question" data-question-id="${question.id}" data-question-type="${type}">
@@ -273,12 +295,12 @@ async function submitTest(form) {
     page.innerHTML = `
         <section class="panel">
             <div class="result-card">
-                <strong>${escapeHtml(result.result?.title || '\u0420\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438 \u0433\u043e\u0442\u043e\u0432\u044b')}</strong>
-                <span class="result-score">\u0411\u0430\u043b\u043b\u044b: ${escapeHtml(result.total_score)}</span>
+                <strong>${escapeHtml(result.result?.title || ui('result.default_title'))}</strong>
+                <span class="result-score">${escapeHtml(ui('result.score'))}: ${escapeHtml(result.total_score)}</span>
                 <p class="muted">${escapeHtml(result.summary)}</p>
             </div>
-            <button class="primary" data-page-target="recommendations">\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438</button>
-            <button class="secondary" data-action="contact">\u0421\u0432\u044f\u0437\u0430\u0442\u044c\u0441\u044f \u0441 \u043c\u0435\u043d\u0435\u0434\u0436\u0435\u0440\u043e\u043c</button>
+            <button class="primary" data-page-target="recommendations">${escapeHtml(ui('result.show_recommendations'))}</button>
+            <button class="secondary" data-action="contact">${escapeHtml(ui('lead.contact_manager'))}</button>
         </section>
     `;
 }
@@ -293,13 +315,13 @@ async function renderProducts() {
                 <span class="muted">${escapeHtml(product.short_description || '')}</span>
                 <div class="item-links">
                     ${product.document_path ? `<a href="${escapeHtml(product.document_path)}" target="_blank" rel="noopener">PDF</a>` : ''}
-                    ${product.video_url ? `<a href="${escapeHtml(product.video_url)}" target="_blank" rel="noopener">Видео</a>` : ''}
-                    ${product.purchase_url ? `<a href="${escapeHtml(product.purchase_url)}" target="_blank" rel="noopener">Подробнее</a>` : ''}
+                    ${product.video_url ? `<a href="${escapeHtml(product.video_url)}" target="_blank" rel="noopener">${escapeHtml(ui('products.video'))}</a>` : ''}
+                    ${product.purchase_url ? `<a href="${escapeHtml(product.purchase_url)}" target="_blank" rel="noopener">${escapeHtml(ui('products.details'))}</a>` : ''}
                 </div>
-                <button class="secondary" data-product-id="${product.id}">Запросить информацию</button>
+                <button class="secondary" data-product-id="${product.id}">${escapeHtml(ui('products.request_info'))}</button>
             </article>
         `).join('')
-        : '<div class="empty">Продуктов пока нет.</div>';
+        : `<div class="empty">${escapeHtml(ui('products.empty'))}</div>`;
 }
 
 async function renderRecommendations() {
@@ -307,14 +329,13 @@ async function renderRecommendations() {
     page.innerHTML = result.recommendations.length
         ? result.recommendations.map((item) => `
             <article class="item">
-                <strong>${escapeHtml(item.product_title || 'Рекомендация')}</strong>
+                <strong>${escapeHtml(item.product_title || ui('recommendations.default_title'))}</strong>
                 <span class="muted">${escapeHtml(item.short_description || item.reason_text || '')}</span>
-                ${item.product_id ? `<button class="secondary" data-product-id="${item.product_id}">Запросить информацию</button>` : ''}
+                ${item.product_id ? `<button class="secondary" data-product-id="${item.product_id}">${escapeHtml(ui('products.request_info'))}</button>` : ''}
             </article>
         `).join('')
-        : '<div class="empty">Рекомендаций пока нет.</div>';
+        : `<div class="empty">${escapeHtml(ui('recommendations.empty'))}</div>`;
 }
-
 
 function responseAttachmentLinks(response) {
     const attachments = Array.isArray(response.attachments)
@@ -322,7 +343,7 @@ function responseAttachmentLinks(response) {
         : (response.attachment_path ? [response.attachment_path] : []);
 
     return attachments.map((path, index) => (
-        `<a href="${escapeHtml(path)}" target="_blank" rel="noopener">\u0424\u0430\u0439\u043b ${index + 1}</a>`
+        `<a href="${escapeHtml(path)}" target="_blank" rel="noopener">${escapeHtml(ui('lead.file'))} ${index + 1}</a>`
     )).join('');
 }
 
@@ -331,30 +352,30 @@ async function renderLeads() {
     page.innerHTML = result.leads.length
         ? result.leads.map((lead) => `
             <article class="item">
-                <strong>Заявка #${lead.id}</strong>
-                <span class="muted">Статус: ${escapeHtml(lead.status)}</span>
-                <span class="muted">Платформа: ${escapeHtml(lead.source_platform)}</span>
+                <strong>${escapeHtml(ui('leads.title'))} #${lead.id}</strong>
+                <span class="muted">${escapeHtml(ui('leads.status'))}: ${escapeHtml(lead.status)}</span>
+                <span class="muted">${escapeHtml(ui('leads.platform'))}: ${escapeHtml(lead.source_platform)}</span>
                 ${lead.product_title ? `<span>${escapeHtml(lead.product_title)}</span>` : ''}
                 ${lead.message ? `<span class="muted">${escapeHtml(lead.message)}</span>` : ''}
                 ${(lead.responses || []).map((response) => `
                     <div class="response">
-                        <strong>Ответ менеджера</strong>
+                        <strong>${escapeHtml(ui('leads.manager_response'))}</strong>
                         <span>${escapeHtml(response.message_text || '')}</span>
-                        ${response.attachment_path ? `<a href="${escapeHtml(response.attachment_path)}" target="_blank" rel="noopener">Файл</a>` : ''}
-                        ${response.external_url ? `<a href="${escapeHtml(response.external_url)}" target="_blank" rel="noopener">Ссылка</a>` : ''}
+                        ${responseAttachmentLinks(response)}
+                        ${response.external_url ? `<a href="${escapeHtml(response.external_url)}" target="_blank" rel="noopener">${escapeHtml(ui('lead.link'))}</a>` : ''}
                         <span class="muted">${escapeHtml(response.sent_at || response.created_at || '')}</span>
                     </div>
                 `).join('')}
             </article>
         `).join('')
-        : '<div class="empty">Заявок пока нет.</div>';
+        : `<div class="empty">${escapeHtml(ui('leads.empty'))}</div>`;
 }
 
 async function contactManager(productId = null) {
     const payload = {
         ...userPayload(),
         product_id: productId,
-        message: productId ? 'Пользователь запросил информацию о продукте.' : 'Пользователь запросил связь с менеджером.',
+        message: productId ? ui('lead.product_request_message') : ui('lead.contact_request_message'),
     };
     const result = await api('leads.php', {
         method: 'POST',
@@ -362,14 +383,14 @@ async function contactManager(productId = null) {
     });
     page.insertAdjacentHTML('afterbegin', `
         <div class="panel">
-            Заявка #${result.lead_id} создана.
-            <button class="secondary compact" data-page-target="leads">Мои заявки</button>
+            ${escapeHtml(formatUi('lead.created', {id: result.lead_id}))}
+            <button class="secondary compact" data-page-target="leads">${escapeHtml(ui('lead.my_leads'))}</button>
         </div>
     `);
 }
 
 async function render() {
-    page.innerHTML = '<div class="empty">Загрузка...</div>';
+    page.innerHTML = `<div class="empty">${escapeHtml(ui('common.loading'))}</div>`;
     try {
         if (state.page === 'home') renderHome();
         if (state.page === 'profile') await renderProfile();
@@ -414,7 +435,7 @@ page.addEventListener('submit', async (event) => {
 
 applyInitialRoute();
 
-authorize()
+Promise.all([loadI18n(), authorize()])
     .then(render)
     .catch((error) => {
         page.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;

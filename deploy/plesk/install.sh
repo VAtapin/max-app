@@ -64,6 +64,7 @@ return [
         'vk_app_id' => $(php_quote "${VK_APP_ID:-}"),
         'vk_secure_key' => $(php_quote "${VK_SECURE_KEY:-}"),
         'vk_service_token' => $(php_quote "${VK_SERVICE_TOKEN:-}"),
+        'vk_group_token' => $(php_quote "${VK_GROUP_TOKEN:-}"),
     ],
 ];
 PHP

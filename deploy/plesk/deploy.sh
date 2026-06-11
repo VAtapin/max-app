@@ -19,6 +19,42 @@ echo "Pulling latest code..."
 git pull --ff-only
 
 if [[ -f "$ENV_FILE" ]]; then
+  php_quote() {
+    local value="${1:-}"
+    value="${value//\\/\\\\}"
+    value="${value//\'/\\\'}"
+    printf "'%s'" "$value"
+  }
+
+  echo "Updating PHP local config..."
+  cat > admin/app/config/local.php <<PHP
+<?php
+
+return [
+    'app' => [
+        'base_url' => '/admin/public',
+    ],
+    'db' => [
+        'host' => $(php_quote "$DB_HOST"),
+        'port' => $(php_quote "$DB_PORT"),
+        'database' => $(php_quote "$DB_DATABASE"),
+        'username' => $(php_quote "$DB_USERNAME"),
+        'password' => $(php_quote "$DB_PASSWORD"),
+        'charset' => 'utf8mb4',
+    ],
+    'integrations' => [
+        'telegram_bot_token' => $(php_quote "${TELEGRAM_BOT_TOKEN:-}"),
+        'mini_app_url' => $(php_quote "${SWPRO_MINI_APP_URL:-https://swpro.ru/mini-app/index.html}"),
+        'vk_app_id' => $(php_quote "${VK_APP_ID:-}"),
+        'vk_secure_key' => $(php_quote "${VK_SECURE_KEY:-}"),
+        'vk_service_token' => $(php_quote "${VK_SERVICE_TOKEN:-}"),
+        'vk_group_token' => $(php_quote "${VK_GROUP_TOKEN:-}"),
+    ],
+];
+PHP
+fi
+
+if [[ -f "$ENV_FILE" ]]; then
   echo "Applying database migrations..."
   bash deploy/plesk/migrate-db.sh "$ENV_FILE"
 fi

@@ -68,6 +68,12 @@ nano deploy/plesk/live.env
 
 Fill DB credentials, Telegram token and system user.
 
+For VK:
+
+- `VK_APP_ID` and `VK_SECURE_KEY` are for VK Mini App authorization.
+- `VK_GROUP_TOKEN` is required to send replies from the admin panel to VK users. Create it in VK community settings: API access keys, with community messages permission.
+- `VK_SERVICE_TOKEN` is not enough for `messages.send`; VK rejects that method for service tokens.
+
 Common Plesk system user can be checked with:
 
 ```bash

@@ -72,7 +72,7 @@ function save_single_response_attachment(array $file, array &$errors): ?string
     }
 
     if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
-        $errors[] = 'Не удалось загрузить вложение для ответа.';
+        $errors[] = app_text('lead_response.upload_failed');
         return null;
     }
 
@@ -87,14 +87,14 @@ function save_single_response_attachment(array $file, array &$errors): ?string
     ];
 
     if ($maxBytes > 0 && (int)$file['size'] > $maxBytes) {
-        $errors[] = 'Вложение слишком большое. Максимум: ' . round($maxBytes / 1024 / 1024, 1) . ' МБ.';
+        $errors[] = app_text('lead_response.upload_too_large', ['size' => round($maxBytes / 1024 / 1024, 1)]);
         return null;
     }
 
     $finfo = new finfo(FILEINFO_MIME_TYPE);
     $mime = $finfo->file($file['tmp_name']);
     if (!in_array($mime, $allowedTypes, true)) {
-        $errors[] = 'Можно отправлять JPG, PNG, WebP, PDF или MP4.';
+        $errors[] = app_text('lead_response.invalid_attachment_type');
         return null;
     }
 
@@ -107,20 +107,20 @@ function save_single_response_attachment(array $file, array &$errors): ?string
         default => null,
     };
     if (!$extension) {
-        $errors[] = 'Не удалось определить тип вложения.';
+        $errors[] = app_text('lead_response.unknown_attachment_type');
         return null;
     }
 
     $directory = lead_response_upload_dir();
     if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
-        $errors[] = 'Не удалось создать папку для ответов.';
+        $errors[] = app_text('lead_response.create_response_dir_failed');
         return null;
     }
 
     $filename = date('YmdHis') . '-' . bin2hex(random_bytes(6)) . '.' . $extension;
     $target = $directory . '/' . $filename;
     if (!move_uploaded_file($file['tmp_name'], $target)) {
-        $errors[] = 'Не удалось сохранить вложение ответа.';
+        $errors[] = app_text('lead_response.save_attachment_failed');
         return null;
     }
 
@@ -209,7 +209,7 @@ function build_lead_response_text(string $message, ?array $content, ?array $test
     }
 
     if ($content) {
-        $parts[] = 'Материал: ' . $content['title'];
+        $parts[] = app_text('lead_response.content_prefix') . ': ' . $content['title'];
         $contentText = trim((string)($content['short_text'] ?: $content['full_text'] ?: ''));
         if ($contentText !== '') {
             $parts[] = $contentText;
@@ -217,7 +217,7 @@ function build_lead_response_text(string $message, ?array $content, ?array $test
     }
 
     if ($test) {
-        $parts[] = 'Рекомендуем пройти тест: ' . $test['title'];
+        $parts[] = app_text('lead_response.test_recommendation_prefix') . ': ' . $test['title'];
     }
 
     return trim(implode("\n\n", array_filter($parts)));
@@ -259,7 +259,7 @@ function telegram_buttons(?array $content, ?array $test, ?string $externalUrl): 
     $buttons = [];
     if ($test) {
         $buttons[] = [[
-            'text' => 'Пройти тест',
+            'text' => app_text('lead_response.pass_test'),
             'web_app' => ['url' => mini_app_url((int)$test['id'])],
         ]];
     }
@@ -267,7 +267,7 @@ function telegram_buttons(?array $content, ?array $test, ?string $externalUrl): 
     $videoUrl = trim((string)($content['video_url'] ?? ''));
     if ($videoUrl !== '') {
         $buttons[] = [[
-            'text' => 'Открыть видео',
+            'text' => app_text('lead_response.open_video'),
             'url' => $videoUrl,
         ]];
     }
@@ -275,14 +275,14 @@ function telegram_buttons(?array $content, ?array $test, ?string $externalUrl): 
     $buttonUrl = trim((string)($content['button_url'] ?? ''));
     if ($buttonUrl !== '') {
         $buttons[] = [[
-            'text' => trim((string)($content['button_text'] ?? 'Открыть материал')) ?: 'Открыть материал',
+            'text' => trim((string)($content['button_text'] ?? app_text('lead_response.open_material'))) ?: app_text('lead_response.open_material'),
             'url' => $buttonUrl,
         ]];
     }
 
     if (trim((string)$externalUrl) !== '') {
         $buttons[] = [[
-            'text' => 'Открыть ссылку',
+            'text' => app_text('lead_response.open_link'),
             'url' => trim((string)$externalUrl),
         ]];
     }
@@ -294,7 +294,7 @@ function send_telegram_text(string $chatId, string $text, array $buttons = []): 
 {
     $payload = [
         'chat_id' => $chatId,
-        'text' => $text !== '' ? $text : 'Материалы по вашей заявке.',
+        'text' => $text !== '' ? $text : app_text('lead_response.default_response_text'),
         'disable_web_page_preview' => false,
     ];
 
@@ -353,7 +353,7 @@ function send_telegram_response(string $chatId, string $text, ?array $content, ?
     ];
 
     foreach ($attachmentPaths as $index => $attachmentPath) {
-        $caption = count($attachmentPaths) > 1 ? 'Файл по заявке ' . ($index + 1) . '/' . count($attachmentPaths) : 'Файл по заявке';
+        $caption = count($attachmentPaths) > 1 ? app_text('lead_response.lead_file_numbered', ['index' => $index + 1, 'total' => count($attachmentPaths)]) : app_text('lead_response.lead_file');
         $items[] = ['path' => $attachmentPath, 'caption' => $caption];
     }
 
@@ -373,9 +373,9 @@ function send_telegram_response(string $chatId, string $text, ?array $content, ?
 
 function vk_api_request(string $method, array $params): array
 {
-    $token = app_config()['integrations']['vk_service_token'] ?? '';
+    $token = app_config()['integrations']['vk_group_token'] ?? '';
     if ($token === '') {
-        return ['ok' => false, 'error' => 'VK_SERVICE_TOKEN is not configured.'];
+        return ['ok' => false, 'error' => 'VK_GROUP_TOKEN is not configured. Use a VK community access token with messages permission.'];
     }
 
     $params['access_token'] = $token;
@@ -409,7 +409,7 @@ function build_vk_response_text(string $text, ?array $content, ?array $test, arr
     }
 
     if ($test) {
-        $parts[] = "Пройти тест: " . mini_app_url((int)$test['id']);
+        $parts[] = app_text('lead_response.pass_test') . ': ' . mini_app_url((int)$test['id']);
     }
 
     $links = [];
@@ -430,10 +430,10 @@ function build_vk_response_text(string $text, ?array $content, ?array $test, arr
     }
 
     if ($links) {
-        $parts[] = "Материалы:\n" . implode("\n", array_unique($links));
+        $parts[] = app_text('lead_response.materials_title') . ":\n" . implode("\n", array_unique($links));
     }
 
-    return trim(implode("\n\n", array_filter($parts))) ?: "Материалы по вашей заявке.";
+    return trim(implode("\n\n", array_filter($parts))) ?: app_text('lead_response.default_response_text');
 }
 
 function send_vk_response(string $userId, string $text, ?array $content, ?array $test, array $attachmentPaths, ?string $externalUrl): array
@@ -449,7 +449,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
 {
     $lead = lead_context($leadId);
     if (!$lead) {
-        $errors[] = 'Заявка не найдена.';
+        $errors[] = app_text('lead_response.lead_not_found');
         return null;
     }
 
@@ -463,7 +463,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
     $test = test_snippet($testId);
     $text = build_lead_response_text($message, $content, $test);
     if ($text === '' && !$attachmentPaths && $externalUrl === '') {
-        $errors[] = 'Добавьте текст, материал, тест, файл или ссылку для ответа.';
+        $errors[] = app_text('lead_response.empty_response');
         return null;
     }
 
@@ -502,7 +502,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
         $status = $result['ok'] ? 'sent' : 'failed';
         $error = $result['error'];
     } else {
-        $error = 'Отправка для платформы ' . $platform . ' пока не подключена. Ответ сохранен.';
+        $error = app_text('lead_response.platform_not_connected', ['platform' => $platform]);
     }
 
     $stmt = db()->prepare(
@@ -521,7 +521,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
         $stmt = db()->prepare('UPDATE leads SET status = "contacted" WHERE id = :id AND status = "new"');
         $stmt->execute(['id' => $leadId]);
     } elseif ($status === 'failed') {
-        $errors[] = 'Ответ сохранен, но не отправлен: ' . $error;
+        $errors[] = app_text('lead_response.response_saved_not_sent', ['error' => $error]);
     } elseif ($status === 'pending' && $error) {
         $errors[] = $error;
     }
