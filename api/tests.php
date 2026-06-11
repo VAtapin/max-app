@@ -9,12 +9,18 @@ function test_result_for_score(int $testId, int $totalScore): ?array
         'SELECT *
          FROM test_results
          WHERE test_id = :test_id
-           AND min_score <= :score
-           AND max_score >= :score
+           AND min_score <= :min_score
+           AND max_score >= :max_score
          ORDER BY sort_order, min_score DESC, id DESC
          LIMIT 1'
     );
-    $stmt->execute(['test_id' => $testId, 'score' => $totalScore]);
+
+    $stmt->execute([
+        'test_id' => $testId,
+        'min_score' => $totalScore,
+        'max_score' => $totalScore,
+    ]);
+
     $result = $stmt->fetch();
 
     return $result ?: null;
