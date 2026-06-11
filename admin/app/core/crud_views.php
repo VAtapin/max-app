@@ -10,6 +10,76 @@ function crud_delete_enabled(string $moduleKey): bool
     return !in_array($moduleKey, ['users', 'platform_accounts', 'leads'], true);
 }
 
+function crud_edit_enabled(string $moduleKey): bool
+{
+    return $moduleKey !== 'platform_accounts';
+}
+
+function crud_action_label(string $moduleKey): string
+{
+    return match ($moduleKey) {
+        'users' => 'Настроить',
+        'leads' => 'Обработать',
+        default => 'Редактировать',
+    };
+}
+
+function crud_form_title(string $moduleKey, string $action): string
+{
+    if ($action === 'create') {
+        return match ($moduleKey) {
+            'resellers' => 'Добавить реселлера',
+            'managers' => 'Добавить менеджера',
+            'categories' => 'Добавить категорию',
+            'products' => 'Добавить продукт',
+            'tests' => 'Добавить тест',
+            'broadcasts' => 'Создать рассылку',
+            'content' => 'Добавить материал',
+            default => 'Добавить запись',
+        };
+    }
+
+    return match ($moduleKey) {
+        'users' => 'Настройка пользователя',
+        'leads' => 'Обработка лида',
+        'resellers' => 'Редактировать реселлера',
+        'managers' => 'Редактировать менеджера',
+        'categories' => 'Редактировать категорию',
+        'products' => 'Редактировать продукт',
+        'tests' => 'Редактировать тест',
+        'broadcasts' => 'Редактировать рассылку',
+        'content' => 'Редактировать материал',
+        default => 'Редактировать запись',
+    };
+}
+
+function crud_form_fields(string $moduleKey, array $fields): array
+{
+    if ($moduleKey === 'users') {
+        return array_intersect_key($fields, array_flip([
+            'reseller_id',
+            'manager_id',
+            'first_name',
+            'last_name',
+            'phone',
+            'email',
+            'status',
+        ]));
+    }
+
+    if ($moduleKey === 'leads') {
+        return array_intersect_key($fields, array_flip([
+            'manager_id',
+            'reseller_id',
+            'product_id',
+            'message',
+            'status',
+        ]));
+    }
+
+    return $fields;
+}
+
 function crud_display_columns(string $moduleKey): array
 {
     return [
@@ -282,7 +352,7 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
     return format_cell_value($row[$column] ?? null);
 }
 
-function render_crud_list(string $moduleKey, array $columns, array $rows, bool $canDelete, array $admin): string
+function render_crud_list(string $moduleKey, array $columns, array $rows, bool $canEdit, bool $canDelete): string
 {
     ob_start();
     ?>
@@ -294,7 +364,9 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
                     <?php foreach ($columns as $label): ?>
                         <th><?= h($label) ?></th>
                     <?php endforeach; ?>
-                    <th>Действия</th>
+                    <?php if ($canEdit || $canDelete): ?>
+                        <th>Действия</th>
+                    <?php endif; ?>
                 </tr>
             </thead>
             <tbody>
@@ -303,25 +375,21 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
                         <?php foreach ($columns as $key => $label): ?>
                             <td><?= nl2br(h(crud_cell_value($moduleKey, $key, $row))) ?></td>
                         <?php endforeach; ?>
-                        <td class="row-actions">
-                            <a class="link-button" href="crud.php?module=<?= h($moduleKey) ?>&action=edit&id=<?= (int)$row['id'] ?>">Открыть</a>
-                            <?php if ($moduleKey === 'users' && ($admin['role'] ?? '') === 'superadmin'): ?>
-                                <form method="post" class="inline-form" onsubmit="return confirm('Создать реселлера из пользователя #<?= (int)$row['id'] ?>?');">
-                                    <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                                    <input type="hidden" name="action" value="promote_reseller">
-                                    <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-                                    <button type="submit" class="link-button">В реселлеры</button>
-                                </form>
-                            <?php endif; ?>
-                            <?php if ($canDelete): ?>
-                                <form method="post" class="inline-form" onsubmit="return confirm('Удалить запись #<?= (int)$row['id'] ?>?');">
-                                    <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                                    <input type="hidden" name="action" value="delete">
-                                    <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-                                    <button type="submit" class="link-button danger">Удалить</button>
-                                </form>
-                            <?php endif; ?>
-                        </td>
+                        <?php if ($canEdit || $canDelete): ?>
+                            <td class="row-actions">
+                                <?php if ($canEdit): ?>
+                                    <a class="link-button" href="crud.php?module=<?= h($moduleKey) ?>&action=edit&id=<?= (int)$row['id'] ?>"><?= h(crud_action_label($moduleKey)) ?></a>
+                                <?php endif; ?>
+                                <?php if ($canDelete): ?>
+                                    <form method="post" class="inline-form" onsubmit="return confirm('Удалить запись #<?= (int)$row['id'] ?>?');">
+                                        <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+                                        <button type="submit" class="link-button danger">Удалить</button>
+                                    </form>
+                                <?php endif; ?>
+                            </td>
+                        <?php endif; ?>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -332,4 +400,3 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
     <?php
     return trim(ob_get_clean());
 }
-

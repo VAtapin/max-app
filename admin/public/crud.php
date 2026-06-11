@@ -387,82 +387,23 @@ function save_record(string $moduleKey, array $module, array $payload, ?int $id,
     return $newId;
 }
 
-function unique_referral_code(string $prefix): string
-{
-    for ($i = 0; $i < 10; $i++) {
-        $code = $prefix . strtoupper(substr(bin2hex(random_bytes(6)), 0, 8));
-        $stmt = db()->prepare(
-            'SELECT
-                (SELECT COUNT(*) FROM resellers WHERE referral_code = :code) +
-                (SELECT COUNT(*) FROM managers WHERE referral_code = :code) +
-                (SELECT COUNT(*) FROM admin_users WHERE referral_code = :code) AS total'
-        );
-        $stmt->execute(['code' => $code]);
-        if ((int)$stmt->fetchColumn() === 0) {
-            return $code;
-        }
-    }
-
-    return $prefix . strtoupper(substr(bin2hex(random_bytes(10)), 0, 12));
-}
-
-function promote_user_to_reseller(int $endUserId, array $admin): int
-{
-    if (($admin['role'] ?? '') !== 'superadmin') {
-        throw new RuntimeException('Только супер-админ может создавать реселлеров из пользователей.');
-    }
-
-    $stmt = db()->prepare('SELECT * FROM end_users WHERE id = :id LIMIT 1');
-    $stmt->execute(['id' => $endUserId]);
-    $user = $stmt->fetch();
-    if (!$user) {
-        throw new RuntimeException('Пользователь не найден.');
-    }
-
-    if (!empty($user['reseller_id'])) {
-        return (int)$user['reseller_id'];
-    }
-
-    $name = trim((string)($user['first_name'] ?? '') . ' ' . (string)($user['last_name'] ?? ''));
-    if ($name === '') {
-        $name = (string)($user['username'] ?? '');
-    }
-    if ($name === '') {
-        $name = strtoupper((string)$user['platform']) . ' ' . (string)$user['platform_user_id'];
-    }
-
-    $stmt = db()->prepare(
-        'INSERT INTO resellers (name, email, phone, referral_code, is_active)
-         VALUES (:name, :email, :phone, :referral_code, 1)'
-    );
-    $stmt->execute([
-        'name' => $name,
-        'email' => $user['email'] ?: null,
-        'phone' => $user['phone'] ?: null,
-        'referral_code' => unique_referral_code('RS'),
-    ]);
-    $resellerId = (int)db()->lastInsertId();
-
-    $stmt = db()->prepare('UPDATE end_users SET reseller_id = :reseller_id WHERE id = :id');
-    $stmt->execute(['reseller_id' => $resellerId, 'id' => $endUserId]);
-
-    log_activity('admin', (int)$admin['id'], 'promote_user_to_reseller', 'resellers', $resellerId, [
-        'end_user_id' => $endUserId,
-    ]);
-
-    return $resellerId;
-}
-
 $action = $_GET['action'] ?? 'list';
 $id = isset($_GET['id']) ? (int)$_GET['id'] : null;
 $errors = [];
 $success = $_GET['success'] ?? null;
 $editRow = null;
 $canCreate = crud_create_enabled($moduleKey);
+$canEdit = crud_edit_enabled($moduleKey);
 $canDelete = crud_delete_enabled($moduleKey);
+$formFields = crud_form_fields($moduleKey, $module['fields']);
 
 if ($action === 'create' && !$canCreate) {
     $errors[] = 'Этот раздел заполняется автоматически из Telegram, VK, MAX или мини-приложения. Создание вручную отключено.';
+    $action = 'list';
+}
+
+if ($action === 'edit' && !$canEdit) {
+    $errors[] = 'Этот раздел доступен только для просмотра. Изменения делаются через карточку пользователя или канал подключения.';
     $action = 'list';
 }
 
@@ -470,16 +411,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $postAction = $_POST['action'] ?? 'save';
     $postId = isset($_POST['id']) && $_POST['id'] !== '' ? (int)$_POST['id'] : null;
-
-    if ($postAction === 'promote_reseller') {
-        try {
-            promote_user_to_reseller((int)$postId, $admin);
-            redirect('crud.php?module=users&success=promoted_reseller');
-        } catch (Throwable $e) {
-            $errors[] = 'Не удалось создать реселлера: ' . $e->getMessage();
-            $action = 'list';
-        }
-    }
 
     if ($postAction === 'delete') {
         if (!$canDelete) {
@@ -503,8 +434,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($postAction === 'save') {
-    if (!$postId && !$canCreate) {
-        $errors[] = 'Создание вручную в этом разделе отключено.';
+    if (($postId && !$canEdit) || (!$postId && !$canCreate)) {
+        $errors[] = $postId
+            ? 'Редактирование в этом разделе отключено.'
+            : 'Создание вручную в этом разделе отключено.';
         $action = 'list';
     } else {
     if ($postId && !scoped_row_exists($moduleKey, $module, $postId, $admin)) {
@@ -512,8 +445,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit('Record not found');
     }
 
-    $payload = collect_payload($module['fields']);
-    $errors = validate_payload($module['fields'], $payload);
+    $payload = collect_payload($formFields);
+    $errors = validate_payload($formFields, $payload);
     $errors = array_merge($errors, validate_scope_payload($moduleKey, $payload, $admin));
     if (!$errors) {
         try {
@@ -548,7 +481,7 @@ try {
     $stmt = db()->prepare($listSql);
     $stmt->execute($params);
     $rows = $stmt->fetchAll();
-    $listHtml = render_crud_list($moduleKey, $displayColumns, $rows, $canDelete, $admin);
+    $listHtml = render_crud_list($moduleKey, $displayColumns, $rows, $canEdit, $canDelete);
 } catch (Throwable $e) {
     $errors[] = 'Не удалось загрузить список записей: ' . $e->getMessage();
     $listHtml = '<div class="empty-state">Список временно недоступен. Подробность показана выше.</div>';
@@ -566,20 +499,18 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <div class="notice success">Запись сохранена.</div>
 <?php elseif ($success === 'deleted'): ?>
     <div class="notice success">Запись удалена.</div>
-<?php elseif ($success === 'promoted_reseller'): ?>
-    <div class="notice success">Реселлер создан и привязан к пользователю.</div>
 <?php endif; ?>
 <?php foreach ($errors as $error): ?>
     <div class="alert"><?= h($error) ?></div>
 <?php endforeach; ?>
 <?php if ($action === 'create' || $action === 'edit'): ?>
     <section class="panel form-panel">
-        <h2><?= $action === 'edit' ? 'Редактировать запись' : 'Добавить запись' ?></h2>
+        <h2><?= h(crud_form_title($moduleKey, $action)) ?></h2>
         <form method="post" class="crud-form">
             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="id" value="<?= h((string)($editRow['id'] ?? '')) ?>">
-            <?php foreach ($module['fields'] as $name => $field): ?>
+            <?php foreach ($formFields as $name => $field): ?>
                 <?php
                 $type = $field['type'] ?? 'text';
                 $value = $editRow[$name] ?? ($field['default'] ?? '');
