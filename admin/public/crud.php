@@ -356,7 +356,7 @@ function upload_directory(string $moduleKey): string
         default => 'files',
     };
 
-    return dirname(__DIR__, 2) . '/uploads/' . $folder;
+    return dirname(__DIR__) . '/uploads/' . $folder;
 }
 
 function apply_file_uploads(string $moduleKey, array $fields, array $payload, array &$errors): array

@@ -90,6 +90,11 @@ bot/.venv/bin/pip install -r bot/requirements.txt
 echo "Creating upload directories..."
 mkdir -p admin/uploads/products admin/uploads/content admin/uploads/broadcasts admin/uploads/files admin/uploads/responses
 
+if [[ -d uploads ]]; then
+  echo "Recovering misplaced uploaded files from ./uploads to ./admin/uploads..."
+  cp -nR uploads/. admin/uploads/ || true
+fi
+
 if [[ -n "${APP_USER:-}" ]]; then
   echo "Applying ownership to $APP_USER:${APP_GROUP:-psacln}..."
   chown -R "$APP_USER:${APP_GROUP:-psacln}" admin/uploads admin/app/config/local.php bot/.env bot/.venv || true
