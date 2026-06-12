@@ -36,6 +36,7 @@
   "leads.platform": "Платформа",
   "leads.manager_response": "Ответ менеджера",
   "leads.empty": "Заявок пока нет.",
+  "leads.new_response": "Новый ответ",
   "common.loading": "Загрузка...",
   "app.eyebrow": "SWPro Ассистент",
   "app.title": "SWPro",
@@ -47,5 +48,13 @@
   "nav.leads": "Заявки",
   "nav.profile": "Профиль",
   "medical_disclaimer": "Информация носит ознакомительный характер и не является медицинской рекомендацией. Перед применением продуктов проконсультируйтесь со специалистом.",
-  "tests.submitting": "Отправляем..."
+  "tests.submitting": "Отправляем...",
+  "auth.required_title": "Войдите через платформу",
+  "auth.required_text": "Откройте приложение из Telegram, VK, OK или MAX, чтобы система могла определить ваш профиль.",
+  "referral.required_title": "Подключение к команде",
+  "referral.required_text": "Введите код менеджера или используйте предложенного менеджера для вашей платформы.",
+  "referral.code_placeholder": "Реферальный код",
+  "referral.submit": "Подключиться",
+  "referral.invalid_code": "Код не найден или не активен.",
+  "referral.default_manager": "Стандартный менеджер"
 }

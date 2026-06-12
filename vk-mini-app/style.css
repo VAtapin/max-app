@@ -204,6 +204,103 @@ button.compact {
     text-align: center;
 }
 
+.badge {
+    background: #fff4d6;
+    border-radius: 999px;
+    color: #7a4d00;
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: 6px;
+    padding: 4px 8px;
+    vertical-align: middle;
+}
+
+.auth-required .tabs {
+    display: none;
+}
+
+.referral-required .tabs {
+    display: none;
+}
+
+.auth-panel {
+    text-align: center;
+}
+
+.auth-platforms {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 16px;
+}
+
+.auth-platforms span {
+    background: #f9fbfb;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--accent-dark);
+    font-weight: 700;
+    padding: 8px 12px;
+}
+
+.referral-form {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.referral-form input {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 16px;
+    padding: 10px 12px;
+    width: 100%;
+}
+
+.form-error {
+    color: #b42318;
+    font-size: 13px;
+    min-height: 18px;
+}
+
+.default-manager {
+    align-items: center;
+    background: #f9fbfb;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 52px 1fr;
+    margin-top: 14px;
+    padding: 12px;
+    text-align: left;
+}
+
+.default-manager div:last-child {
+    display: grid;
+    gap: 4px;
+}
+
+.default-avatar {
+    align-items: center;
+    background: var(--accent);
+    border-radius: 50%;
+    color: #ffffff;
+    display: flex;
+    font-weight: 700;
+    height: 52px;
+    justify-content: center;
+    width: 52px;
+}
+
+.code {
+    color: var(--accent-dark);
+    font-family: Consolas, monospace;
+    font-weight: 700;
+}
+
 @media (max-width: 380px) {
     .tabs {
         grid-template-columns: repeat(2, 1fr);

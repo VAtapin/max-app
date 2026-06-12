@@ -84,6 +84,19 @@ function app_text(string $key, array $params = []): string
     return $value;
 }
 
+function normalize_platform(?string $platform): string
+{
+    return match (strtolower((string)$platform)) {
+        'vk' => 'VK',
+        'ok' => 'OK',
+        'max' => 'MAX',
+        'telegram' => 'telegram',
+        'web' => 'web',
+        'all' => 'all',
+        default => (string)$platform,
+    };
+}
+
 function status_label(?string $value): string
 {
     return t_choice('statuses', $value);
@@ -91,7 +104,7 @@ function status_label(?string $value): string
 
 function platform_label(?string $value): string
 {
-    return t_choice('platforms', $value);
+    return t_choice('platforms', normalize_platform($value));
 }
 
 function target_label(?string $value): string

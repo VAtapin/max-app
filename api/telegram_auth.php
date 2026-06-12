@@ -63,6 +63,7 @@ $user = create_or_get_user([
 
 json_response([
     'user' => $user,
+    'default_manager' => default_manager_card('telegram'),
     'auth' => [
         'platform' => 'telegram',
         'platform_user_id' => (string)$telegramUser['id'],

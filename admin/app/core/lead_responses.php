@@ -528,7 +528,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
         $result = send_telegram_response((string)$lead['platform_user_id'], $text, $content, $test, $attachmentPaths, $externalUrl);
         $status = $result['ok'] ? 'sent' : 'failed';
         $error = $result['error'];
-    } elseif ($platform === 'vk') {
+    } elseif (in_array(normalize_platform($platform), ['VK', 'OK'], true)) {
         $status = 'sent';
         $error = null;
     } else {

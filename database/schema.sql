@@ -27,6 +27,7 @@ DROP TABLE IF EXISTS platform_accounts;
 DROP TABLE IF EXISTS referral_links;
 DROP TABLE IF EXISTS end_users;
 DROP TABLE IF EXISTS admin_users;
+DROP TABLE IF EXISTS default_platform_managers;
 DROP TABLE IF EXISTS managers;
 DROP TABLE IF EXISTS resellers;
 DROP TABLE IF EXISTS settings;
@@ -65,6 +66,20 @@ CREATE TABLE managers (
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE default_platform_managers (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
+  manager_id BIGINT UNSIGNED NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_default_platform_manager (platform),
+  INDEX idx_default_platform_manager_id (manager_id),
+  CONSTRAINT fk_default_platform_manager
+    FOREIGN KEY (manager_id) REFERENCES managers(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE admin_users (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   role ENUM('superadmin', 'reseller', 'manager') NOT NULL,
@@ -97,7 +112,7 @@ CREATE TABLE end_users (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   reseller_id BIGINT UNSIGNED NULL,
   manager_id BIGINT UNSIGNED NULL,
-  platform ENUM('telegram', 'vk', 'max', 'web') NOT NULL,
+  platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
   platform_user_id VARCHAR(100) NOT NULL,
   username VARCHAR(190) NULL,
   first_name VARCHAR(190) NULL,
@@ -125,7 +140,7 @@ CREATE TABLE end_users (
 CREATE TABLE platform_accounts (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   end_user_id BIGINT UNSIGNED NOT NULL,
-  platform ENUM('telegram', 'vk', 'max', 'web') NOT NULL,
+  platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
   platform_user_id VARCHAR(100) NOT NULL,
   username VARCHAR(190) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -143,7 +158,7 @@ CREATE TABLE referral_links (
   owner_type ENUM('reseller', 'manager') NOT NULL,
   owner_id BIGINT UNSIGNED NOT NULL,
   referral_code VARCHAR(64) NOT NULL,
-  platform ENUM('telegram', 'vk', 'max', 'web') NOT NULL,
+  platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
   clicks_count BIGINT UNSIGNED NOT NULL DEFAULT 0,
   registrations_count BIGINT UNSIGNED NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -407,7 +422,7 @@ CREATE TABLE leads (
   manager_id BIGINT UNSIGNED NULL,
   reseller_id BIGINT UNSIGNED NULL,
   product_id BIGINT UNSIGNED NULL,
-  source_platform ENUM('telegram', 'vk', 'max', 'web') NOT NULL,
+  source_platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
   message TEXT NULL,
   status ENUM('new', 'contacted', 'interested', 'closed', 'lost') NOT NULL DEFAULT 'new',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -438,7 +453,7 @@ CREATE TABLE lead_responses (
   admin_user_id BIGINT UNSIGNED NULL,
   content_post_id BIGINT UNSIGNED NULL,
   test_id BIGINT UNSIGNED NULL,
-  platform ENUM('telegram', 'vk', 'max', 'web') NOT NULL,
+  platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
   message_text TEXT NULL,
   attachment_path TEXT NULL,
   external_url VARCHAR(255) NULL,
@@ -467,7 +482,7 @@ CREATE TABLE messaging_integrations (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   owner_type ENUM('reseller', 'manager') NOT NULL,
   owner_id BIGINT UNSIGNED NOT NULL,
-  platform ENUM('vk', 'telegram', 'max') NOT NULL,
+  platform ENUM('VK', 'OK', 'telegram', 'MAX') NOT NULL,
   title VARCHAR(190) NOT NULL,
   external_id VARCHAR(190) NULL,
   access_token TEXT NULL,
@@ -488,7 +503,7 @@ CREATE TABLE broadcasts (
   target_type ENUM('all', 'reseller', 'manager', 'segment') NOT NULL DEFAULT 'all',
   target_reseller_id BIGINT UNSIGNED NULL,
   target_manager_id BIGINT UNSIGNED NULL,
-  platform ENUM('all', 'telegram', 'vk', 'max') NOT NULL DEFAULT 'all',
+  platform ENUM('all', 'telegram', 'VK', 'OK', 'MAX') NOT NULL DEFAULT 'all',
   schedule_type ENUM('once', 'daily', 'weekly', 'monthly') NOT NULL DEFAULT 'once',
   scheduled_at DATETIME NULL,
   status ENUM('draft', 'scheduled', 'sent', 'cancelled') NOT NULL DEFAULT 'draft',
@@ -514,7 +529,7 @@ CREATE TABLE broadcast_logs (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   broadcast_id BIGINT UNSIGNED NOT NULL,
   end_user_id BIGINT UNSIGNED NOT NULL,
-  platform ENUM('telegram', 'vk', 'max', 'web') NOT NULL,
+  platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
   status ENUM('pending', 'sent', 'failed') NOT NULL DEFAULT 'pending',
   error_message TEXT NULL,
   sent_at DATETIME NULL,

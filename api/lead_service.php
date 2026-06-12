@@ -3,7 +3,8 @@
 function create_lead_for_user(array $user, array $data): int
 {
     $sourcePlatform = $data['platform'] ?? $user['platform'];
-    if (!in_array($sourcePlatform, ['telegram', 'vk', 'max', 'web'], true)) {
+    $sourcePlatform = normalize_platform((string)$sourcePlatform);
+    if (!in_array($sourcePlatform, ['telegram', 'VK', 'OK', 'MAX', 'web'], true)) {
         $sourcePlatform = $user['platform'];
     }
 

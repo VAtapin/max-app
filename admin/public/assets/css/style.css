@@ -240,6 +240,42 @@ table {
     color: var(--danger);
 }
 
+.platform-badge {
+    border-radius: 999px;
+    display: inline-flex;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    min-width: 34px;
+    padding: 5px 8px;
+    place-content: center;
+}
+
+.platform-telegram {
+    background: #dff3ff;
+    color: #006d9c;
+}
+
+.platform-vk {
+    background: #e5efff;
+    color: #2256a4;
+}
+
+.platform-ok {
+    background: #fff0dc;
+    color: #9a4f00;
+}
+
+.platform-max {
+    background: #e8f7ef;
+    color: #087443;
+}
+
+.platform-web {
+    background: #eef4f3;
+    color: var(--muted);
+}
+
 .lead-message {
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
@@ -483,6 +519,28 @@ button:disabled {
 
 .checkbox-field input {
     min-height: 20px;
+}
+
+.checkbox-group {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 12px;
+}
+
+.checkbox-group legend {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 0 6px;
+}
+
+.checkbox-group label {
+    align-items: center;
+    display: inline-flex;
+    gap: 6px;
 }
 
 .builder-list {

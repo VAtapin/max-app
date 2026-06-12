@@ -44,7 +44,7 @@ $modules = [
         'fields' => [
             'reseller_id' => ['label' => app_text('auto.k_86469fea3a4a'), 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
             'manager_id' => ['label' => app_text('auto.k_8d98911527e4'), 'type' => 'select', 'source' => 'managers', 'nullable' => true],
-            'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['telegram', 'vk', 'max', 'web'], 'required' => true],
+            'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['telegram', 'VK', 'OK', 'MAX', 'web'], 'required' => true],
             'platform_user_id' => ['label' => app_text('auto.k_c7f40b63aad7'), 'required' => true],
             'username' => ['label' => 'Username'],
             'first_name' => ['label' => app_text('auto.k_aee78fe86022')],
@@ -61,7 +61,7 @@ $modules = [
         'columns' => ['id', 'end_user_id', 'platform', 'platform_user_id', 'username'],
         'fields' => [
             'end_user_id' => ['label' => app_text('auto.k_51aff1853949'), 'type' => 'select', 'source' => 'end_users', 'required' => true],
-            'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['telegram', 'vk', 'max', 'web'], 'required' => true],
+            'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['telegram', 'VK', 'OK', 'MAX', 'web'], 'required' => true],
             'platform_user_id' => ['label' => app_text('auto.k_c7f40b63aad7'), 'required' => true],
             'username' => ['label' => 'Username'],
         ],
@@ -75,7 +75,7 @@ $modules = [
             'manager_id' => ['label' => app_text('auto.k_8d98911527e4'), 'type' => 'select', 'source' => 'managers', 'nullable' => true],
             'reseller_id' => ['label' => app_text('auto.k_86469fea3a4a'), 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
             'product_id' => ['label' => app_text('auto.k_82a9ca014bb8'), 'type' => 'select', 'source' => 'products', 'nullable' => true],
-            'source_platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['telegram', 'vk', 'max', 'web'], 'required' => true],
+            'source_platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['telegram', 'VK', 'OK', 'MAX', 'web'], 'required' => true],
             'message' => ['label' => app_text('auto.k_dc72346ac447'), 'type' => 'textarea'],
             'status' => ['label' => app_text('auto.k_f7f293b5c58c'), 'type' => 'select', 'options' => ['new', 'contacted', 'interested', 'closed', 'lost'], 'required' => true],
         ],
@@ -140,7 +140,7 @@ $modules = [
             'target_type' => ['label' => app_text('auto.k_e9476ab1820b'), 'type' => 'select', 'options' => ['all', 'reseller', 'manager', 'segment'], 'required' => true],
             'target_reseller_id' => ['label' => app_text('auto.k_86469fea3a4a'), 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
             'target_manager_id' => ['label' => app_text('auto.k_8d98911527e4'), 'type' => 'select', 'source' => 'managers', 'nullable' => true],
-            'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['all', 'telegram', 'vk', 'max'], 'required' => true],
+            'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['all', 'telegram', 'VK', 'OK', 'MAX'], 'required' => true],
             'schedule_type' => ['label' => app_text('auto.k_f04bd0a06491'), 'type' => 'select', 'options' => ['once', 'daily', 'weekly', 'monthly'], 'required' => true],
             'scheduled_at' => ['label' => app_text('auto.k_854ba1dc86aa'), 'type' => 'datetime-local', 'nullable' => true],
             'status' => ['label' => app_text('auto.k_f7f293b5c58c'), 'type' => 'select', 'options' => ['draft', 'scheduled', 'sent', 'cancelled'], 'required' => true],
@@ -172,7 +172,7 @@ $modules = [
         'fields' => [
             'owner_type' => ['label' => app_text('integrations.owner_type'), 'type' => 'select', 'options' => ['reseller', 'manager'], 'required' => true],
             'owner_id' => ['label' => app_text('integrations.owner_id'), 'type' => 'number', 'required' => true],
-            'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['vk', 'telegram', 'max'], 'required' => true],
+            'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['VK', 'OK', 'telegram', 'MAX'], 'required' => true],
             'title' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
             'external_id' => ['label' => app_text('integrations.external_id')],
             'access_token' => ['label' => app_text('integrations.access_token'), 'type' => 'textarea'],
@@ -545,6 +545,17 @@ function validate_payload(array $fields, array $payload): array
 function validate_scope_payload(string $moduleKey, array $payload, array $admin): array
 {
     $errors = [];
+    if ($moduleKey === 'users' && !empty($payload['manager_id']) && !empty($payload['reseller_id'])) {
+        $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => (int)$payload['manager_id']]);
+        $manager = $stmt->fetch();
+        if (!$manager) {
+            $errors[] = app_text('auto.k_34b1bedb5064');
+        } elseif ($manager['reseller_id'] !== null && (int)$manager['reseller_id'] !== (int)$payload['reseller_id']) {
+            $errors[] = app_text('auto.k_34b1bedb5064');
+        }
+    }
+
     if (in_array($moduleKey, ['leads', 'platform_accounts'], true)) {
         $endUserId = (int)($payload['end_user_id'] ?? 0);
         if ($endUserId && !scoped_end_user_exists($endUserId, $admin)) {
@@ -575,6 +586,15 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin)
 
 function apply_role_defaults(string $moduleKey, array $payload, array $admin): array
 {
+    if ($moduleKey === 'users' && !empty($payload['manager_id'])) {
+        $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => (int)$payload['manager_id']]);
+        $manager = $stmt->fetch();
+        if ($manager) {
+            $payload['reseller_id'] = $manager['reseller_id'] !== null ? (int)$manager['reseller_id'] : null;
+        }
+    }
+
     if ($admin['role'] === 'reseller' && in_array($moduleKey, ['managers', 'users', 'leads'], true)) {
         $payload['reseller_id'] = $admin['reseller_id'];
     }
@@ -604,17 +624,81 @@ function apply_role_defaults(string $moduleKey, array $payload, array $admin): a
     return $payload;
 }
 
+function default_manager_platform_options(): array
+{
+    return ['telegram', 'VK', 'OK', 'MAX', 'web'];
+}
+
+function default_platforms_for_manager(int $managerId): array
+{
+    if ($managerId <= 0) {
+        return [];
+    }
+
+    $stmt = db()->prepare('SELECT platform FROM default_platform_managers WHERE manager_id = :manager_id AND is_active = 1');
+    $stmt->execute(['manager_id' => $managerId]);
+    return array_map(static fn($row) => (string)$row['platform'], $stmt->fetchAll());
+}
+
+function save_default_manager_platforms(int $managerId, array $platforms): void
+{
+    $allowed = default_manager_platform_options();
+    $platforms = array_values(array_intersect($allowed, array_map('normalize_platform', $platforms)));
+
+    $delete = db()->prepare('DELETE FROM default_platform_managers WHERE manager_id = :manager_id');
+    $delete->execute(['manager_id' => $managerId]);
+
+    if (!$platforms) {
+        return;
+    }
+
+    $stmt = db()->prepare(
+        'INSERT INTO default_platform_managers (platform, manager_id, is_active)
+         VALUES (:platform, :manager_id, 1)
+         ON DUPLICATE KEY UPDATE manager_id = VALUES(manager_id), is_active = 1'
+    );
+    foreach ($platforms as $platform) {
+        $stmt->execute([
+            'platform' => $platform,
+            'manager_id' => $managerId,
+        ]);
+    }
+}
+
 function save_record(string $moduleKey, array $module, array $payload, ?int $id, array $admin): int
 {
     $payload = apply_role_defaults($moduleKey, $payload, $admin);
     $columns = array_keys($payload);
 
     if ($id) {
+        $before = null;
+        if ($moduleKey === 'users') {
+            $beforeStmt = db()->prepare('SELECT reseller_id, manager_id FROM end_users WHERE id = :id LIMIT 1');
+            $beforeStmt->execute(['id' => $id]);
+            $before = $beforeStmt->fetch();
+        }
+
         $assignments = implode(', ', array_map(static fn($column) => "`$column` = :$column", $columns));
         $payload['id'] = $id;
         $stmt = db()->prepare("UPDATE {$module['table']} SET $assignments WHERE id = :id");
         $stmt->execute($payload);
         log_activity('admin', (int)$admin['id'], 'update_' . $module['table'], $module['table'], $id);
+
+        if ($moduleKey === 'users' && $before) {
+            $oldResellerId = $before['reseller_id'] !== null ? (int)$before['reseller_id'] : null;
+            $oldManagerId = $before['manager_id'] !== null ? (int)$before['manager_id'] : null;
+            $newResellerId = $payload['reseller_id'] !== null ? (int)$payload['reseller_id'] : null;
+            $newManagerId = $payload['manager_id'] !== null ? (int)$payload['manager_id'] : null;
+            if ($oldResellerId !== $newResellerId || $oldManagerId !== $newManagerId) {
+                log_activity('admin', (int)$admin['id'], 'transfer_end_user', 'end_users', $id, [
+                    'old_reseller_id' => $oldResellerId,
+                    'old_manager_id' => $oldManagerId,
+                    'new_reseller_id' => $newResellerId,
+                    'new_manager_id' => $newManagerId,
+                ]);
+            }
+        }
+
         return $id;
     }
 
@@ -722,7 +806,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $errors = array_merge($errors, validate_scope_payload($moduleKey, $payload, $admin));
     if (!$errors) {
         try {
-            save_record($moduleKey, $module, $payload, $postId, $admin);
+            $savedId = save_record($moduleKey, $module, $payload, $postId, $admin);
+            if ($moduleKey === 'managers' && $admin['role'] === 'superadmin') {
+                save_default_manager_platforms($savedId, $_POST['default_platforms'] ?? []);
+            }
             redirect('crud.php?module=' . urlencode($moduleKey) . '&success=saved');
         } catch (Throwable $e) {
             $errors[] = app_text('auto.k_02613f541f5f') . $e->getMessage();
@@ -757,6 +844,15 @@ try {
 } catch (Throwable $e) {
     $errors[] = app_text('auto.k_49fb23bb29cf') . $e->getMessage();
     $listHtml = app_text('auto.k_fda0c24ca2e9');
+}
+
+$managerDefaultPlatforms = [];
+if ($moduleKey === 'managers' && $admin['role'] === 'superadmin' && ($action === 'create' || $action === 'edit')) {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $managerDefaultPlatforms = array_map('normalize_platform', $_POST['default_platforms'] ?? []);
+    } elseif (!empty($editRow['id'])) {
+        $managerDefaultPlatforms = default_platforms_for_manager((int)$editRow['id']);
+    }
 }
 
 require __DIR__ . '/../app/views/layouts/header.php';
@@ -832,6 +928,22 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <?php endif; ?>
                 </label>
             <?php endforeach; ?>
+            <?php if ($moduleKey === 'managers' && $admin['role'] === 'superadmin'): ?>
+                <fieldset class="field checkbox-group">
+                    <legend><?= h(app_text('auto.k_89009febe5c6')) ?></legend>
+                    <?php foreach (default_manager_platform_options() as $platformOption): ?>
+                        <label>
+                            <input
+                                type="checkbox"
+                                name="default_platforms[]"
+                                value="<?= h($platformOption) ?>"
+                                <?= in_array($platformOption, $managerDefaultPlatforms, true) ? 'checked' : '' ?>
+                            >
+                            <?= h(platform_label($platformOption)) ?>
+                        </label>
+                    <?php endforeach; ?>
+                </fieldset>
+            <?php endif; ?>
             <div class="form-actions">
                 <button type="submit"><?= h(app_text('auto.k_4864057d626a')) ?></button>
                 <a class="button secondary-button" href="crud.php?module=<?= h($moduleKey) ?>"><?= h(app_text('auto.k_0ec753be8df9')) ?></a>

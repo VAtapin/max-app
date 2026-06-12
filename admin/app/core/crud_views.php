@@ -98,6 +98,7 @@ function crud_display_columns(string $moduleKey): array
             'reseller_name' => app_text('auto.k_86469fea3a4a'),
             'contacts' => app_text('auto.k_dba0fcb2cbbb'),
             'referral_code' => app_text('auto.k_b162c37f62ea'),
+            'default_platforms' => app_text('auto.k_89009febe5c6'),
             'users_count' => app_text('auto.k_0f0b8f55edcc'),
             'state' => app_text('auto.k_f7f293b5c58c'),
         ],
@@ -184,7 +185,7 @@ function crud_display_columns(string $moduleKey): array
 function lead_filters_from_request(): array
 {
     $allowedStatuses = ['new', 'contacted', 'interested', 'closed', 'lost'];
-    $allowedPlatforms = ['telegram', 'vk', 'max', 'web'];
+    $allowedPlatforms = ['telegram', 'VK', 'OK', 'MAX', 'web'];
     $allowedResponse = ['all', 'none', 'sent', 'pending', 'failed'];
 
     $status = $_GET['status'] ?? 'new';
@@ -320,10 +321,12 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
             "SELECT m.id, m.name, m.email, m.phone, m.referral_code,
                     IF(m.is_active = 1, 'active', 'inactive') AS state,
                     r.name AS reseller_name,
+                    GROUP_CONCAT(DISTINCT dpm.platform ORDER BY FIELD(dpm.platform, 'telegram', 'VK', 'OK', 'MAX', 'web') SEPARATOR ',') AS default_platforms,
                     COUNT(DISTINCT eu.id) AS users_count
              FROM managers m
              LEFT JOIN resellers r ON r.id = m.reseller_id
              LEFT JOIN end_users eu ON eu.manager_id = m.id
+             LEFT JOIN default_platform_managers dpm ON dpm.manager_id = m.id AND dpm.is_active = 1
              $where
              GROUP BY m.id
              ORDER BY m.id DESC
@@ -485,6 +488,29 @@ function status_badge_class(string $value): string
     };
 }
 
+function platform_badge_label(string $platform): string
+{
+    return match (normalize_platform($platform)) {
+        'telegram' => 'TG',
+        'VK' => 'VK',
+        'OK' => 'OK',
+        'MAX' => 'MAX',
+        'web' => 'WEB',
+        default => strtoupper($platform),
+    };
+}
+
+function platform_badge_class(string $platform): string
+{
+    return 'platform-badge platform-' . strtolower(normalize_platform($platform));
+}
+
+function render_platform_badge(string $platform): string
+{
+    $normalized = normalize_platform($platform);
+    return '<span class="' . h(platform_badge_class($normalized)) . '" title="' . h(platform_label($normalized)) . '">' . h(platform_badge_label($normalized)) . '</span>';
+}
+
 function render_cell(string $moduleKey, string $key, array $row): string
 {
     if ($key === 'image_preview' && !empty($row['image_path'])) {
@@ -500,7 +526,25 @@ function render_cell(string $moduleKey, string $key, array $row): string
     }
 
     if ($moduleKey === 'leads' && $key === 'lead_summary') {
-        return '<div class="lead-message">' . nl2br(h(crud_cell_value($moduleKey, $key, $row))) . '</div>';
+        $message = trim((string)($row['message'] ?? ''));
+        $message = $message !== '' ? $message : app_text('auto.k_503360e76342');
+        return '<div class="lead-message">' . nl2br(h($message)) . '</div><div class="cell-muted">' . render_platform_badge((string)($row['source_platform'] ?? '')) . '</div>';
+    }
+
+    if ($key === 'platform_account') {
+        return render_platform_badge((string)($row['platform'] ?? ''))
+            . '<div class="cell-muted">' . h((string)($row['platform_user_id'] ?? '')) . '</div>';
+    }
+
+    if ($key === 'default_platforms') {
+        $platforms = array_filter(explode(',', (string)($row[$key] ?? '')));
+        return $platforms
+            ? implode(' ', array_map(static fn($platform) => render_platform_badge($platform), $platforms))
+            : '—';
+    }
+
+    if ($key === 'platform') {
+        return render_platform_badge((string)($row['platform'] ?? ''));
     }
 
     return nl2br(h(crud_cell_value($moduleKey, $key, $row)));
@@ -517,7 +561,7 @@ function render_lead_filters(): string
         'closed' => status_label('closed'),
         'lost' => status_label('lost'),
     ];
-    $platforms = ['all' => platform_label('all'), 'telegram' => platform_label('telegram'), 'vk' => platform_label('vk'), 'max' => platform_label('max'), 'web' => platform_label('web')];
+    $platforms = ['all' => platform_label('all'), 'telegram' => platform_label('telegram'), 'VK' => platform_label('VK'), 'OK' => platform_label('OK'), 'MAX' => platform_label('MAX'), 'web' => platform_label('web')];
     $responses = ['all' => app_text('auto.k_a51484b486a9'), 'none' => status_label('none'), 'sent' => status_label('sent'), 'pending' => status_label('pending'), 'failed' => status_label('failed')];
 
     ob_start();
