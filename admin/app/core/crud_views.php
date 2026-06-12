@@ -233,7 +233,12 @@ function scoped_where_with_alias(array $scope, string $alias): array
         return ['', $params];
     }
 
-    $where = preg_replace('/\b(reseller_id|manager_id)\b/', $alias . '.$1', $where);
+    foreach (['reseller_id', 'manager_id'] as $column) {
+        $where = str_replace('WHERE ' . $column, 'WHERE ' . $alias . '.' . $column, $where);
+        $where = str_replace('AND ' . $column, 'AND ' . $alias . '.' . $column, $where);
+        $where = str_replace('OR ' . $column, 'OR ' . $alias . '.' . $column, $where);
+    }
+
     return [$where, $params];
 }
 
