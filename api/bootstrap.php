@@ -29,6 +29,12 @@ function platform_account_candidates(array $data): array
     $platform = normalize_platform((string)($data['platform'] ?? 'VK'));
     $platformUserId = (string)($data['platform_user_id'] ?? '');
     $username = $data['username'] ?? null;
+    $firstName = $data['first_name'] ?? null;
+    $lastName = $data['last_name'] ?? null;
+    $displayName = trim((string)($data['display_name'] ?? trim((string)$firstName . ' ' . (string)$lastName)));
+    if ($displayName === '') {
+        $displayName = $username ?: null;
+    }
     $accounts = [];
 
     if ($platformUserId !== '') {
@@ -36,6 +42,9 @@ function platform_account_candidates(array $data): array
             'platform' => $platform,
             'platform_user_id' => $platformUserId,
             'username' => $username,
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'display_name' => $displayName,
         ];
     }
 
@@ -126,7 +135,7 @@ function require_platform_user(?array $data = null): array
         ]);
         $user = $legacyStmt->fetch();
         if ($user) {
-            ensure_platform_account((int)$user['id'], $platform, (string)$platformUserId, $user['username'] ?? null);
+            ensure_platform_account((int)$user['id'], $platform, (string)$platformUserId, $user['username'] ?? null, $user['first_name'] ?? null, $user['last_name'] ?? null);
         }
     }
 
@@ -300,6 +309,7 @@ function create_or_get_user(array $data): array
         ]);
         $existing = $stmt->fetch();
         if ($existing) {
+            ensure_platform_account((int)$existing['id'], $account['platform'], $account['platform_user_id'], $account['username'] ?? null, $account['first_name'] ?? null, $account['last_name'] ?? null, $account['display_name'] ?? null);
             $touch = db()->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
             $touch->execute(['id' => $existing['id']]);
             return attach_referral_if_missing($existing, $data['referral_code'] ?? null);
@@ -311,7 +321,7 @@ function create_or_get_user(array $data): array
         $targetStmt->execute(['id' => $linkTargetUserId]);
         $targetUser = $targetStmt->fetch();
         if ($targetUser) {
-            ensure_platform_account((int)$targetUser['id'], $platform, $platformUserId, $data['username'] ?? null, false);
+            ensure_platform_account((int)$targetUser['id'], $platform, $platformUserId, $data['username'] ?? null, $data['first_name'] ?? null, $data['last_name'] ?? null, null, false);
             $touch = db()->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
             $touch->execute(['id' => $targetUser['id']]);
             return attach_referral_if_missing($targetUser, $data['referral_code'] ?? null);
@@ -326,7 +336,7 @@ function create_or_get_user(array $data): array
         ]);
         $legacyUser = $legacyStmt->fetch();
         if ($legacyUser) {
-            ensure_platform_account((int)$legacyUser['id'], $account['platform'], $account['platform_user_id'], $account['username'] ?? null, false);
+            ensure_platform_account((int)$legacyUser['id'], $account['platform'], $account['platform_user_id'], $account['username'] ?? null, $account['first_name'] ?? null, $account['last_name'] ?? null, $account['display_name'] ?? null, false);
             $touch = db()->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
             $touch->execute(['id' => $legacyUser['id']]);
             return attach_referral_if_missing($legacyUser, $data['referral_code'] ?? null);
@@ -361,7 +371,7 @@ function create_or_get_user(array $data): array
     $userId = (int)db()->lastInsertId();
 
     foreach ($accounts as $account) {
-        ensure_platform_account((int)$userId, $account['platform'], $account['platform_user_id'], $account['username'] ?? null);
+        ensure_platform_account((int)$userId, $account['platform'], $account['platform_user_id'], $account['username'] ?? null, $account['first_name'] ?? null, $account['last_name'] ?? null, $account['display_name'] ?? null);
     }
 
     $log = db()->prepare(
@@ -387,15 +397,29 @@ function create_or_get_user(array $data): array
     return $created->fetch();
 }
 
-function ensure_platform_account(int $endUserId, string $platform, string $platformUserId, ?string $username = null, bool $moveExisting = false): void
+function ensure_platform_account(
+    int $endUserId,
+    string $platform,
+    string $platformUserId,
+    ?string $username = null,
+    ?string $firstName = null,
+    ?string $lastName = null,
+    ?string $displayName = null,
+    bool $moveExisting = false
+): void
 {
-    $sql = 'INSERT INTO platform_accounts (end_user_id, platform, platform_user_id, username)
-            VALUES (:end_user_id, :platform, :platform_user_id, :username)
-            ON DUPLICATE KEY UPDATE username = VALUES(username)';
+    $displayName = trim((string)($displayName ?? trim((string)$firstName . ' ' . (string)$lastName)));
+    if ($displayName === '') {
+        $displayName = $username ?: null;
+    }
+
+    $sql = 'INSERT INTO platform_accounts (end_user_id, platform, platform_user_id, username, first_name, last_name, display_name)
+            VALUES (:end_user_id, :platform, :platform_user_id, :username, :first_name, :last_name, :display_name)
+            ON DUPLICATE KEY UPDATE username = VALUES(username), first_name = VALUES(first_name), last_name = VALUES(last_name), display_name = VALUES(display_name)';
     if ($moveExisting) {
-        $sql = 'INSERT INTO platform_accounts (end_user_id, platform, platform_user_id, username)
-                VALUES (:end_user_id, :platform, :platform_user_id, :username)
-                ON DUPLICATE KEY UPDATE end_user_id = VALUES(end_user_id), username = VALUES(username)';
+        $sql = 'INSERT INTO platform_accounts (end_user_id, platform, platform_user_id, username, first_name, last_name, display_name)
+                VALUES (:end_user_id, :platform, :platform_user_id, :username, :first_name, :last_name, :display_name)
+                ON DUPLICATE KEY UPDATE end_user_id = VALUES(end_user_id), username = VALUES(username), first_name = VALUES(first_name), last_name = VALUES(last_name), display_name = VALUES(display_name)';
     }
 
     $stmt = db()->prepare($sql);
@@ -404,6 +428,9 @@ function ensure_platform_account(int $endUserId, string $platform, string $platf
         'platform' => $platform,
         'platform_user_id' => $platformUserId,
         'username' => $username,
+        'first_name' => $firstName,
+        'last_name' => $lastName,
+        'display_name' => $displayName,
     ]);
 }
 

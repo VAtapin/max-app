@@ -332,7 +332,7 @@ function merge_user_options(int $targetUserId, array $admin): array
 function user_platform_accounts(int $endUserId): array
 {
     $stmt = db()->prepare(
-        'SELECT platform, platform_user_id, username, created_at
+        'SELECT platform, platform_user_id, username, first_name, last_name, display_name, created_at
          FROM platform_accounts
          WHERE end_user_id = :end_user_id
          ORDER BY FIELD(platform, "telegram", "VK", "OK", "MAX", "web"), id'
@@ -353,16 +353,32 @@ function merge_end_users(int $targetUserId, int $sourceUserId, array $admin): vo
     $pdo = db();
     $pdo->beginTransaction();
     try {
-        $targetStmt = $pdo->prepare('SELECT id FROM end_users WHERE id = :id AND merged_into_user_id IS NULL FOR UPDATE');
+        $targetStmt = $pdo->prepare('SELECT * FROM end_users WHERE id = :id AND merged_into_user_id IS NULL FOR UPDATE');
         $targetStmt->execute(['id' => $targetUserId]);
         $target = $targetStmt->fetch();
 
-        $sourceStmt = $pdo->prepare('SELECT id FROM end_users WHERE id = :id AND merged_into_user_id IS NULL FOR UPDATE');
+        $sourceStmt = $pdo->prepare('SELECT * FROM end_users WHERE id = :id AND merged_into_user_id IS NULL FOR UPDATE');
         $sourceStmt->execute(['id' => $sourceUserId]);
         $source = $sourceStmt->fetch();
 
         if (!$target || !$source) {
             throw new RuntimeException('Один из пользователей уже объединён.');
+        }
+
+        $mergeFields = ['username', 'first_name', 'last_name', 'phone', 'email', 'referral_code_used'];
+        $assignments = [];
+        $mergeParams = ['target_id' => $targetUserId, 'source_id' => $sourceUserId];
+        foreach ($mergeFields as $field) {
+            if (($target[$field] ?? null) === null || trim((string)$target[$field]) === '') {
+                if (($source[$field] ?? null) !== null && trim((string)$source[$field]) !== '') {
+                    $assignments[] = "$field = :$field";
+                    $mergeParams[$field] = $source[$field];
+                }
+            }
+        }
+        if ($assignments) {
+            $mergeData = $pdo->prepare('UPDATE end_users SET ' . implode(', ', $assignments) . ' WHERE id = :target_id');
+            $mergeData->execute($mergeParams);
         }
 
         $updates = [
@@ -1084,6 +1100,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <tr>
                         <th>Платформа</th>
                         <th>ID</th>
+                        <th>Профиль платформы</th>
                         <th>Username</th>
                         <th>Создан</th>
                     </tr>
@@ -1093,6 +1110,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         <tr>
                             <td><?= render_platform_badge((string)$account['platform']) ?></td>
                             <td><?= h((string)$account['platform_user_id']) ?></td>
+                            <td><?= h(trim((string)($account['display_name'] ?? '')) ?: trim((string)(($account['first_name'] ?? '') . ' ' . ($account['last_name'] ?? ''))) ?: '—') ?></td>
                             <td><?= h((string)($account['username'] ?? '')) ?></td>
                             <td><?= h((string)$account['created_at']) ?></td>
                         </tr>

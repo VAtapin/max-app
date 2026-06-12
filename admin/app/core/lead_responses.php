@@ -145,7 +145,7 @@ function save_response_attachments(array &$errors): array
 function lead_context(int $leadId): ?array
 {
     $stmt = db()->prepare(
-        'SELECT l.*, eu.platform AS user_platform, eu.platform_user_id, eu.username,
+        'SELECT l.*, eu.id AS end_user_id, eu.platform AS user_platform, eu.platform_user_id, eu.username,
                 eu.first_name, eu.last_name
          FROM leads l
          INNER JOIN end_users eu ON eu.id = l.end_user_id
@@ -156,6 +156,55 @@ function lead_context(int $leadId): ?array
     $lead = $stmt->fetch();
 
     return $lead ?: null;
+}
+
+function lead_platform_account_id(array $lead, string $platform): ?string
+{
+    $stmt = db()->prepare(
+        'SELECT platform_user_id
+         FROM platform_accounts
+         WHERE end_user_id = :end_user_id AND platform = :platform
+         ORDER BY id DESC
+         LIMIT 1'
+    );
+    $stmt->execute([
+        'end_user_id' => (int)$lead['end_user_id'],
+        'platform' => normalize_platform($platform),
+    ]);
+    $platformUserId = $stmt->fetchColumn();
+    if ($platformUserId !== false && trim((string)$platformUserId) !== '') {
+        return (string)$platformUserId;
+    }
+
+    if (normalize_platform((string)($lead['user_platform'] ?? '')) === normalize_platform($platform)) {
+        return trim((string)($lead['platform_user_id'] ?? '')) ?: null;
+    }
+
+    return null;
+}
+
+function lead_platform_accounts(array $lead): array
+{
+    $stmt = db()->prepare(
+        'SELECT platform, platform_user_id
+         FROM platform_accounts
+         WHERE end_user_id = :end_user_id
+         ORDER BY FIELD(platform, "telegram", "VK", "OK", "MAX", "web"), id'
+    );
+    $stmt->execute(['end_user_id' => (int)$lead['end_user_id']]);
+    $accounts = $stmt->fetchAll();
+    if ($accounts) {
+        return $accounts;
+    }
+
+    if (!empty($lead['user_platform']) && !empty($lead['platform_user_id'])) {
+        return [[
+            'platform' => (string)$lead['user_platform'],
+            'platform_user_id' => (string)$lead['platform_user_id'],
+        ]];
+    }
+
+    return [];
 }
 
 function content_snippet(?int $contentId): ?array
@@ -201,9 +250,13 @@ function mini_app_url(?int $testId = null): string
     return $url;
 }
 
-function build_lead_response_text(string $message, ?array $content, ?array $test): string
+function build_lead_response_text(string $message, ?array $content, ?array $test, ?string $sourcePlatform = null): string
 {
     $parts = [];
+    if ($sourcePlatform) {
+        $parts[] = 'Источник заявки: ' . platform_label($sourcePlatform);
+    }
+
     if (trim($message) !== '') {
         $parts[] = trim($message);
     }
@@ -492,7 +545,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
 
     $content = content_snippet($contentId);
     $test = test_snippet($testId);
-    $text = build_lead_response_text($message, $content, $test);
+    $text = build_lead_response_text($message, $content, $test, (string)$lead['source_platform']);
     if ($text === '' && !$attachmentPaths && $externalUrl === '') {
         $errors[] = app_text('lead_response.empty_response');
         return null;
@@ -504,6 +557,14 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
 
     $attachmentValue = $attachmentPaths ? json_encode($attachmentPaths, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
     $platform = (string)$lead['source_platform'];
+    $deliveryPlatforms = array_values(array_unique(array_map(
+        static fn(array $account): string => normalize_platform((string)$account['platform']),
+        lead_platform_accounts($lead)
+    )));
+    if (!$deliveryPlatforms) {
+        $deliveryPlatforms = [normalize_platform($platform)];
+    }
+
     $stmt = db()->prepare(
         'INSERT INTO lead_responses
             (lead_id, admin_user_id, content_post_id, test_id, platform, message_text, attachment_path, external_url, status)
@@ -522,17 +583,40 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
     ]);
     $responseId = (int)db()->lastInsertId();
 
-    $status = 'pending';
-    $error = null;
-    if ($platform === 'telegram') {
-        $result = send_telegram_response((string)$lead['platform_user_id'], $text, $content, $test, $attachmentPaths, $externalUrl);
-        $status = $result['ok'] ? 'sent' : 'failed';
-        $error = $result['error'];
-    } elseif (in_array(normalize_platform($platform), ['VK', 'OK'], true)) {
-        $status = 'sent';
-        $error = null;
-    } else {
-        $error = app_text('lead_response.platform_not_connected', ['platform' => $platform]);
+    $status = 'sent';
+    $deliveryErrors = [];
+    $sentAtLeastOneExternal = false;
+    foreach ($deliveryPlatforms as $deliveryPlatform) {
+        if ($deliveryPlatform === 'telegram') {
+        $telegramChatId = lead_platform_account_id($lead, 'telegram');
+        if ($telegramChatId) {
+            $result = send_telegram_response($telegramChatId, $text, $content, $test, $attachmentPaths, $externalUrl);
+                if ($result['ok']) {
+                    $sentAtLeastOneExternal = true;
+                } else {
+                    $deliveryErrors[] = 'telegram: ' . $result['error'];
+                }
+        } else {
+                $deliveryErrors[] = app_text('lead_response.platform_not_connected', ['platform' => 'telegram']);
+        }
+            continue;
+        }
+
+        if (in_array($deliveryPlatform, ['VK', 'OK'], true)) {
+            continue;
+        }
+
+        if ($deliveryPlatform !== 'web') {
+            $deliveryErrors[] = app_text('lead_response.platform_not_connected', ['platform' => $deliveryPlatform]);
+        }
+    }
+
+    if ($deliveryErrors && !$sentAtLeastOneExternal && !array_intersect($deliveryPlatforms, ['VK', 'OK', 'web'])) {
+        $status = 'failed';
+    }
+    $error = $deliveryErrors ? implode('; ', array_filter($deliveryErrors)) : null;
+    if ($status === 'sent' && $error) {
+        $error = app_text('lead_response.response_saved_not_sent', ['error' => $error]);
     }
 
     $stmt = db()->prepare(

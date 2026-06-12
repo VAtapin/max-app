@@ -362,6 +362,7 @@ async function renderProfile() {
                 <article class="item compact-item">
                     <strong>${escapeHtml(account.platform)}</strong>
                     <span class="muted">${escapeHtml(account.platform_user_id)}</span>
+                    ${account.display_name ? `<span>${escapeHtml(account.display_name)}</span>` : ''}
                     ${account.username ? `<span class="muted">${escapeHtml(account.username)}</span>` : ''}
                 </article>
             `).join('') : `<div class="empty">${escapeHtml(ui('profile.no_accounts', 'Платформы пока не подключены.'))}</div>`}

@@ -114,6 +114,7 @@ function crud_display_columns(string $moduleKey): array
         'platform_accounts' => [
             'id' => 'ID',
             'user_name' => app_text('auto.k_51aff1853949'),
+            'platform_profile' => 'Профиль платформы',
             'platform_account' => app_text('auto.k_89009febe5c6'),
             'username' => 'Username',
             'created_at' => app_text('auto.k_33415c6ac49e'),
@@ -263,7 +264,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     if ($moduleKey === 'platform_accounts') {
         [$where, $params] = scope_where_for_module($moduleKey, $admin);
         return [
-            "SELECT pa.id, pa.platform, pa.platform_user_id, pa.username, pa.created_at,
+            "SELECT pa.id, pa.platform, pa.platform_user_id, pa.username, pa.first_name, pa.last_name, pa.display_name, pa.created_at,
                     CONCAT_WS(' ', NULLIF(eu.first_name, ''), NULLIF(eu.last_name, '')) AS full_name,
                     eu.username AS user_username
              FROM platform_accounts pa
@@ -439,6 +440,13 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
 
     if ($column === 'platform_account') {
         return trim(($row['platform'] ?? '') . "\n" . ($row['platform_user_id'] ?? '')) ?: app_text('auto.k_1b93795b9768');
+    }
+
+    if ($column === 'platform_profile') {
+        return trim((string)($row['display_name'] ?? ''))
+            ?: trim((string)(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? '')))
+            ?: trim((string)($row['username'] ?? ''))
+            ?: app_text('auto.k_1b93795b9768');
     }
 
     if ($column === 'lead_summary') {
