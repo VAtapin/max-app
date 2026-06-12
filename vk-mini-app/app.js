@@ -6,6 +6,7 @@ const state = {
     vkUser: null,
     platform: null,
     platformUserId: null,
+    authBlocked: null,
     page: 'home',
     activeTest: null,
     initialTestId: null,
@@ -72,6 +73,17 @@ function formatUi(key, params = {}, fallback = '') {
     return text;
 }
 
+function apiErrorMessage(code, fallback = '') {
+    return ui(`api_error.${code}`, fallback || code);
+}
+
+class AppApiError extends Error {
+    constructor(code, message) {
+        super(message);
+        this.code = code;
+    }
+}
+
 async function api(path, options = {}) {
     const response = await fetch(`${API_BASE}/${path}`, {
         headers: {'Content-Type': 'application/json'},
@@ -79,13 +91,17 @@ async function api(path, options = {}) {
     });
     if (!response.ok) {
         let message = `API error ${response.status}`;
+        let code = null;
         try {
             const error = await response.json();
-            message = error.error || message;
+            if (error.error) {
+                code = error.error;
+                message = apiErrorMessage(code, code);
+            }
         } catch (_) {
             // Keep the default message when the response is not JSON.
         }
-        throw new Error(message);
+        throw new AppApiError(code, message);
     }
     return response.json();
 }
@@ -294,6 +310,21 @@ function renderAuthGate() {
                 <span>OK</span>
                 <span>MAX</span>
             </div>
+        </section>
+    `;
+}
+
+function renderStaffGate() {
+    document.body.classList.add('auth-required');
+    document.body.classList.remove('referral-required');
+    tabs.forEach((tab) => {
+        tab.disabled = true;
+        tab.classList.remove('active');
+    });
+    page.innerHTML = `
+        <section class="panel auth-panel">
+            <h2>${escapeHtml(ui('staff.blocked_title'))}</h2>
+            <p class="muted">${escapeHtml(ui('staff.blocked_text'))}</p>
         </section>
     `;
 }
@@ -601,6 +632,10 @@ async function contactManager(productId = null) {
 }
 
 async function render() {
+    if (state.authBlocked === 'staff') {
+        renderStaffGate();
+        return;
+    }
     if (!hasTeamAccess()) {
         renderReferralGate();
         return;
@@ -679,7 +714,8 @@ page.addEventListener('submit', async (event) => {
 
 applyInitialRoute();
 
-Promise.all([loadI18n(), authorize()])
+loadI18n()
+    .then(() => authorize())
     .then(() => {
         if (!state.user) {
             renderAuthGate();
@@ -688,5 +724,10 @@ Promise.all([loadI18n(), authorize()])
         render();
     })
     .catch((error) => {
+        if (error instanceof AppApiError && error.code === 'staff_client_registration_blocked') {
+            state.authBlocked = 'staff';
+            renderStaffGate();
+            return;
+        }
         page.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
     });

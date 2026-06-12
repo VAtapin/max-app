@@ -253,7 +253,7 @@ function staff_platform_account_exists(string $platform, string $platformUserId)
 function reject_staff_client_registration(string $platform, string $platformUserId): void
 {
     if (staff_platform_account_exists($platform, $platformUserId)) {
-        json_response(['error' => 'staff account cannot be registered as an end user'], 403);
+        json_response(['error' => 'staff_client_registration_blocked'], 403);
     }
 }
 
