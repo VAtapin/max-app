@@ -1,11 +1,17 @@
 :root {
-    --bg: #f5f7f7;
+    --bg: #f8fafc;
     --panel: #ffffff;
-    --text: #1f2933;
-    --muted: #607080;
-    --line: #dce5e3;
-    --accent: #167f7b;
-    --accent-dark: #0f615e;
+    --text: #1e293b;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --accent: #0f766e;
+    --accent-dark: #115e59;
+    --accent-light: #14b8a6;
+    --warning: #f59e0b;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
+    --shadow-soft: 0 4px 12px rgba(15, 118, 110, 0.08);
 }
 
 * {
@@ -16,7 +22,7 @@ body {
     margin: 0;
     background: var(--bg);
     color: var(--text);
-    font-family: Arial, sans-serif;
+    font-family: "Manrope", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .app {
@@ -51,17 +57,25 @@ h2 {
 }
 
 .tabs {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    bottom: 10px;
+    box-shadow: var(--shadow-soft);
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-    margin-bottom: 14px;
+    gap: 4px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    margin: 0 0 14px;
+    padding: 6px;
+    position: sticky;
+    z-index: 10;
 }
 
 .tabs button {
-    border: 1px solid var(--line);
+    border: 0;
     background: var(--panel);
     color: var(--text);
-    border-radius: 6px;
+    border-radius: 16px;
     min-height: 40px;
     padding: 8px 6px;
     font-size: 12px;
@@ -77,13 +91,15 @@ h2 {
 .page {
     display: grid;
     gap: 12px;
+    padding-bottom: 88px;
 }
 
 .panel,
 .item {
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-soft);
     padding: 14px;
 }
 
@@ -280,6 +296,122 @@ button.compact {
     color: #b42318;
     font-size: 13px;
     min-height: 18px;
+}
+
+.manager-card {
+    background: linear-gradient(145deg, #ffffff, #ecfdf5);
+    border: 1px solid var(--line);
+    border-radius: 28px;
+    box-shadow: var(--shadow-soft);
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+}
+
+.manager-photo {
+    aspect-ratio: 1;
+    border-radius: 24px;
+    height: 148px;
+    object-fit: cover;
+    width: 148px;
+}
+
+.manager-photo.placeholder {
+    align-items: center;
+    background: var(--accent);
+    color: #ffffff;
+    display: flex;
+    font-size: 38px;
+    font-weight: 800;
+    justify-content: center;
+}
+
+.manager-info {
+    display: grid;
+    gap: 8px;
+}
+
+.manager-info h2 {
+    font-size: 24px;
+    margin-bottom: 0;
+}
+
+.manager-info p {
+    margin: 0;
+}
+
+.quick-actions {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 1fr;
+    margin-top: 4px;
+}
+
+.quick-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.button-secondary-link {
+    align-items: center;
+    background: #ecfdf5;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-md);
+    color: var(--accent-dark);
+    display: flex;
+    font-weight: 700;
+    justify-content: center;
+    min-height: 42px;
+    padding: 10px 12px;
+    text-decoration: none;
+}
+
+.card-list {
+    display: grid;
+    gap: 12px;
+}
+
+.recommend-card,
+.diagnostic-card,
+.material-card {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+}
+
+.recommend-card img,
+.material-card img {
+    aspect-ratio: 16 / 10;
+    border-radius: var(--radius-md);
+    object-fit: cover;
+    width: 100%;
+}
+
+.diagnostic-icon {
+    align-items: center;
+    background: #ecfdf5;
+    border-radius: 14px;
+    color: var(--accent-dark);
+    display: flex;
+    font-weight: 800;
+    height: 36px;
+    justify-content: center;
+    width: 36px;
+}
+
+@media (min-width: 480px) {
+    .manager-card {
+        grid-template-columns: 148px 1fr;
+    }
+}
+
+@media (max-width: 380px) {
+    .quick-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .default-manager {

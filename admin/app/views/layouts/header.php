@@ -15,6 +15,7 @@
             <?php
             $navItems = [
                 'dashboard' => [app_text('auto.dashboard'), 'index.php'],
+                'my_page' => [app_text('consultant_profile.menu'), 'my_page.php'],
                 'resellers' => [app_text('auto.k_32cea47742bf'), 'crud.php?module=resellers'],
                 'managers' => [app_text('auto.k_6756aa53b5b5'), 'crud.php?module=managers'],
                 'users' => [app_text('auto.k_0f0b8f55edcc'), 'crud.php?module=users'],

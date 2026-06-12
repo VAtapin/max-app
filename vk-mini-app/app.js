@@ -12,6 +12,7 @@ const state = {
     initialTestId: null,
     i18n: {},
     defaultManager: null,
+    consultantProfile: null,
 };
 
 const page = document.querySelector('#page');
@@ -277,6 +278,29 @@ function hasTeamAccess() {
     return Boolean(state.user && (state.user.reseller_id || state.user.manager_id));
 }
 
+function profileBlockEnabled(blockType) {
+    const blocks = state.consultantProfile?.blocks || [];
+    const block = blocks.find((item) => item.block_type === blockType);
+    return !block || Number(block.is_enabled) === 1;
+}
+
+function profileBlockTitle(blockType, fallbackKey) {
+    const blocks = state.consultantProfile?.blocks || [];
+    const block = blocks.find((item) => item.block_type === blockType);
+    return block?.title || ui(fallbackKey);
+}
+
+async function loadConsultantProfile() {
+    if (!hasTeamAccess()) {
+        state.consultantProfile = null;
+        return null;
+    }
+
+    const result = await api(`profile.php?${userQuery()}`);
+    state.consultantProfile = result;
+    return result;
+}
+
 function escapeHtml(value) {
     return String(value ?? '')
         .replaceAll('&', '&amp;')
@@ -361,17 +385,80 @@ function renderReferralGate() {
 }
 
 function renderHome() {
+    const data = state.consultantProfile || {};
+    const profile = data.profile || {};
+    const products = data.products || [];
+    const tests = data.tests || [];
+    const materials = data.materials || [];
+    const initials = String(profile.display_name || 'SW').slice(0, 2).toUpperCase();
+
     page.innerHTML = `
-        <section class="panel">
-            <h2>${escapeHtml(ui('home.title'))}</h2>
-            <p class="muted">${escapeHtml(ui('home.text'))}</p>
-            <button class="primary" data-action="tests">${escapeHtml(ui('home.start_test'))}</button>
+        <section class="manager-card">
+            ${profile.photo_path ? `<img class="manager-photo" src="${escapeHtml(profile.photo_path)}" alt="">` : `<div class="manager-photo placeholder">${escapeHtml(initials)}</div>`}
+            <div class="manager-info">
+                <span class="eyebrow">${escapeHtml(profile.title || ui('home.consultant'))}</span>
+                <h2>${escapeHtml(profile.display_name || ui('home.title'))}</h2>
+                <p>${escapeHtml(profile.subtitle || ui('home.default_subtitle'))}</p>
+                ${profile.short_description ? `<p class="muted">${escapeHtml(profile.short_description)}</p>` : ''}
+                <div class="quick-actions">
+                    <button class="primary" data-action="contact">${escapeHtml(ui('home.ask_manager'))}</button>
+                    ${profile.video_url ? `<a class="button-secondary-link" href="${escapeHtml(profile.video_url)}" target="_blank" rel="noopener">${escapeHtml(ui('home.watch_video'))}</a>` : ''}
+                </div>
+            </div>
         </section>
-        <section class="panel">
-            <h2>${escapeHtml(ui('consultation.title'))}</h2>
-            <p class="muted">${escapeHtml(ui('consultation.text'))}</p>
-            <button class="secondary" data-action="contact">${escapeHtml(ui('lead.contact_manager'))}</button>
+
+        <section class="quick-grid">
+            <button class="secondary" data-action="tests">${escapeHtml(ui('home.start_test'))}</button>
+            <button class="secondary" data-page-target="recommendations">${escapeHtml(ui('home.show_recommendations'))}</button>
+            <button class="secondary" data-action="contact">${escapeHtml(ui('home.write_manager'))}</button>
         </section>
+
+        ${profileBlockEnabled('products') && products.length ? `
+            <section class="panel">
+                <h2>${escapeHtml(profileBlockTitle('products', 'home.consultant_recommendations'))}</h2>
+                <div class="card-list">
+                    ${products.slice(0, 4).map((product) => `
+                        <article class="recommend-card">
+                            ${product.image_path ? `<img src="${escapeHtml(product.image_path)}" alt="">` : ''}
+                            <strong>${escapeHtml(product.title)}</strong>
+                            <span class="muted">${escapeHtml(product.short_description || '')}</span>
+                            <button class="secondary compact" data-product-id="${product.id}">${escapeHtml(ui('products.request_info'))}</button>
+                        </article>
+                    `).join('')}
+                </div>
+            </section>
+        ` : ''}
+
+        ${profileBlockEnabled('tests') && tests.length ? `
+            <section class="panel">
+                <h2>${escapeHtml(profileBlockTitle('tests', 'home.recommended_tests'))}</h2>
+                <div class="card-list">
+                    ${tests.slice(0, 4).map((test) => `
+                        <article class="diagnostic-card">
+                            <span class="diagnostic-icon">✓</span>
+                            <strong>${escapeHtml(test.title)}</strong>
+                            <span class="muted">${escapeHtml(test.description || '')}</span>
+                            <button class="secondary compact" data-open-test-id="${test.id}">${escapeHtml(ui('tests.open'))}</button>
+                        </article>
+                    `).join('')}
+                </div>
+            </section>
+        ` : ''}
+
+        ${profileBlockEnabled('materials') && materials.length ? `
+            <section class="panel">
+                <h2>${escapeHtml(profileBlockTitle('materials', 'home.materials'))}</h2>
+                <div class="card-list">
+                    ${materials.slice(0, 3).map((material) => `
+                        <article class="material-card">
+                            ${material.image_path ? `<img src="${escapeHtml(material.image_path)}" alt="">` : ''}
+                            <strong>${escapeHtml(material.title)}</strong>
+                            <span class="muted">${escapeHtml(material.short_text || '')}</span>
+                        </article>
+                    `).join('')}
+                </div>
+            </section>
+        ` : ''}
     `;
 }
 
@@ -639,6 +726,9 @@ async function render() {
     if (!hasTeamAccess()) {
         renderReferralGate();
         return;
+    }
+    if (!state.consultantProfile) {
+        await loadConsultantProfile();
     }
     document.body.classList.remove('auth-required', 'referral-required');
     tabs.forEach((tab) => {

@@ -8,6 +8,7 @@ json_response([
         'GET /api/user.php',
         'POST /api/auth.php',
         'POST /api/telegram_auth.php',
+        'GET /api/profile.php',
         'GET /api/products.php',
         'GET /api/tests.php',
         'POST /api/tests.php?action=submit',

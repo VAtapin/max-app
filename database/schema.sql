@@ -11,6 +11,7 @@ DROP TABLE IF EXISTS broadcast_logs;
 DROP TABLE IF EXISTS broadcasts;
 DROP TABLE IF EXISTS lead_responses;
 DROP TABLE IF EXISTS leads;
+DROP TABLE IF EXISTS profile_materials;
 DROP TABLE IF EXISTS content_posts;
 DROP TABLE IF EXISTS recommendations;
 DROP TABLE IF EXISTS user_test_answers;
@@ -18,15 +19,20 @@ DROP TABLE IF EXISTS user_test_sessions;
 DROP TABLE IF EXISTS test_results;
 DROP TABLE IF EXISTS test_answers;
 DROP TABLE IF EXISTS test_questions;
+DROP TABLE IF EXISTS profile_tests;
 DROP TABLE IF EXISTS tests;
 DROP TABLE IF EXISTS product_tags;
 DROP TABLE IF EXISTS tags;
+DROP TABLE IF EXISTS profile_products;
 DROP TABLE IF EXISTS products;
 DROP TABLE IF EXISTS product_categories;
 DROP TABLE IF EXISTS platform_accounts;
 DROP TABLE IF EXISTS referral_links;
 DROP TABLE IF EXISTS end_users;
 DROP TABLE IF EXISTS admin_users;
+DROP TABLE IF EXISTS profile_reviews;
+DROP TABLE IF EXISTS profile_blocks;
+DROP TABLE IF EXISTS consultant_profiles;
 DROP TABLE IF EXISTS default_platform_managers;
 DROP TABLE IF EXISTS managers;
 DROP TABLE IF EXISTS resellers;
@@ -142,6 +148,71 @@ CREATE TABLE end_users (
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE consultant_profiles (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  owner_type ENUM('reseller', 'manager') NOT NULL,
+  owner_id BIGINT UNSIGNED NOT NULL,
+  slug VARCHAR(190) NOT NULL UNIQUE,
+  display_name VARCHAR(190) NOT NULL,
+  title VARCHAR(190) NULL,
+  subtitle VARCHAR(255) NULL,
+  short_description TEXT NULL,
+  bio MEDIUMTEXT NULL,
+  specialization TEXT NULL,
+  experience_text TEXT NULL,
+  achievements_text TEXT NULL,
+  certificates_text TEXT NULL,
+  photo_path VARCHAR(255) NULL,
+  banner_path VARCHAR(255) NULL,
+  video_url VARCHAR(255) NULL,
+  phone VARCHAR(50) NULL,
+  email VARCHAR(190) NULL,
+  telegram_url VARCHAR(255) NULL,
+  whatsapp_url VARCHAR(255) NULL,
+  vk_url VARCHAR(255) NULL,
+  ok_url VARCHAR(255) NULL,
+  is_public TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_consultant_profile_owner (owner_type, owner_id),
+  INDEX idx_consultant_profiles_slug (slug),
+  INDEX idx_consultant_profiles_owner (owner_type, owner_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE profile_blocks (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  profile_id BIGINT UNSIGNED NOT NULL,
+  block_type ENUM('hero', 'video', 'about', 'tests', 'products', 'materials', 'reviews', 'contacts') NOT NULL,
+  title VARCHAR(190) NULL,
+  is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  sort_order INT NOT NULL DEFAULT 100,
+  settings_json JSON NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_profile_block_type (profile_id, block_type),
+  INDEX idx_profile_blocks_profile_id (profile_id),
+  CONSTRAINT fk_profile_blocks_profile
+    FOREIGN KEY (profile_id) REFERENCES consultant_profiles(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE profile_reviews (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  profile_id BIGINT UNSIGNED NOT NULL,
+  client_name VARCHAR(190) NOT NULL,
+  client_photo_path VARCHAR(255) NULL,
+  review_text TEXT NOT NULL,
+  rating TINYINT UNSIGNED NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  sort_order INT NOT NULL DEFAULT 100,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_profile_reviews_profile_id (profile_id),
+  CONSTRAINT fk_profile_reviews_profile
+    FOREIGN KEY (profile_id) REFERENCES consultant_profiles(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE platform_accounts (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   end_user_id BIGINT UNSIGNED NOT NULL,
@@ -239,6 +310,24 @@ CREATE TABLE product_tags (
     ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE profile_products (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  profile_id BIGINT UNSIGNED NOT NULL,
+  product_id BIGINT UNSIGNED NOT NULL,
+  is_featured TINYINT(1) NOT NULL DEFAULT 1,
+  sort_order INT NOT NULL DEFAULT 100,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_profile_product (profile_id, product_id),
+  INDEX idx_profile_products_profile_id (profile_id),
+  INDEX idx_profile_products_product_id (product_id),
+  CONSTRAINT fk_profile_products_profile
+    FOREIGN KEY (profile_id) REFERENCES consultant_profiles(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_profile_products_product
+    FOREIGN KEY (product_id) REFERENCES products(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE tests (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   title VARCHAR(190) NOT NULL,
@@ -254,6 +343,24 @@ CREATE TABLE tests (
   CONSTRAINT fk_tests_category
     FOREIGN KEY (category_id) REFERENCES product_categories(id)
     ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE profile_tests (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  profile_id BIGINT UNSIGNED NOT NULL,
+  test_id BIGINT UNSIGNED NOT NULL,
+  is_featured TINYINT(1) NOT NULL DEFAULT 1,
+  sort_order INT NOT NULL DEFAULT 100,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_profile_test (profile_id, test_id),
+  INDEX idx_profile_tests_profile_id (profile_id),
+  INDEX idx_profile_tests_test_id (test_id),
+  CONSTRAINT fk_profile_tests_profile
+    FOREIGN KEY (profile_id) REFERENCES consultant_profiles(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_profile_tests_test
+    FOREIGN KEY (test_id) REFERENCES tests(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE test_questions (
@@ -422,6 +529,24 @@ CREATE TABLE content_posts (
   CONSTRAINT fk_content_admin
     FOREIGN KEY (created_by) REFERENCES admin_users(id)
     ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE profile_materials (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  profile_id BIGINT UNSIGNED NOT NULL,
+  content_post_id BIGINT UNSIGNED NOT NULL,
+  is_featured TINYINT(1) NOT NULL DEFAULT 1,
+  sort_order INT NOT NULL DEFAULT 100,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_profile_material (profile_id, content_post_id),
+  INDEX idx_profile_materials_profile_id (profile_id),
+  INDEX idx_profile_materials_content_post_id (content_post_id),
+  CONSTRAINT fk_profile_materials_profile
+    FOREIGN KEY (profile_id) REFERENCES consultant_profiles(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_profile_materials_content
+    FOREIGN KEY (content_post_id) REFERENCES content_posts(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE leads (
