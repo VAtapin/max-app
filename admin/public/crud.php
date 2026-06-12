@@ -684,7 +684,7 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin)
     if (in_array($moduleKey, ['managers', 'resellers'], true)) {
         $code = (string)($payload['referral_code'] ?? '');
         if ($code === '' || !preg_match('/^[A-Z0-9_-]{3,64}$/', $code)) {
-            $errors[] = 'Referral code must contain only Latin letters, digits, hyphen or underscore, 3-64 characters.';
+            $errors[] = app_text('referrals.invalid_code');
         }
     }
 
@@ -808,6 +808,164 @@ function save_default_manager_platforms(int $managerId, array $platforms): void
     }
 }
 
+function manager_admin_access(int $managerId): ?array
+{
+    if ($managerId <= 0) {
+        return null;
+    }
+
+    $stmt = db()->prepare(
+        'SELECT id, name, email, is_active
+         FROM admin_users
+         WHERE role = "manager" AND manager_id = :manager_id
+         ORDER BY id DESC
+         LIMIT 1'
+    );
+    $stmt->execute(['manager_id' => $managerId]);
+    $row = $stmt->fetch();
+
+    return $row ?: null;
+}
+
+function reseller_admin_access(int $resellerId): ?array
+{
+    if ($resellerId <= 0) {
+        return null;
+    }
+
+    $stmt = db()->prepare(
+        'SELECT id, name, email, is_active
+         FROM admin_users
+         WHERE role = "reseller" AND reseller_id = :reseller_id AND manager_id IS NULL
+         ORDER BY id DESC
+         LIMIT 1'
+    );
+    $stmt->execute(['reseller_id' => $resellerId]);
+    $row = $stmt->fetch();
+
+    return $row ?: null;
+}
+
+function save_reseller_admin_access(int $resellerId, array $resellerPayload, array $post, array &$errors): void
+{
+    $email = trim((string)($post['admin_email'] ?? ''));
+    $password = (string)($post['admin_password'] ?? '');
+    $isActive = isset($post['admin_is_active']) ? 1 : 0;
+    $existing = reseller_admin_access($resellerId);
+
+    if ($email === '' && $password === '' && !$existing) {
+        return;
+    }
+
+    if ($email === '') {
+        $errors[] = app_text('admin_access.email_required');
+        return;
+    }
+
+    if (!$existing && $password === '') {
+        $errors[] = app_text('admin_access.password_required');
+        return;
+    }
+
+    if ($existing) {
+        $params = [
+            'id' => (int)$existing['id'],
+            'name' => $resellerPayload['name'] ?? $email,
+            'email' => $email,
+            'reseller_id' => $resellerId,
+            'is_active' => $isActive,
+        ];
+        $passwordSql = '';
+        if ($password !== '') {
+            $passwordSql = ', password_hash = :password_hash';
+            $params['password_hash'] = password_hash($password, PASSWORD_DEFAULT);
+        }
+
+        $stmt = db()->prepare(
+            'UPDATE admin_users
+             SET name = :name, email = :email, reseller_id = :reseller_id, manager_id = NULL, is_active = :is_active' . $passwordSql . '
+             WHERE id = :id'
+        );
+        $stmt->execute($params);
+        return;
+    }
+
+    $stmt = db()->prepare(
+        'INSERT INTO admin_users (role, reseller_id, manager_id, name, email, password_hash, is_active)
+         VALUES ("reseller", :reseller_id, NULL, :name, :email, :password_hash, :is_active)'
+    );
+    $stmt->execute([
+        'reseller_id' => $resellerId,
+        'name' => $resellerPayload['name'] ?? $email,
+        'email' => $email,
+        'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+        'is_active' => $isActive,
+    ]);
+}
+
+function save_manager_admin_access(int $managerId, array $managerPayload, array $post, array &$errors): void
+{
+    $email = trim((string)($post['admin_email'] ?? ''));
+    $password = (string)($post['admin_password'] ?? '');
+    $isActive = isset($post['admin_is_active']) ? 1 : 0;
+    $existing = manager_admin_access($managerId);
+
+    if ($email === '' && $password === '' && !$existing) {
+        return;
+    }
+
+    if ($email === '') {
+        $errors[] = app_text('admin_access.email_required');
+        return;
+    }
+
+    if (!$existing && $password === '') {
+        $errors[] = app_text('admin_access.password_required');
+        return;
+    }
+
+    $resellerId = $managerPayload['reseller_id'] !== null && $managerPayload['reseller_id'] !== ''
+        ? (int)$managerPayload['reseller_id']
+        : null;
+
+    if ($existing) {
+        $params = [
+            'id' => (int)$existing['id'],
+            'name' => $managerPayload['name'] ?? $email,
+            'email' => $email,
+            'reseller_id' => $resellerId,
+            'manager_id' => $managerId,
+            'is_active' => $isActive,
+        ];
+        $passwordSql = '';
+        if ($password !== '') {
+            $passwordSql = ', password_hash = :password_hash';
+            $params['password_hash'] = password_hash($password, PASSWORD_DEFAULT);
+        }
+
+        $stmt = db()->prepare(
+            'UPDATE admin_users
+             SET name = :name, email = :email, reseller_id = :reseller_id, manager_id = :manager_id, is_active = :is_active' . $passwordSql . '
+             WHERE id = :id'
+        );
+        $stmt->execute($params);
+        return;
+    }
+
+    $stmt = db()->prepare(
+        'INSERT INTO admin_users (role, reseller_id, manager_id, name, email, password_hash, is_active)
+         VALUES ("manager", :reseller_id, :manager_id, :name, :email, :password_hash, :is_active)'
+    );
+    $stmt->execute([
+        'reseller_id' => $resellerId,
+        'manager_id' => $managerId,
+        'name' => $managerPayload['name'] ?? $email,
+        'email' => $email,
+        'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+        'is_active' => $isActive,
+    ]);
+}
+
 function save_record(string $moduleKey, array $module, array $payload, ?int $id, array $admin): int
 {
     $payload = apply_role_defaults($moduleKey, $payload, $admin);
@@ -921,7 +1079,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             merge_end_users($postId, $sourceUserId, $admin);
             redirect('crud.php?module=users&action=edit&id=' . $postId . '&success=merged');
         } catch (Throwable $e) {
-            $errors[] = 'Не удалось объединить пользователей: ' . $e->getMessage();
+            $errors[] = app_text('user_merge.failed') . $e->getMessage();
         }
         $action = 'edit';
         $id = $postId;
@@ -970,8 +1128,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $savedId = save_record($moduleKey, $module, $payload, $postId, $admin);
             if ($moduleKey === 'managers' && $admin['role'] === 'superadmin') {
                 save_default_manager_platforms($savedId, $_POST['default_platforms'] ?? []);
+                save_manager_admin_access($savedId, $payload, $_POST, $errors);
+                if ($errors) {
+                    $action = $postId ? 'edit' : 'create';
+                    $id = $savedId;
+                    $editRow = $payload + ['id' => $savedId];
+                }
             }
-            redirect('crud.php?module=' . urlencode($moduleKey) . '&success=saved');
+            if ($moduleKey === 'resellers' && $admin['role'] === 'superadmin') {
+                save_reseller_admin_access($savedId, $payload, $_POST, $errors);
+                if ($errors) {
+                    $action = $postId ? 'edit' : 'create';
+                    $id = $savedId;
+                    $editRow = $payload + ['id' => $savedId];
+                }
+            }
+            if (!$errors) {
+                redirect('crud.php?module=' . urlencode($moduleKey) . '&success=saved');
+            }
+            $postId = $savedId;
         } catch (Throwable $e) {
             $errors[] = app_text('auto.k_02613f541f5f') . $e->getMessage();
         }
@@ -1016,6 +1191,20 @@ if ($moduleKey === 'managers' && $admin['role'] === 'superadmin' && ($action ===
     }
 }
 
+$adminAccess = null;
+if (in_array($moduleKey, ['managers', 'resellers'], true) && $admin['role'] === 'superadmin' && ($action === 'create' || $action === 'edit')) {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $adminAccess = [
+            'email' => trim((string)($_POST['admin_email'] ?? '')),
+            'is_active' => isset($_POST['admin_is_active']) ? 1 : 0,
+        ];
+    } elseif (!empty($editRow['id'])) {
+        $adminAccess = $moduleKey === 'managers'
+            ? manager_admin_access((int)$editRow['id'])
+            : reseller_admin_access((int)$editRow['id']);
+    }
+}
+
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
 <div class="toolbar">
@@ -1031,7 +1220,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php elseif ($success === 'response_sent'): ?>
     <div class="notice success"><?= h(app_text('auto.k_0184f257cbfc')) ?></div>
 <?php elseif ($success === 'merged'): ?>
-    <div class="notice success">Пользователи объединены.</div>
+    <div class="notice success"><?= h(app_text('user_merge.success')) ?></div>
 <?php endif; ?>
 <?php foreach ($errors as $error): ?>
     <div class="alert"><?= h($error) ?></div>
@@ -1091,6 +1280,26 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <?php endif; ?>
                 </label>
             <?php endforeach; ?>
+            <?php if (in_array($moduleKey, ['managers', 'resellers'], true) && $admin['role'] === 'superadmin'): ?>
+                <fieldset class="field admin-access-group">
+                    <legend><?= h(app_text('admin_access.title')) ?></legend>
+                    <label class="field">
+                        <span><?= h(app_text('admin_access.email')) ?></span>
+                        <input type="email" name="admin_email" value="<?= h((string)($adminAccess['email'] ?? '')) ?>">
+                    </label>
+                    <label class="field">
+                        <span><?= h(app_text('admin_access.password')) ?></span>
+                        <input type="password" name="admin_password" autocomplete="new-password">
+                    </label>
+                    <?php if (!empty($adminAccess['id'])): ?>
+                        <p class="cell-muted"><?= h(app_text('admin_access.password_hint')) ?></p>
+                    <?php endif; ?>
+                    <label class="checkbox-line">
+                        <input type="checkbox" name="admin_is_active" value="1" <?= (int)($adminAccess['is_active'] ?? 1) === 1 ? 'checked' : '' ?>>
+                        <?= h(app_text('admin_access.active')) ?>
+                    </label>
+                </fieldset>
+            <?php endif; ?>
             <?php if ($moduleKey === 'managers' && $admin['role'] === 'superadmin'): ?>
                 <fieldset class="field checkbox-group">
                     <legend><?= h(app_text('auto.k_89009febe5c6')) ?></legend>
@@ -1118,17 +1327,17 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <?php endif; ?>
     <?php if ($moduleKey === 'users' && $action === 'edit' && $editRow): ?>
         <section class="panel form-panel">
-            <h2>Платформы пользователя</h2>
+            <h2><?= h(app_text('user_platforms.title')) ?></h2>
             <?php $accounts = user_platform_accounts((int)$editRow['id']); ?>
             <?php if ($accounts): ?>
                 <table class="data-table">
                     <thead>
                     <tr>
-                        <th>Платформа</th>
+                        <th><?= h(app_text('auto.k_89009febe5c6')) ?></th>
                         <th>ID</th>
-                        <th>Профиль платформы</th>
+                        <th><?= h(app_text('user_platforms.profile')) ?></th>
                         <th>Username</th>
-                        <th>Создан</th>
+                        <th><?= h(app_text('user_platforms.created')) ?></th>
                     </tr>
                     </thead>
                     <tbody>
@@ -1144,28 +1353,28 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     </tbody>
                 </table>
             <?php else: ?>
-                <div class="empty-state">Подключённых платформ пока нет.</div>
+                <div class="empty-state"><?= h(app_text('user_platforms.empty')) ?></div>
             <?php endif; ?>
         </section>
 
         <section class="panel form-panel">
-            <h2>Объединить пользователей</h2>
-            <p class="cell-muted">Выберите второго пользователя. Его платформы, заявки, тесты и рекомендации будут перенесены к текущему пользователю.</p>
-            <form method="post" class="crud-form" onsubmit="return confirm('Объединить выбранного пользователя с текущим?');">
+            <h2><?= h(app_text('user_merge.title')) ?></h2>
+            <p class="cell-muted"><?= h(app_text('user_merge.description')) ?></p>
+            <form method="post" class="crud-form" onsubmit="return confirm(<?= json_encode(app_text('user_merge.confirm'), JSON_UNESCAPED_UNICODE) ?>);">
                 <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
                 <input type="hidden" name="action" value="merge_user">
                 <input type="hidden" name="id" value="<?= h((string)$editRow['id']) ?>">
                 <label class="field">
-                    <span>Второй пользователь</span>
+                    <span><?= h(app_text('user_merge.source_user')) ?></span>
                     <select name="source_user_id" required>
-                        <option value="">Не выбран</option>
+                        <option value=""><?= h(app_text('auto.k_92250813ceb7')) ?></option>
                         <?php foreach (merge_user_options((int)$editRow['id'], $admin) as $option): ?>
                             <option value="<?= (int)$option['id'] ?>"><?= h(user_display_label($option)) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </label>
                 <div class="form-actions">
-                    <button type="submit" class="danger-button">Объединить</button>
+                    <button type="submit" class="danger-button"><?= h(app_text('user_merge.submit')) ?></button>
                 </div>
             </form>
         </section>

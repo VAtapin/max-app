@@ -119,12 +119,12 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php if ($dashboardManager && $referralLinks): ?>
     <section class="panel referral-panel">
         <div>
-            <h2>Реферальная ссылка менеджера</h2>
-            <p class="cell-muted">Код: <strong><?= h((string)$dashboardManager['referral_code']) ?></strong></p>
+            <h2><?= h(app_text('referrals.dashboard_title')) ?></h2>
+            <p class="cell-muted"><?= h(app_text('referrals.code')) ?>: <strong><?= h((string)$dashboardManager['referral_code']) ?></strong></p>
         </div>
         <div class="referral-controls">
             <label class="field">
-                <span>Платформа</span>
+                <span><?= h(app_text('referrals.platform')) ?></span>
                 <select id="referral-platform">
                     <?php foreach ($referralLinks as $platform => $item): ?>
                         <option value="<?= h($platform) ?>"><?= h($item['label']) ?></option>
@@ -132,14 +132,18 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 </select>
             </label>
             <label class="field referral-link-field">
-                <span>Ссылка</span>
+                <span><?= h(app_text('referrals.link')) ?></span>
                 <input id="referral-link" readonly value="<?= h((string)reset($referralLinks)['url']) ?>">
             </label>
-            <button type="button" id="copy-referral-link">Скопировать</button>
+            <button type="button" id="copy-referral-link"><?= h(app_text('referrals.copy')) ?></button>
         </div>
     </section>
     <script>
         window.swproReferralLinks = <?= json_encode($referralLinks, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+        window.swproReferralTexts = <?= json_encode([
+            'copy' => app_text('referrals.copy'),
+            'copied' => app_text('referrals.copied'),
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
         document.addEventListener('DOMContentLoaded', () => {
             const select = document.querySelector('#referral-platform');
             const input = document.querySelector('#referral-link');
@@ -152,8 +156,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 input.select();
                 try {
                     await navigator.clipboard.writeText(input.value);
-                    button.textContent = 'Скопировано';
-                    setTimeout(() => button.textContent = 'Скопировать', 1600);
+                    button.textContent = window.swproReferralTexts.copied;
+                    setTimeout(() => button.textContent = window.swproReferralTexts.copy, 1600);
                 } catch (_) {
                     document.execCommand('copy');
                 }

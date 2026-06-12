@@ -332,6 +332,8 @@ The admin panel includes sections for:
 
 The `platform_accounts` section is technical and may remain visible for admins. In regular work, platform accounts should also be visible inside the user card.
 
+Super-admins can create or update admin login access for resellers and managers from their edit cards. This creates linked `admin_users` records with the `reseller` or `manager` role; managers and resellers are not end users.
+
 ## Products
 
 Products can have:

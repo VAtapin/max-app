@@ -254,7 +254,7 @@ function build_lead_response_text(string $message, ?array $content, ?array $test
 {
     $parts = [];
     if ($sourcePlatform) {
-        $parts[] = 'Источник заявки: ' . platform_label($sourcePlatform);
+        $parts[] = app_text('referrals.lead_source') . ': ' . platform_label($sourcePlatform);
     }
 
     if (trim($message) !== '') {
