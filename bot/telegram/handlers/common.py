@@ -8,7 +8,7 @@ from bot.core.messages import MEDICAL_DISCLAIMER, welcome_text
 from bot.core.products import list_categories, list_products
 from bot.core.recommendations import list_recommendations
 from bot.core.tests import list_tests
-from bot.core.users import get_or_create_user
+from bot.core.users import StaffAccountError, get_or_create_user
 from bot.telegram.keyboards.menu import mini_app_keyboard
 
 router = Router()
@@ -36,7 +36,11 @@ async def resolve_telegram_user(tg_user: User | None, referral_code: str | None 
 async def start(message: Message) -> None:
     parts = (message.text or "").split(maxsplit=1)
     referral_code = parts[1].strip() if len(parts) > 1 else None
-    await resolve_user(message, referral_code)
+    try:
+        await resolve_user(message, referral_code)
+    except StaffAccountError:
+        await message.answer(tr("staff.client_registration_blocked"))
+        return
     first_name = message.from_user.first_name if message.from_user else None
     await message.answer(
         welcome_text(first_name),

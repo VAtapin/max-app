@@ -112,6 +112,8 @@ function require_platform_user(?array $data = null): array
         json_response(['error' => 'platform and platform_user_id are required'], 422);
     }
 
+    reject_staff_client_registration((string)$platform, (string)$platformUserId);
+
     verify_platform_auth((string)$platform, (string)$platformUserId, $authToken ? (string)$authToken : null);
 
     $stmt = db()->prepare(
@@ -141,6 +143,18 @@ function require_platform_user(?array $data = null): array
 
     if (!$user) {
         json_response(['error' => 'user not found'], 404);
+    }
+
+    if (isset($data['username']) || isset($data['first_name']) || isset($data['last_name']) || isset($data['display_name'])) {
+        ensure_platform_account(
+            (int)$user['id'],
+            $platform,
+            (string)$platformUserId,
+            $data['username'] ?? null,
+            $data['first_name'] ?? null,
+            $data['last_name'] ?? null,
+            $data['display_name'] ?? null
+        );
     }
 
     if (empty($user['reseller_id']) && empty($user['manager_id'])) {
@@ -194,6 +208,53 @@ function normalize_referral_code(?string $referralCode): ?string
     }
 
     return trim($referralCode) !== '' ? trim($referralCode) : null;
+}
+
+function normalize_external_platform_id(?string $value): string
+{
+    $value = trim((string)$value);
+    if (preg_match('/^id(\d+)$/i', $value, $matches)) {
+        return $matches[1];
+    }
+
+    return $value;
+}
+
+function staff_platform_account_exists(string $platform, string $platformUserId): bool
+{
+    $platform = normalize_platform($platform);
+    $platformUserId = normalize_external_platform_id($platformUserId);
+    if ($platformUserId === '') {
+        return false;
+    }
+
+    $field = match ($platform) {
+        'telegram' => 'telegram_id',
+        'VK' => 'vk_id',
+        'MAX' => 'max_id',
+        default => null,
+    };
+
+    if ($field === null) {
+        return false;
+    }
+
+    $managerStmt = db()->prepare("SELECT COUNT(*) FROM managers WHERE $field IS NOT NULL AND $field <> '' AND REPLACE(LOWER($field), 'id', '') = :platform_user_id");
+    $managerStmt->execute(['platform_user_id' => strtolower($platformUserId)]);
+    if ((int)$managerStmt->fetchColumn() > 0) {
+        return true;
+    }
+
+    $adminStmt = db()->prepare("SELECT COUNT(*) FROM admin_users WHERE role IN ('superadmin', 'reseller', 'manager') AND $field IS NOT NULL AND $field <> '' AND REPLACE(LOWER($field), 'id', '') = :platform_user_id");
+    $adminStmt->execute(['platform_user_id' => strtolower($platformUserId)]);
+    return (int)$adminStmt->fetchColumn() > 0;
+}
+
+function reject_staff_client_registration(string $platform, string $platformUserId): void
+{
+    if (staff_platform_account_exists($platform, $platformUserId)) {
+        json_response(['error' => 'staff account cannot be registered as an end user'], 403);
+    }
 }
 
 function attach_referral_if_missing(array $user, ?string $referralCode): array
@@ -307,6 +368,8 @@ function create_or_get_user(array $data): array
         json_response(['error' => 'platform_user_id is required'], 422);
     }
 
+    reject_staff_client_registration($platform, $platformUserId);
+
     $accounts = platform_account_candidates($data);
     $linkTargetUserId = parse_account_link_token($data['link_token'] ?? null);
 
@@ -336,7 +399,7 @@ function create_or_get_user(array $data): array
         $targetStmt->execute(['id' => $linkTargetUserId]);
         $targetUser = $targetStmt->fetch();
         if ($targetUser) {
-            ensure_platform_account((int)$targetUser['id'], $platform, $platformUserId, $data['username'] ?? null, $data['first_name'] ?? null, $data['last_name'] ?? null, null, false);
+            ensure_platform_account((int)$targetUser['id'], $platform, $platformUserId, $data['username'] ?? null, $data['first_name'] ?? null, $data['last_name'] ?? null, $data['display_name'] ?? null, false);
             $touch = db()->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
             $touch->execute(['id' => $targetUser['id']]);
             return attach_referral_if_missing($targetUser, $data['referral_code'] ?? null);

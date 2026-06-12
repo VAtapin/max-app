@@ -2,6 +2,44 @@ from bot.core.referrals import increment_registration, resolve_referral
 from bot.db.mysql import cursor
 
 
+class StaffAccountError(RuntimeError):
+    pass
+
+
+async def staff_platform_account_exists(platform: str, platform_user_id: str) -> bool:
+    field = {
+        "telegram": "telegram_id",
+        "VK": "vk_id",
+        "MAX": "max_id",
+    }.get(platform)
+    if field is None:
+        return False
+
+    normalized_id = platform_user_id.strip().lower().removeprefix("id")
+    async with cursor() as cur:
+        await cur.execute(
+            f"SELECT COUNT(*) AS total FROM managers WHERE {field} IS NOT NULL AND {field} <> '' AND REPLACE(LOWER({field}), 'id', '') = %s",
+            (normalized_id,),
+        )
+        manager = await cur.fetchone()
+        if manager and int(manager["total"]) > 0:
+            return True
+
+        await cur.execute(
+            f"""
+            SELECT COUNT(*) AS total
+            FROM admin_users
+            WHERE role IN ('superadmin', 'reseller', 'manager')
+              AND {field} IS NOT NULL
+              AND {field} <> ''
+              AND REPLACE(LOWER({field}), 'id', '') = %s
+            """,
+            (normalized_id,),
+        )
+        admin = await cur.fetchone()
+        return bool(admin and int(admin["total"]) > 0)
+
+
 async def get_or_create_user(
     platform: str,
     platform_user_id: str,
@@ -10,6 +48,9 @@ async def get_or_create_user(
     last_name: str | None = None,
     referral_code: str | None = None,
 ) -> dict:
+    if await staff_platform_account_exists(platform, platform_user_id):
+        raise StaffAccountError("staff account cannot be registered as an end user")
+
     async with cursor() as cur:
         await cur.execute(
             """
