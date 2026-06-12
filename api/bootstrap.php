@@ -152,6 +152,7 @@ function require_platform_user(?array $data = null): array
 
 function referral_binding(?string $referralCode): ?array
 {
+    $referralCode = normalize_referral_code($referralCode);
     if (!$referralCode) {
         return null;
     }
@@ -179,6 +180,20 @@ function referral_binding(?string $referralCode): ?array
     }
 
     return null;
+}
+
+function normalize_referral_code(?string $referralCode): ?string
+{
+    $referralCode = trim((string)$referralCode);
+    if ($referralCode === '') {
+        return null;
+    }
+
+    if (str_starts_with($referralCode, 'ref_')) {
+        $referralCode = substr($referralCode, 4);
+    }
+
+    return trim($referralCode) !== '' ? trim($referralCode) : null;
 }
 
 function attach_referral_if_missing(array $user, ?string $referralCode): array
@@ -345,7 +360,7 @@ function create_or_get_user(array $data): array
 
     $resellerId = null;
     $managerId = null;
-    $referralCode = $data['referral_code'] ?? null;
+    $referralCode = normalize_referral_code($data['referral_code'] ?? null);
 
     $binding = referral_binding($referralCode);
     if ($binding) {

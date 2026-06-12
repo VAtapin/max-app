@@ -1,7 +1,19 @@
 from bot.db.mysql import cursor
 
 
+def normalize_referral_code(referral_code: str | None) -> str | None:
+    if not referral_code:
+        return None
+
+    value = referral_code.strip()
+    if value.startswith("ref_"):
+        value = value[4:]
+
+    return value.strip().upper() or None
+
+
 async def resolve_referral(referral_code: str | None) -> dict:
+    referral_code = normalize_referral_code(referral_code)
     if not referral_code:
         return {"reseller_id": None, "manager_id": None, "owner_type": None}
 
@@ -30,6 +42,7 @@ async def resolve_referral(referral_code: str | None) -> dict:
 
 
 async def increment_registration(referral_code: str | None, platform: str) -> None:
+    referral_code = normalize_referral_code(referral_code)
     if not referral_code:
         return
 

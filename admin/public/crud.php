@@ -543,6 +543,24 @@ function collect_payload(array $fields): array
     return $payload;
 }
 
+function normalize_referral_slug(?string $value): string
+{
+    $value = strtoupper(trim((string)$value));
+    $value = preg_replace('/\s+/', '-', $value) ?? '';
+    $value = preg_replace('/[^A-Z0-9_-]/', '', $value) ?? '';
+    $value = preg_replace('/[-_]{2,}/', '-', $value) ?? '';
+    return trim($value, '-_');
+}
+
+function normalize_module_payload(string $moduleKey, array $payload): array
+{
+    if (in_array($moduleKey, ['managers', 'resellers'], true) && array_key_exists('referral_code', $payload)) {
+        $payload['referral_code'] = normalize_referral_slug((string)$payload['referral_code']);
+    }
+
+    return $payload;
+}
+
 function public_upload_path(string $moduleKey, string $filename): string
 {
     $folder = match ($moduleKey) {
@@ -663,6 +681,13 @@ function validate_payload(array $fields, array $payload): array
 function validate_scope_payload(string $moduleKey, array $payload, array $admin): array
 {
     $errors = [];
+    if (in_array($moduleKey, ['managers', 'resellers'], true)) {
+        $code = (string)($payload['referral_code'] ?? '');
+        if ($code === '' || !preg_match('/^[A-Z0-9_-]{3,64}$/', $code)) {
+            $errors[] = 'Referral code must contain only Latin letters, digits, hyphen or underscore, 3-64 characters.';
+        }
+    }
+
     if ($moduleKey === 'users' && !empty($payload['manager_id']) && !empty($payload['reseller_id'])) {
         $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id LIMIT 1');
         $stmt->execute(['id' => (int)$payload['manager_id']]);
@@ -936,6 +961,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $payload = collect_payload($formFields);
+    $payload = normalize_module_payload($moduleKey, $payload);
     $payload = apply_file_uploads($moduleKey, $formFields, $payload, $errors);
     $errors = array_merge($errors, validate_payload($formFields, $payload));
     $errors = array_merge($errors, validate_scope_payload($moduleKey, $payload, $admin));

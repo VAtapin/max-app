@@ -6,6 +6,81 @@ require_once __DIR__ . '/../app/core/permissions.php';
 $admin = require_auth();
 $title = app_text('auto.dashboard');
 
+function public_base_url(): string
+{
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    if ($host === '') {
+        return '';
+    }
+
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    return $scheme . '://' . $host;
+}
+
+function manager_referral_links(array $manager): array
+{
+    $code = trim((string)($manager['referral_code'] ?? ''));
+    if ($code === '') {
+        return [];
+    }
+
+    $config = app_config();
+    $baseUrl = rtrim(public_base_url(), '/');
+    $miniAppUrl = trim((string)($config['integrations']['mini_app_url'] ?? ''));
+    if ($miniAppUrl === '' && $baseUrl !== '') {
+        $miniAppUrl = $baseUrl . '/vk-mini-app/';
+    }
+
+    $telegramBot = trim((string)(getenv('TELEGRAM_BOT_USERNAME') ?: 'SWProAssistant_bot'));
+    $encodedCode = rawurlencode($code);
+    $links = [
+        'telegram' => [
+            'label' => 'Telegram',
+            'url' => 'https://t.me/' . rawurlencode($telegramBot) . '?start=' . rawurlencode('ref_' . $code),
+        ],
+    ];
+
+    if ($miniAppUrl !== '') {
+        $separator = str_contains($miniAppUrl, '?') ? '&' : '?';
+        $links['VK'] = [
+            'label' => 'VK',
+            'url' => $miniAppUrl . $separator . 'ref=' . $encodedCode,
+        ];
+        $links['OK'] = [
+            'label' => 'OK',
+            'url' => $miniAppUrl . $separator . 'ref=' . $encodedCode,
+        ];
+        $links['MAX'] = [
+            'label' => 'MAX',
+            'url' => $miniAppUrl . $separator . 'ref=' . $encodedCode,
+        ];
+        $links['web'] = [
+            'label' => 'Web',
+            'url' => $miniAppUrl . $separator . 'ref=' . $encodedCode,
+        ];
+    }
+
+    return $links;
+}
+
+function dashboard_manager(array $admin): ?array
+{
+    if ($admin['role'] !== 'manager' || empty($admin['manager_id'])) {
+        return null;
+    }
+
+    $stmt = db()->prepare(
+        'SELECT id, name, referral_code
+         FROM managers
+         WHERE id = :id AND is_active = 1
+         LIMIT 1'
+    );
+    $stmt->execute(['id' => (int)$admin['manager_id']]);
+    $manager = $stmt->fetch();
+
+    return $manager ?: null;
+}
+
 function count_table(string $sql, array $params = []): int
 {
     $stmt = db()->prepare($sql);
@@ -36,9 +111,57 @@ $recentUsers = $recentStmt->fetchAll();
 $platformStmt = db()->prepare("SELECT platform, COUNT(*) AS total FROM end_users $userWhere GROUP BY platform ORDER BY total DESC");
 $platformStmt->execute($userParams);
 $platforms = $platformStmt->fetchAll();
+$dashboardManager = dashboard_manager($admin);
+$referralLinks = $dashboardManager ? manager_referral_links($dashboardManager) : [];
 
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
+<?php if ($dashboardManager && $referralLinks): ?>
+    <section class="panel referral-panel">
+        <div>
+            <h2>Реферальная ссылка менеджера</h2>
+            <p class="cell-muted">Код: <strong><?= h((string)$dashboardManager['referral_code']) ?></strong></p>
+        </div>
+        <div class="referral-controls">
+            <label class="field">
+                <span>Платформа</span>
+                <select id="referral-platform">
+                    <?php foreach ($referralLinks as $platform => $item): ?>
+                        <option value="<?= h($platform) ?>"><?= h($item['label']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label class="field referral-link-field">
+                <span>Ссылка</span>
+                <input id="referral-link" readonly value="<?= h((string)reset($referralLinks)['url']) ?>">
+            </label>
+            <button type="button" id="copy-referral-link">Скопировать</button>
+        </div>
+    </section>
+    <script>
+        window.swproReferralLinks = <?= json_encode($referralLinks, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+        document.addEventListener('DOMContentLoaded', () => {
+            const select = document.querySelector('#referral-platform');
+            const input = document.querySelector('#referral-link');
+            const button = document.querySelector('#copy-referral-link');
+            if (!select || !input || !button) return;
+            select.addEventListener('change', () => {
+                input.value = window.swproReferralLinks[select.value]?.url || '';
+            });
+            button.addEventListener('click', async () => {
+                input.select();
+                try {
+                    await navigator.clipboard.writeText(input.value);
+                    button.textContent = 'Скопировано';
+                    setTimeout(() => button.textContent = 'Скопировать', 1600);
+                } catch (_) {
+                    document.execCommand('copy');
+                }
+            });
+        });
+    </script>
+<?php endif; ?>
+
 <div class="grid stats-grid">
     <div class="stat"><span><?= h(app_text('auto.k_0f0b8f55edcc')) ?></span><strong><?= $stats['users'] ?></strong></div>
     <div class="stat"><span><?= h(app_text('auto.k_735d9fb6be56')) ?></span><strong><?= $stats['new_today'] ?></strong></div>

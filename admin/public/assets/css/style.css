@@ -138,6 +138,23 @@ a.button {
     margin-bottom: 16px;
 }
 
+.referral-panel {
+    display: grid;
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.referral-controls {
+    align-items: end;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: minmax(160px, 220px) minmax(280px, 1fr) auto;
+}
+
+.referral-link-field input {
+    font-family: Consolas, monospace;
+}
+
 h1,
 h2 {
     margin-top: 0;
@@ -487,6 +504,10 @@ button:disabled {
 }
 
 @media (max-width: 640px) {
+    .referral-controls {
+        grid-template-columns: 1fr;
+    }
+
     .stats-grid,
     .two-columns {
         grid-template-columns: 1fr;
