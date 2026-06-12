@@ -6,7 +6,6 @@ const state = {
     vkUser: null,
     platform: null,
     platformUserId: null,
-    linkedAccounts: [],
     page: 'home',
     activeTest: null,
     initialTestId: null,
@@ -91,6 +90,12 @@ async function api(path, options = {}) {
     return response.json();
 }
 
+function getLinkToken() {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const search = new URLSearchParams(window.location.search);
+    return hash.get('link_token') || search.get('link_token') || null;
+}
+
 function getTelegramApp() {
     return window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 }
@@ -108,6 +113,7 @@ async function initTelegram() {
         body: JSON.stringify({
             init_data: tg.initData,
             referral_code: getReferralCode(),
+            link_token: getLinkToken(),
         }),
     });
 
@@ -147,21 +153,11 @@ function buildVkOkIdentity(vkUser) {
     const vkClient = params.get('vk_client') || '';
     const vkPlatform = params.get('vk_platform') || '';
     const okUserId = params.get('vk_ok_user_id') || '';
-    const originalVkId = params.get('vk_original_vk_id') || params.get('vk_user_id') || '';
     const isOk = vkClient === 'ok' || vkPlatform.includes('ok') || okUserId !== '';
     const platform = isOk ? 'OK' : 'VK';
     const platformUserId = isOk && okUserId !== '' ? okUserId : String(vkUser.id);
-    const linkedAccounts = [];
 
-    if (isOk && originalVkId !== '') {
-        linkedAccounts.push({
-            platform: 'VK',
-            platform_user_id: String(originalVkId),
-            source: 'vk_original_vk_id',
-        });
-    }
-
-    return {platform, platformUserId, linkedAccounts};
+    return {platform, platformUserId};
 }
 
 async function authorize() {
@@ -177,7 +173,6 @@ async function authorize() {
     const identity = buildVkOkIdentity(state.vkUser);
     state.platform = identity.platform;
     state.platformUserId = identity.platformUserId;
-    state.linkedAccounts = identity.linkedAccounts;
     state.auth = {
         platform: state.platform,
         platform_user_id: state.platformUserId,
@@ -189,7 +184,7 @@ async function authorize() {
         last_name: state.vkUser.last_name,
         username: state.vkUser.domain,
         referral_code: getReferralCode(),
-        linked_accounts: state.linkedAccounts,
+        link_token: getLinkToken(),
         platform_meta: Object.fromEntries(vkLaunchParams().entries()),
     };
     const result = await api('auth.php', {
@@ -231,7 +226,7 @@ async function authorizeWithReferral(referralCode) {
             last_name: state.vkUser.last_name,
             username: state.vkUser.domain,
             referral_code: referralCode,
-            linked_accounts: state.linkedAccounts,
+            link_token: getLinkToken(),
             platform_meta: Object.fromEntries(vkLaunchParams().entries()),
         }),
     });
@@ -352,6 +347,7 @@ function renderHome() {
 async function renderProfile() {
     const result = await api(`user.php?${userQuery()}`);
     const user = result.user;
+    const accounts = result.platform_accounts || [];
     page.innerHTML = `
         <section class="panel">
             <h2>${escapeHtml(ui('profile.title'))}</h2>
@@ -360,7 +356,43 @@ async function renderProfile() {
             <p>${escapeHtml(ui('profile.status'))}: ${escapeHtml(user.status)}</p>
             <p class="muted">${escapeHtml(ui('profile.manager'))}: ${escapeHtml(user.manager_id || ui('profile.manager_later'))}</p>
         </section>
+        <section class="panel">
+            <h2>${escapeHtml(ui('profile.accounts', 'Подключенные платформы'))}</h2>
+            ${accounts.length ? accounts.map((account) => `
+                <article class="item compact-item">
+                    <strong>${escapeHtml(account.platform)}</strong>
+                    <span class="muted">${escapeHtml(account.platform_user_id)}</span>
+                    ${account.username ? `<span class="muted">${escapeHtml(account.username)}</span>` : ''}
+                </article>
+            `).join('') : `<div class="empty">${escapeHtml(ui('profile.no_accounts', 'Платформы пока не подключены.'))}</div>`}
+            <button class="secondary" data-action="create-link-token">${escapeHtml(ui('profile.connect_platform', 'Подключить другую платформу'))}</button>
+            <div class="link-panel" id="link-panel"></div>
+        </section>
     `;
+}
+
+async function renderAccountLinkPanel() {
+    const panel = document.querySelector('#link-panel');
+    if (!panel) return;
+    panel.innerHTML = `<div class="empty">${escapeHtml(ui('common.loading'))}</div>`;
+    try {
+        const result = await api('account_link.php', {
+            method: 'POST',
+            body: JSON.stringify(userPayload()),
+        });
+        const miniAppLink = result.links?.mini_app || '';
+        const telegramLink = result.links?.telegram || '';
+        panel.innerHTML = `
+            <div class="link-card">
+                <strong>${escapeHtml(ui('profile.link_title', 'Ссылка для подключения'))}</strong>
+                <span class="muted">${escapeHtml(ui('profile.link_hint', 'Откройте ссылку на другой платформе и подтвердите вход.'))}</span>
+                ${miniAppLink ? `<a href="${escapeHtml(miniAppLink)}" target="_blank" rel="noopener">${escapeHtml(ui('profile.open_mini_app', 'Открыть Mini App'))}</a>` : ''}
+                ${telegramLink ? `<a href="${escapeHtml(telegramLink)}" target="_blank" rel="noopener">${escapeHtml(ui('profile.open_telegram', 'Подключить Telegram'))}</a>` : ''}
+            </div>
+        `;
+    } catch (error) {
+        panel.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+    }
 }
 
 async function renderTests() {
@@ -608,6 +640,7 @@ page.addEventListener('click', async (event) => {
     if (target.dataset.action === 'tests') setPage('tests');
     if (target.dataset.action === 'back-to-tests') await renderTests();
     if (target.dataset.action === 'contact') await contactManager();
+    if (target.dataset.action === 'create-link-token') await renderAccountLinkPanel();
     if (target.dataset.pageTarget) setPage(target.dataset.pageTarget);
     if (target.dataset.openTestId) await renderTest(Number(target.dataset.openTestId));
     if (target.dataset.productId) await contactManager(Number(target.dataset.productId));

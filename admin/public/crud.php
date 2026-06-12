@@ -294,6 +294,108 @@ function scoped_end_user_exists(int $endUserId, array $admin): bool
     return (int)$stmt->fetchColumn() > 0;
 }
 
+function user_display_label(array $row): string
+{
+    $name = trim((string)($row['full_name'] ?? ''));
+    if ($name === '') {
+        $name = trim((string)($row['username'] ?? ''));
+    }
+    if ($name === '') {
+        $name = '#' . (int)$row['id'];
+    }
+
+    $platform = trim((string)($row['platform'] ?? ''));
+    $platformUserId = trim((string)($row['platform_user_id'] ?? ''));
+    return '#' . (int)$row['id'] . ' ' . $name . ($platform ? ' (' . platform_label($platform) . ' ' . $platformUserId . ')' : '');
+}
+
+function merge_user_options(int $targetUserId, array $admin): array
+{
+    [$where, $params] = scoped_where_with_alias(scope_where_for_users($admin), 'eu');
+    $where = $where
+        ? $where . ' AND eu.id <> :target_user_id AND eu.merged_into_user_id IS NULL'
+        : 'WHERE eu.id <> :target_user_id AND eu.merged_into_user_id IS NULL';
+    $params['target_user_id'] = $targetUserId;
+
+    $stmt = db()->prepare(
+        "SELECT eu.id, CONCAT_WS(' ', NULLIF(eu.first_name, ''), NULLIF(eu.last_name, '')) AS full_name,
+                eu.username, eu.platform, eu.platform_user_id
+         FROM end_users eu
+         $where
+         ORDER BY eu.id DESC
+         LIMIT 300"
+    );
+    $stmt->execute($params);
+    return $stmt->fetchAll();
+}
+
+function user_platform_accounts(int $endUserId): array
+{
+    $stmt = db()->prepare(
+        'SELECT platform, platform_user_id, username, created_at
+         FROM platform_accounts
+         WHERE end_user_id = :end_user_id
+         ORDER BY FIELD(platform, "telegram", "VK", "OK", "MAX", "web"), id'
+    );
+    $stmt->execute(['end_user_id' => $endUserId]);
+    return $stmt->fetchAll();
+}
+
+function merge_end_users(int $targetUserId, int $sourceUserId, array $admin): void
+{
+    if ($targetUserId <= 0 || $sourceUserId <= 0 || $targetUserId === $sourceUserId) {
+        throw new RuntimeException('Выберите двух разных пользователей.');
+    }
+    if (!scoped_end_user_exists($targetUserId, $admin) || !scoped_end_user_exists($sourceUserId, $admin)) {
+        throw new RuntimeException('Пользователь недоступен.');
+    }
+
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $targetStmt = $pdo->prepare('SELECT id FROM end_users WHERE id = :id AND merged_into_user_id IS NULL FOR UPDATE');
+        $targetStmt->execute(['id' => $targetUserId]);
+        $target = $targetStmt->fetch();
+
+        $sourceStmt = $pdo->prepare('SELECT id FROM end_users WHERE id = :id AND merged_into_user_id IS NULL FOR UPDATE');
+        $sourceStmt->execute(['id' => $sourceUserId]);
+        $source = $sourceStmt->fetch();
+
+        if (!$target || !$source) {
+            throw new RuntimeException('Один из пользователей уже объединён.');
+        }
+
+        $updates = [
+            'platform_accounts' => 'end_user_id',
+            'leads' => 'end_user_id',
+            'user_test_sessions' => 'end_user_id',
+            'recommendations' => 'end_user_id',
+            'broadcast_logs' => 'end_user_id',
+        ];
+        foreach ($updates as $table => $column) {
+            $stmt = $pdo->prepare("UPDATE $table SET $column = :target_id WHERE $column = :source_id");
+            $stmt->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
+        }
+
+        $mark = $pdo->prepare(
+            'UPDATE end_users
+             SET merged_into_user_id = :target_id, status = "unsubscribed"
+             WHERE id = :source_id'
+        );
+        $mark->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
+
+        log_activity('admin', (int)$admin['id'], 'merge_end_users', 'end_users', $targetUserId, [
+            'source_user_id' => $sourceUserId,
+            'target_user_id' => $targetUserId,
+        ]);
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
 function select_options(string $source, array $admin): array
 {
     $allowed = [
@@ -767,6 +869,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = $postId;
     }
 
+    if ($postAction === 'merge_user') {
+        if ($moduleKey !== 'users' || !$postId || !scoped_row_exists($moduleKey, $module, $postId, $admin)) {
+            http_response_code(404);
+            exit('Record not found');
+        }
+
+        $sourceUserId = (int)($_POST['source_user_id'] ?? 0);
+        try {
+            merge_end_users($postId, $sourceUserId, $admin);
+            redirect('crud.php?module=users&action=edit&id=' . $postId . '&success=merged');
+        } catch (Throwable $e) {
+            $errors[] = 'Не удалось объединить пользователей: ' . $e->getMessage();
+        }
+        $action = 'edit';
+        $id = $postId;
+    }
+
     if ($postAction === 'delete') {
         if (!$canDelete) {
             $errors[] = app_text('auto.k_da5ca3c5fc80');
@@ -869,6 +988,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <div class="notice success"><?= h(app_text('auto.k_5db71cdc4927')) ?></div>
 <?php elseif ($success === 'response_sent'): ?>
     <div class="notice success"><?= h(app_text('auto.k_0184f257cbfc')) ?></div>
+<?php elseif ($success === 'merged'): ?>
+    <div class="notice success">Пользователи объединены.</div>
 <?php endif; ?>
 <?php foreach ($errors as $error): ?>
     <div class="alert"><?= h($error) ?></div>
@@ -952,6 +1073,58 @@ require __DIR__ . '/../app/views/layouts/header.php';
     </section>
     <?php if ($moduleKey === 'tests' && $action === 'edit' && $editRow): ?>
         <?= render_test_builder((int)$editRow['id']) ?>
+    <?php endif; ?>
+    <?php if ($moduleKey === 'users' && $action === 'edit' && $editRow): ?>
+        <section class="panel form-panel">
+            <h2>Платформы пользователя</h2>
+            <?php $accounts = user_platform_accounts((int)$editRow['id']); ?>
+            <?php if ($accounts): ?>
+                <table class="data-table">
+                    <thead>
+                    <tr>
+                        <th>Платформа</th>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Создан</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($accounts as $account): ?>
+                        <tr>
+                            <td><?= render_platform_badge((string)$account['platform']) ?></td>
+                            <td><?= h((string)$account['platform_user_id']) ?></td>
+                            <td><?= h((string)($account['username'] ?? '')) ?></td>
+                            <td><?= h((string)$account['created_at']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else: ?>
+                <div class="empty-state">Подключённых платформ пока нет.</div>
+            <?php endif; ?>
+        </section>
+
+        <section class="panel form-panel">
+            <h2>Объединить пользователей</h2>
+            <p class="cell-muted">Выберите второго пользователя. Его платформы, заявки, тесты и рекомендации будут перенесены к текущему пользователю.</p>
+            <form method="post" class="crud-form" onsubmit="return confirm('Объединить выбранного пользователя с текущим?');">
+                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                <input type="hidden" name="action" value="merge_user">
+                <input type="hidden" name="id" value="<?= h((string)$editRow['id']) ?>">
+                <label class="field">
+                    <span>Второй пользователь</span>
+                    <select name="source_user_id" required>
+                        <option value="">Не выбран</option>
+                        <?php foreach (merge_user_options((int)$editRow['id'], $admin) as $option): ?>
+                            <option value="<?= (int)$option['id'] ?>"><?= h(user_display_label($option)) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="danger-button">Объединить</button>
+                </div>
+            </form>
+        </section>
     <?php endif; ?>
     <?php if ($moduleKey === 'leads' && $action === 'edit' && $editRow): ?>
         <section class="panel form-panel">

@@ -52,13 +52,18 @@ if (!is_array($telegramUser) || empty($telegramUser['id'])) {
     json_response(['error' => 'telegram user is missing'], 422);
 }
 
+$startParam = (string)($parsed['start_param'] ?? '');
+$linkToken = str_starts_with($startParam, 'link_') ? $startParam : ($data['link_token'] ?? null);
+$referralCode = str_starts_with($startParam, 'link_') ? ($data['referral_code'] ?? null) : ($startParam ?: ($data['referral_code'] ?? null));
+
 $user = create_or_get_user([
     'platform' => 'telegram',
     'platform_user_id' => (string)$telegramUser['id'],
     'username' => $telegramUser['username'] ?? null,
     'first_name' => $telegramUser['first_name'] ?? null,
     'last_name' => $telegramUser['last_name'] ?? null,
-    'referral_code' => $parsed['start_param'] ?? ($data['referral_code'] ?? null),
+    'referral_code' => $referralCode,
+    'link_token' => $linkToken,
 ]);
 
 json_response([

@@ -38,14 +38,6 @@ UPDATE lead_responses SET platform = 'MAX' WHERE platform = 'max';
 ALTER TABLE lead_responses
   MODIFY COLUMN platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL;
 
-ALTER TABLE broadcast_recipients
-  MODIFY COLUMN platform ENUM('telegram', 'vk', 'VK', 'ok', 'OK', 'max', 'MAX', 'web') NOT NULL;
-UPDATE broadcast_recipients SET platform = 'VK' WHERE platform = 'vk';
-UPDATE broadcast_recipients SET platform = 'OK' WHERE platform = 'ok';
-UPDATE broadcast_recipients SET platform = 'MAX' WHERE platform = 'max';
-ALTER TABLE broadcast_recipients
-  MODIFY COLUMN platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL;
-
 ALTER TABLE broadcasts
   MODIFY COLUMN platform ENUM('all', 'telegram', 'vk', 'VK', 'ok', 'OK', 'max', 'MAX') NOT NULL DEFAULT 'all';
 UPDATE broadcasts SET platform = 'VK' WHERE platform = 'vk';

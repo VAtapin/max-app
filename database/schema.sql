@@ -121,12 +121,14 @@ CREATE TABLE end_users (
   email VARCHAR(190) NULL,
   referral_code_used VARCHAR(64) NULL,
   status ENUM('active', 'blocked', 'unsubscribed') NOT NULL DEFAULT 'active',
+  merged_into_user_id BIGINT UNSIGNED NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   last_activity_at DATETIME NULL,
   UNIQUE KEY uq_end_users_platform_account (platform, platform_user_id),
   INDEX idx_end_users_reseller_id (reseller_id),
   INDEX idx_end_users_manager_id (manager_id),
+  INDEX idx_end_users_merged_into_user_id (merged_into_user_id),
   INDEX idx_end_users_referral_code (referral_code_used),
   INDEX idx_end_users_platform (platform),
   CONSTRAINT fk_end_users_reseller
@@ -134,6 +136,9 @@ CREATE TABLE end_users (
     ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT fk_end_users_manager
     FOREIGN KEY (manager_id) REFERENCES managers(id)
+    ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_end_users_merged_into
+    FOREIGN KEY (merged_into_user_id) REFERENCES end_users(id)
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -105,7 +105,7 @@ function crud_display_columns(string $moduleKey): array
         'users' => [
             'id' => 'ID',
             'display_name' => app_text('auto.k_51aff1853949'),
-            'platform_account' => app_text('auto.k_89009febe5c6'),
+            'platform_accounts_summary' => app_text('auto.k_89009febe5c6'),
             'reseller_name' => app_text('auto.k_86469fea3a4a'),
             'manager_name' => app_text('auto.k_8d98911527e4'),
             'status' => app_text('auto.k_f7f293b5c58c'),
@@ -240,14 +240,20 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
 {
     if ($moduleKey === 'users') {
         [$where, $params] = scoped_where_with_alias(scope_where_for_users($admin), 'eu');
+        $where = $where
+            ? $where . ' AND eu.merged_into_user_id IS NULL'
+            : 'WHERE eu.merged_into_user_id IS NULL';
         return [
             "SELECT eu.id, CONCAT_WS(' ', NULLIF(eu.first_name, ''), NULLIF(eu.last_name, '')) AS full_name,
                     eu.username, eu.platform, eu.platform_user_id, eu.status, eu.created_at,
-                    r.name AS reseller_name, m.name AS manager_name
+                    r.name AS reseller_name, m.name AS manager_name,
+                    GROUP_CONCAT(CONCAT(pa.platform, ':', pa.platform_user_id) ORDER BY FIELD(pa.platform, 'telegram', 'VK', 'OK', 'MAX', 'web'), pa.id SEPARATOR '\n') AS platform_accounts_summary
              FROM end_users eu
              LEFT JOIN resellers r ON r.id = eu.reseller_id
              LEFT JOIN managers m ON m.id = eu.manager_id
+             LEFT JOIN platform_accounts pa ON pa.end_user_id = eu.id
              $where
+             GROUP BY eu.id
              ORDER BY eu.id DESC
              LIMIT 100",
             $params,
@@ -534,6 +540,21 @@ function render_cell(string $moduleKey, string $key, array $row): string
     if ($key === 'platform_account') {
         return render_platform_badge((string)($row['platform'] ?? ''))
             . '<div class="cell-muted">' . h((string)($row['platform_user_id'] ?? '')) . '</div>';
+    }
+
+    if ($key === 'platform_accounts_summary') {
+        $items = array_filter(explode("\n", (string)($row[$key] ?? '')));
+        if (!$items) {
+            return render_platform_badge((string)($row['platform'] ?? ''))
+                . '<div class="cell-muted">' . h((string)($row['platform_user_id'] ?? '')) . '</div>';
+        }
+
+        $html = [];
+        foreach ($items as $item) {
+            [$platform, $platformUserId] = array_pad(explode(':', $item, 2), 2, '');
+            $html[] = render_platform_badge($platform) . '<div class="cell-muted">' . h($platformUserId) . '</div>';
+        }
+        return implode('', $html);
     }
 
     if ($key === 'default_platforms') {

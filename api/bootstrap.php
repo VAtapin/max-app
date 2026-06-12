@@ -39,22 +39,6 @@ function platform_account_candidates(array $data): array
         ];
     }
 
-    foreach (($data['linked_accounts'] ?? []) as $account) {
-        if (!is_array($account)) {
-            continue;
-        }
-        $linkedPlatform = normalize_platform((string)($account['platform'] ?? ''));
-        $linkedUserId = (string)($account['platform_user_id'] ?? '');
-        if ($linkedPlatform === '' || $linkedUserId === '') {
-            continue;
-        }
-        $accounts[] = [
-            'platform' => $linkedPlatform,
-            'platform_user_id' => $linkedUserId,
-            'username' => $account['username'] ?? $username,
-        ];
-    }
-
     $unique = [];
     foreach ($accounts as $account) {
         $key = $account['platform'] . ':' . $account['platform_user_id'];
@@ -90,7 +74,6 @@ function enrich_vk_ok_platform_data(array $data): array
     $vkClient = (string)($params['vk_client'] ?? '');
     $vkPlatform = (string)($params['vk_platform'] ?? '');
     $okUserId = (string)($params['vk_ok_user_id'] ?? '');
-    $originalVkId = (string)($params['vk_original_vk_id'] ?? ($params['vk_user_id'] ?? ''));
     $isOk = $vkClient === 'ok' || str_contains($vkPlatform, 'ok') || $okUserId !== '';
 
     if (!$isOk || $okUserId === '') {
@@ -105,14 +88,6 @@ function enrich_vk_ok_platform_data(array $data): array
         'vk_app_id' => $params['vk_app_id'] ?? null,
         'vk_ok_app_id' => $params['vk_ok_app_id'] ?? null,
     ]);
-
-    if ($originalVkId !== '') {
-        $data['linked_accounts'] = array_merge($data['linked_accounts'] ?? [], [[
-            'platform' => 'VK',
-            'platform_user_id' => $originalVkId,
-            'source' => 'http_referer.vk_original_vk_id',
-        ]]);
-    }
 
     return $data;
 }
@@ -254,6 +229,51 @@ function default_manager_card(?string $platform): ?array
     ];
 }
 
+function account_link_secret(): string
+{
+    $config = app_config();
+    $botToken = (string)($config['integrations']['telegram_bot_token'] ?? getenv('TELEGRAM_BOT_TOKEN') ?: '');
+    $dbPassword = (string)($config['db']['password'] ?? '');
+    return hash('sha256', $botToken . '|' . $dbPassword . '|swpro-account-link');
+}
+
+function create_account_link_token(int $endUserId, int $ttlSeconds = 900): string
+{
+    $expiresAt = time() + $ttlSeconds;
+    $payload = $endUserId . '|' . $expiresAt;
+    $signature = substr(hash_hmac('sha256', $payload, account_link_secret()), 0, 20);
+    return 'l_' . $endUserId . '_' . $expiresAt . '_' . $signature;
+}
+
+function parse_account_link_token(?string $token): ?int
+{
+    if (!$token) {
+        return null;
+    }
+
+    if (str_starts_with($token, 'link_')) {
+        $token = substr($token, 5);
+    }
+
+    $parts = explode('_', $token);
+    if (count($parts) !== 4 || $parts[0] !== 'l') {
+        return null;
+    }
+
+    [, $endUserId, $expiresAt, $signature] = $parts;
+    if ((int)$endUserId <= 0 || (int)$expiresAt < time()) {
+        return null;
+    }
+
+    $payload = $endUserId . '|' . $expiresAt;
+    $expected = substr(hash_hmac('sha256', $payload, account_link_secret()), 0, 20);
+    if (!hash_equals($expected, $signature)) {
+        return null;
+    }
+
+    return (int)$endUserId;
+}
+
 function create_or_get_user(array $data): array
 {
     $data = enrich_vk_ok_platform_data($data);
@@ -264,6 +284,7 @@ function create_or_get_user(array $data): array
     }
 
     $accounts = platform_account_candidates($data);
+    $linkTargetUserId = parse_account_link_token($data['link_token'] ?? null);
 
     $stmt = db()->prepare(
         'SELECT u.*
@@ -279,12 +300,21 @@ function create_or_get_user(array $data): array
         ]);
         $existing = $stmt->fetch();
         if ($existing) {
-            foreach ($accounts as $linkedAccount) {
-                ensure_platform_account((int)$existing['id'], $linkedAccount['platform'], $linkedAccount['platform_user_id'], $linkedAccount['username'] ?? null);
-            }
             $touch = db()->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
             $touch->execute(['id' => $existing['id']]);
             return attach_referral_if_missing($existing, $data['referral_code'] ?? null);
+        }
+    }
+
+    if ($linkTargetUserId) {
+        $targetStmt = db()->prepare('SELECT * FROM end_users WHERE id = :id LIMIT 1');
+        $targetStmt->execute(['id' => $linkTargetUserId]);
+        $targetUser = $targetStmt->fetch();
+        if ($targetUser) {
+            ensure_platform_account((int)$targetUser['id'], $platform, $platformUserId, $data['username'] ?? null, false);
+            $touch = db()->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
+            $touch->execute(['id' => $targetUser['id']]);
+            return attach_referral_if_missing($targetUser, $data['referral_code'] ?? null);
         }
     }
 
@@ -296,9 +326,7 @@ function create_or_get_user(array $data): array
         ]);
         $legacyUser = $legacyStmt->fetch();
         if ($legacyUser) {
-            foreach ($accounts as $linkedAccount) {
-                ensure_platform_account((int)$legacyUser['id'], $linkedAccount['platform'], $linkedAccount['platform_user_id'], $linkedAccount['username'] ?? null);
-            }
+            ensure_platform_account((int)$legacyUser['id'], $account['platform'], $account['platform_user_id'], $account['username'] ?? null, false);
             $touch = db()->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
             $touch->execute(['id' => $legacyUser['id']]);
             return attach_referral_if_missing($legacyUser, $data['referral_code'] ?? null);
@@ -359,13 +387,18 @@ function create_or_get_user(array $data): array
     return $created->fetch();
 }
 
-function ensure_platform_account(int $endUserId, string $platform, string $platformUserId, ?string $username = null): void
+function ensure_platform_account(int $endUserId, string $platform, string $platformUserId, ?string $username = null, bool $moveExisting = false): void
 {
-    $stmt = db()->prepare(
-        'INSERT INTO platform_accounts (end_user_id, platform, platform_user_id, username)
-         VALUES (:end_user_id, :platform, :platform_user_id, :username)
-         ON DUPLICATE KEY UPDATE end_user_id = VALUES(end_user_id), username = VALUES(username)'
-    );
+    $sql = 'INSERT INTO platform_accounts (end_user_id, platform, platform_user_id, username)
+            VALUES (:end_user_id, :platform, :platform_user_id, :username)
+            ON DUPLICATE KEY UPDATE username = VALUES(username)';
+    if ($moveExisting) {
+        $sql = 'INSERT INTO platform_accounts (end_user_id, platform, platform_user_id, username)
+                VALUES (:end_user_id, :platform, :platform_user_id, :username)
+                ON DUPLICATE KEY UPDATE end_user_id = VALUES(end_user_id), username = VALUES(username)';
+    }
+
+    $stmt = db()->prepare($sql);
     $stmt->execute([
         'end_user_id' => $endUserId,
         'platform' => $platform,
