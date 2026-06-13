@@ -153,6 +153,17 @@ function public_profile_referral_code(array $profile): ?string
     return $code !== '' ? $code : null;
 }
 
+function public_base_url(): string
+{
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    if ($host === '') {
+        return '';
+    }
+
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    return $scheme . '://' . $host;
+}
+
 function public_mini_app_url(?string $referralCode = null, string $page = ''): string
 {
     $config = app_config();
