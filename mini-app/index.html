@@ -3,32 +3,65 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SWPro</title>
-    <link rel="stylesheet" href="../vk-mini-app/style.css?v=20260613-1">
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
+    <title>Подключение к SWPro</title>
+    <link rel="stylesheet" href="style.css?v=20260613-2">
 </head>
 <body>
-    <main class="app">
-        <header class="app-header">
-            <div>
-                <span class="eyebrow" data-i18n="app.eyebrow"></span>
-                <h1 data-i18n="app.title">SWPro</h1>
-            </div>
-        </header>
+    <main class="connect-app">
+        <section class="connect-card">
+            <div class="brand">SWPro</div>
+            <h1>Подключение к консультанту</h1>
+            <p class="lead">Откройте SWPro в удобной платформе. Код консультанта будет передан автоматически.</p>
 
-        <nav class="tabs" aria-label="" data-i18n-attr="aria-label:nav.aria">
-            <button data-page="home" data-i18n="nav.home" class="active"></button>
-            <button data-page="tests" data-i18n="nav.tests"></button>
-            <button data-page="recommendations" data-i18n="nav.recommendations"></button>
-            <button data-page="leads" data-i18n="nav.leads"></button>
-            <button data-page="profile" data-i18n="nav.profile"></button>
-        </nav>
+            <form id="connect-form" class="code-form">
+                <label for="ref-code">Код консультанта</label>
+                <div class="code-row">
+                    <input id="ref-code" name="ref" autocomplete="one-time-code" placeholder="Например: SWPRO-START">
+                    <button type="submit">Обновить ссылки</button>
+                </div>
+                <button class="default-code" type="button" data-action="default-code">Использовать стандартного консультанта</button>
+            </form>
 
-        <section id="page" class="page"></section>
+            <section class="platforms" aria-label="Платформы подключения">
+                <a class="platform-card telegram" data-link="telegram" href="#">
+                    <span class="platform-icon">TG</span>
+                    <span>
+                        <strong>Telegram</strong>
+                        <small>Открыть бота с этим кодом</small>
+                    </span>
+                </a>
+                <a class="platform-card vk" data-link="vk" href="#">
+                    <span class="platform-icon">VK</span>
+                    <span>
+                        <strong>VK</strong>
+                        <small>Открыть Mini App VK</small>
+                    </span>
+                </a>
+                <a class="platform-card ok" data-link="ok" href="#">
+                    <span class="platform-icon">OK</span>
+                    <span>
+                        <strong>OK</strong>
+                        <small>Открыть Mini App OK</small>
+                    </span>
+                </a>
+                <a class="platform-card web" data-link="cabinet" href="#">
+                    <span class="platform-icon">APP</span>
+                    <span>
+                        <strong>Кабинет</strong>
+                        <small>Открыть веб-версию Mini App</small>
+                    </span>
+                </a>
+            </section>
 
-        <p class="disclaimer" data-i18n="medical_disclaimer"></p>
+            <section class="known-user" id="known-user" hidden>
+                <strong>Этот браузер уже использовался для SWPro.</strong>
+                <p>Можно открыть кабинет сразу или выбрать платформу выше.</p>
+                <a class="open-cabinet" data-link="known-cabinet" href="#">Открыть мой кабинет</a>
+            </section>
+
+            <p class="hint">Если вы уже закреплены за другим консультантом, новая ссылка не изменит привязку автоматически.</p>
+        </section>
     </main>
-    <script src="../vk-mini-app/app.js?v=20260613-1"></script>
+    <script src="app.js?v=20260613-2"></script>
 </body>
 </html>

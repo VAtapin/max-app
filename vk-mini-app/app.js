@@ -170,6 +170,32 @@ async function initVk() {
     return vkBridge.send('VKWebAppGetUserInfo');
 }
 
+async function initKnownWebUser() {
+    const webUserId = localStorage.getItem('swpro_web_user_id');
+    if (!webUserId) {
+        return null;
+    }
+
+    const result = await api('auth.php', {
+        method: 'POST',
+        body: JSON.stringify({
+            platform: 'web',
+            platform_user_id: webUserId,
+            first_name: 'Web',
+            last_name: 'User',
+            referral_code: getReferralCode(),
+            link_token: getLinkToken(),
+        }),
+    });
+
+    state.platform = 'web';
+    state.platformUserId = webUserId;
+    state.auth = {platform: 'web', platform_user_id: webUserId};
+    state.user = result.user;
+    state.defaultManager = result.default_manager || null;
+    return result.user;
+}
+
 function buildVkOkIdentity(vkUser) {
     const params = vkLaunchParams();
     const vkClient = params.get('vk_client') || '';
@@ -189,7 +215,7 @@ async function authorize() {
 
     state.vkUser = await initVk();
     if (!state.vkUser) {
-        return null;
+        return await initKnownWebUser();
     }
 
     const identity = buildVkOkIdentity(state.vkUser);
