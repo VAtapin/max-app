@@ -28,17 +28,17 @@ a {
 
 .consultant-page {
     margin: 0 auto;
-    max-width: 1280px;
+    max-width: 1120px;
     padding: 24px;
 }
 
 .hero {
     align-items: center;
     display: grid;
-    gap: 48px;
-    grid-template-columns: minmax(280px, 420px) 1fr;
-    min-height: 420px;
-    padding: 48px 0 64px;
+    gap: 56px;
+    grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+    min-height: 360px;
+    padding: 32px 0 56px;
 }
 
 .hero-photo,
@@ -47,7 +47,7 @@ a {
     border-radius: 32px;
     box-shadow: var(--shadow-soft);
     object-fit: cover;
-    width: min(400px, 100%);
+    width: min(360px, 100%);
 }
 
 .hero-photo.placeholder {
@@ -68,7 +68,7 @@ a {
 }
 
 h1 {
-    font-size: clamp(42px, 7vw, 82px);
+    font-size: clamp(42px, 7vw, 72px);
     line-height: 1;
     margin: 10px 0 16px;
 }
@@ -119,6 +119,25 @@ button {
 
 .section {
     margin: 0 auto 64px;
+    max-width: 1040px;
+}
+
+.section-head {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 20px;
+    max-width: 720px;
+}
+
+.section-head h2 {
+    margin-bottom: 0;
+}
+
+.section-head p {
+    color: var(--color-muted);
+    font-size: 17px;
+    line-height: 1.55;
+    margin: 0;
 }
 
 .public-card {
@@ -167,13 +186,19 @@ button {
     padding: 14px 18px;
 }
 
+.video-layout {
+    align-items: stretch;
+    display: grid;
+    gap: 20px;
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+}
+
 .video-embed {
     aspect-ratio: 16 / 9;
     background: #0f172a;
     border: 1px solid var(--color-border);
     border-radius: 22px;
     box-shadow: var(--shadow-soft);
-    max-width: 760px;
     overflow: hidden;
 }
 
@@ -181,6 +206,18 @@ button {
     border: 0;
     height: 100%;
     width: 100%;
+}
+
+.video-note {
+    align-content: center;
+    display: grid;
+    gap: 12px;
+}
+
+.video-note p {
+    color: var(--color-muted);
+    line-height: 1.55;
+    margin: 0;
 }
 
 .two-col {
@@ -192,16 +229,21 @@ button {
 .about-grid {
     display: grid;
     gap: 16px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(12, minmax(0, 1fr));
 }
 
 .about-card {
     display: grid;
     gap: 10px;
+    grid-column: span 6;
 }
 
 .about-card-main {
-    grid-column: 1 / -1;
+    grid-column: span 8;
+}
+
+.about-card:nth-child(2) {
+    grid-column: span 4;
 }
 
 .about-card p {
@@ -254,9 +296,9 @@ button {
 
 .contact-card {
     align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
+    display: grid;
+    gap: 16px;
+    grid-template-columns: 1fr auto;
 }
 
 @media (max-width: 760px) {
@@ -266,11 +308,15 @@ button {
 
     .hero,
     .two-col,
-    .about-grid {
+    .about-grid,
+    .video-layout,
+    .contact-card {
         grid-template-columns: 1fr;
     }
 
-    .about-card-main {
+    .about-card,
+    .about-card-main,
+    .about-card:nth-child(2) {
         grid-column: auto;
     }
 
