@@ -21,6 +21,30 @@ if (!$profile && $referralCode) {
     }
 }
 
+if (!$profile && !$slug && !$referralCode) {
+    $stmt = db()->prepare(
+        'SELECT m.referral_code
+         FROM default_platform_managers dpm
+         JOIN managers m ON m.id = dpm.manager_id
+         WHERE dpm.platform = "web"
+           AND dpm.is_active = 1
+           AND m.is_active = 1
+           AND m.referral_code IS NOT NULL
+           AND m.referral_code <> ""
+         ORDER BY dpm.id
+         LIMIT 1'
+    );
+    $stmt->execute();
+    $defaultReferralCode = consultant_referral_code($stmt->fetchColumn() ?: null);
+    if ($defaultReferralCode) {
+        $candidate = consultant_profile_by_referral_code($defaultReferralCode);
+        if ($candidate && (int)$candidate['is_public'] === 1) {
+            $profile = $candidate;
+            $referralCode = $defaultReferralCode;
+        }
+    }
+}
+
 $payload = $profile ? consultant_profile_payload($profile) : null;
 $blocks = $payload['blocks'] ?? [];
 
@@ -166,15 +190,8 @@ function public_base_url(): string
 
 function public_mini_app_url(?string $referralCode = null, string $page = ''): string
 {
-    $config = app_config();
     $baseUrl = rtrim(public_base_url(), '/');
-    $miniAppUrl = trim((string)($config['integrations']['mini_app_url'] ?? ''));
-    if ($miniAppUrl === '' && $baseUrl !== '') {
-        $miniAppUrl = $baseUrl . '/vk-mini-app/';
-    }
-    if ($miniAppUrl === '') {
-        $miniAppUrl = '/vk-mini-app/';
-    }
+    $miniAppUrl = $baseUrl !== '' ? $baseUrl . '/mini-app/index.html' : '/mini-app/index.html';
 
     $params = [];
     if ($referralCode) {
@@ -184,7 +201,7 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
         $params['page'] = $page;
     }
 
-    return $miniAppUrl . (str_contains($miniAppUrl, '?') ? '&' : '?') . http_build_query($params);
+    return $miniAppUrl . ($params ? '?' . http_build_query($params) : '');
 }
 ?>
 <!doctype html>
@@ -211,7 +228,7 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
                 <span class="eyebrow">SWPro Assistant</span>
                 <h1>Персональная страница консультанта для клиентов</h1>
                 <p>Откройте страницу своего консультанта, пройдите рекомендованные тесты, получите материалы и задайте вопрос без интернет-магазина, корзины и оплаты.</p>
-                <form method="post" class="find-form" id="start">
+                <form method="get" class="find-form" id="start">
                     <input name="ref" placeholder="Код консультанта" required>
                     <button type="submit">Открыть страницу</button>
                 </form>

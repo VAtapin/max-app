@@ -89,6 +89,15 @@ function platformLinks() {
     };
 }
 
+function ensureWebIdentity() {
+    let webUserId = localStorage.getItem('swpro_web_user_id');
+    if (!webUserId) {
+        webUserId = `web-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`;
+        localStorage.setItem('swpro_web_user_id', webUserId);
+    }
+    localStorage.setItem('swpro_pending_referral_code', currentReferralCode());
+}
+
 function updateLinks() {
     const code = currentReferralCode();
     refInput.value = code;
@@ -126,6 +135,9 @@ document.addEventListener('click', (event) => {
     if (target.dataset.action === 'default-code') {
         refInput.value = DEFAULT_REFERRAL_CODE;
         updateLinks();
+    }
+    if (target.closest('[data-link="cabinet"], [data-link="known-cabinet"]')) {
+        ensureWebIdentity();
     }
 });
 

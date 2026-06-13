@@ -170,8 +170,15 @@ async function initVk() {
     return vkBridge.send('VKWebAppGetUserInfo');
 }
 
-async function initKnownWebUser() {
-    const webUserId = localStorage.getItem('swpro_web_user_id');
+async function initWebUser() {
+    const storedReferralCode = localStorage.getItem('swpro_pending_referral_code') || '';
+    const referralCode = getReferralCode() || storedReferralCode;
+    const linkToken = getLinkToken();
+    let webUserId = localStorage.getItem('swpro_web_user_id');
+    if (!webUserId && (referralCode || linkToken)) {
+        webUserId = `web-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`;
+        localStorage.setItem('swpro_web_user_id', webUserId);
+    }
     if (!webUserId) {
         return null;
     }
@@ -183,8 +190,8 @@ async function initKnownWebUser() {
             platform_user_id: webUserId,
             first_name: 'Web',
             last_name: 'User',
-            referral_code: getReferralCode(),
-            link_token: getLinkToken(),
+            referral_code: referralCode,
+            link_token: linkToken,
         }),
     });
 
@@ -193,6 +200,10 @@ async function initKnownWebUser() {
     state.auth = {platform: 'web', platform_user_id: webUserId};
     state.user = result.user;
     state.defaultManager = result.default_manager || null;
+    if (referralCode && hasTeamAccess()) {
+        localStorage.setItem('swpro_last_referral_code', referralCode);
+        localStorage.removeItem('swpro_pending_referral_code');
+    }
     return result.user;
 }
 
@@ -215,7 +226,7 @@ async function authorize() {
 
     state.vkUser = await initVk();
     if (!state.vkUser) {
-        return await initKnownWebUser();
+        return await initWebUser();
     }
 
     const identity = buildVkOkIdentity(state.vkUser);
