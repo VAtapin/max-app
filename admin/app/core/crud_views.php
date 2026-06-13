@@ -657,6 +657,59 @@ function render_lead_pagination(int $rowCount): string
     return trim(ob_get_clean());
 }
 
+function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
+{
+    ob_start();
+    ?>
+    <div class="lead-card-list">
+        <?php foreach ($rows as $row): ?>
+            <?php
+            $status = status_label((string)($row['status'] ?? 'new'));
+            $response = crud_cell_value('leads', 'response_summary', $row);
+            $responseFirstLine = strtok($response, "\n") ?: $response;
+            $responseRest = trim(substr($response, strlen($responseFirstLine)));
+            $message = trim((string)($row['message'] ?? '')) ?: app_text('auto.k_503360e76342');
+            $user = crud_cell_value('leads', 'user_name', $row);
+            ?>
+            <article class="lead-card">
+                <div class="lead-card-main">
+                    <div class="lead-card-top">
+                        <span class="<?= h(status_badge_class($status)) ?>"><?= h($status) ?></span>
+                        <?= render_platform_badge((string)($row['source_platform'] ?? '')) ?>
+                        <span class="cell-muted">#<?= (int)$row['id'] ?> · <?= h((string)($row['created_at'] ?? '')) ?></span>
+                    </div>
+                    <h3><?= h($user) ?></h3>
+                    <p class="lead-card-message"><?= nl2br(h($message)) ?></p>
+                    <div class="lead-card-meta">
+                        <span><?= h(app_text('auto.k_82a9ca014bb8')) ?>: <?= h((string)($row['product_title'] ?: app_text('auto.k_1b93795b9768'))) ?></span>
+                        <span><?= h(app_text('auto.k_e9d7bdd83831')) ?>: <span class="<?= h(status_badge_class($responseFirstLine)) ?>"><?= h($responseFirstLine) ?></span></span>
+                        <?php if ($responseRest !== ''): ?>
+                            <span class="cell-muted"><?= nl2br(h($responseRest)) ?></span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php if ($canEdit || $canDelete): ?>
+                    <div class="lead-card-actions">
+                        <?php if ($canEdit): ?>
+                            <a class="button" href="crud.php?module=leads&action=edit&id=<?= (int)$row['id'] ?>"><?= h(crud_action_label('leads')) ?></a>
+                        <?php endif; ?>
+                        <?php if ($canDelete): ?>
+                            <form method="post" onsubmit="return confirm('<?= h(app_text('auto.k_112417195434', ['id' => (int)$row['id']])) ?>');">
+                                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+                                <button type="submit" class="danger-button"><?= h(app_text('auto.k_86ea33aef5e9')) ?></button>
+                            </form>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+            </article>
+        <?php endforeach; ?>
+    </div>
+    <?php
+    return trim(ob_get_clean());
+}
+
 function render_crud_list(string $moduleKey, array $columns, array $rows, bool $canEdit, bool $canDelete): string
 {
     ob_start();
@@ -666,7 +719,10 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
     <?php endif; ?>
     <div class="table-summary"><?= h(app_text('auto.k_b1062a5651c3')) ?><?= count($rows) ?></div>
     <?php if ($rows): ?>
-        <table class="data-table <?= $moduleKey === 'leads' ? 'compact-table' : '' ?>">
+        <?php if ($moduleKey === 'leads'): ?>
+            <?= render_lead_cards($rows, $canEdit, $canDelete) ?>
+        <?php else: ?>
+        <table class="data-table">
             <thead>
                 <tr>
                     <?php foreach ($columns as $label): ?>
@@ -702,6 +758,7 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
                 <?php endforeach; ?>
             </tbody>
         </table>
+        <?php endif; ?>
     <?php else: ?>
         <div class="empty-state"><?= h(app_text('auto.k_488eec688217')) ?></div>
     <?php endif; ?>

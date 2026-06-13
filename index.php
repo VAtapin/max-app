@@ -221,13 +221,22 @@ function public_youtube_embed_url(?string $url): ?string
 
         <?php if (public_block_enabled($blocks, 'products') && !empty($payload['products'])): ?>
             <section class="section" id="products">
-                <h2><?= h(public_block_title($blocks, 'products', 'Что я рекомендую')) ?></h2>
+                <div class="section-head">
+                    <h2><?= h(public_block_title($blocks, 'products', 'Что я рекомендую')) ?></h2>
+                </div>
                 <div class="horizontal-cards">
                     <?php foreach ($payload['products'] as $product): ?>
                         <article class="public-card product-card">
-                            <?php if (!empty($product['image_path'])): ?><img src="<?= h((string)$product['image_path']) ?>" alt=""><?php endif; ?>
-                            <strong><?= h((string)$product['title']) ?></strong>
-                            <p><?= h((string)($product['short_description'] ?? '')) ?></p>
+                            <?php if (!empty($product['image_path'])): ?>
+                                <img src="<?= h((string)$product['image_path']) ?>" alt="">
+                            <?php else: ?>
+                                <div class="card-image-placeholder">SWPro</div>
+                            <?php endif; ?>
+                            <div class="card-body">
+                                <span class="card-kicker">Рекомендация</span>
+                                <strong><?= h((string)$product['title']) ?></strong>
+                                <p><?= h((string)($product['short_description'] ?? '')) ?></p>
+                            </div>
                         </article>
                     <?php endforeach; ?>
                 </div>
@@ -236,10 +245,12 @@ function public_youtube_embed_url(?string $url): ?string
 
         <?php if (public_block_enabled($blocks, 'tests') && !empty($payload['tests'])): ?>
             <section class="section" id="tests">
-                <h2><?= h(public_block_title($blocks, 'tests', 'Рекомендуемые тесты')) ?></h2>
+                <div class="section-head">
+                    <h2><?= h(public_block_title($blocks, 'tests', 'Рекомендуемые тесты')) ?></h2>
+                </div>
                 <div class="grid-cards">
                     <?php foreach ($payload['tests'] as $test): ?>
-                        <article class="public-card">
+                        <article class="public-card test-card">
                             <span class="test-icon">✓</span>
                             <strong><?= h((string)$test['title']) ?></strong>
                             <p><?= h((string)($test['description'] ?? '')) ?></p>
@@ -251,13 +262,24 @@ function public_youtube_embed_url(?string $url): ?string
 
         <?php if (public_block_enabled($blocks, 'materials') && !empty($payload['materials'])): ?>
             <section class="section" id="materials">
-                <h2><?= h(public_block_title($blocks, 'materials', 'Полезные материалы')) ?></h2>
+                <div class="section-head">
+                    <h2><?= h(public_block_title($blocks, 'materials', 'Полезные материалы')) ?></h2>
+                </div>
                 <div class="grid-cards">
                     <?php foreach ($payload['materials'] as $material): ?>
-                        <article class="public-card product-card">
-                            <?php if (!empty($material['image_path'])): ?><img src="<?= h((string)$material['image_path']) ?>" alt=""><?php endif; ?>
-                            <strong><?= h((string)$material['title']) ?></strong>
-                            <p><?= h((string)($material['short_text'] ?? '')) ?></p>
+                        <article class="public-card material-card">
+                            <?php if (!empty($material['image_path'])): ?>
+                                <img src="<?= h((string)$material['image_path']) ?>" alt="">
+                            <?php endif; ?>
+                            <div class="card-body">
+                                <span class="card-kicker"><?= h((string)$material['content_type']) ?></span>
+                                <strong><?= h((string)$material['title']) ?></strong>
+                                <p><?= h((string)($material['short_text'] ?? '')) ?></p>
+                                <div class="material-links">
+                                    <?php if (!empty($material['attachment_path'])): ?><a href="<?= h((string)$material['attachment_path']) ?>" target="_blank" rel="noopener">Файл</a><?php endif; ?>
+                                    <?php if (!empty($material['video_url'])): ?><a href="<?= h((string)$material['video_url']) ?>" target="_blank" rel="noopener">Видео</a><?php endif; ?>
+                                </div>
+                            </div>
                         </article>
                     <?php endforeach; ?>
                 </div>
@@ -281,7 +303,15 @@ function public_youtube_embed_url(?string $url): ?string
         <section class="section contacts" id="contacts">
             <h2><?= h(public_block_title($blocks, 'contacts', 'Контакты')) ?></h2>
             <div class="public-card contact-card">
-                <strong><?= h((string)$profileData['display_name']) ?></strong>
+                <div class="contact-person">
+                    <?php if (!empty($profileData['photo_path'])): ?>
+                        <img src="<?= h((string)$profileData['photo_path']) ?>" alt="">
+                    <?php endif; ?>
+                    <div>
+                        <strong><?= h((string)$profileData['display_name']) ?></strong>
+                        <?php if (!empty($profileData['subtitle'])): ?><span><?= h((string)$profileData['subtitle']) ?></span><?php endif; ?>
+                    </div>
+                </div>
                 <div class="contact-links">
                     <?php foreach (public_contact_links($profileData) as $label => $url): ?>
                         <a href="<?= h((string)$url) ?>" target="_blank" rel="noopener"><?= h($label) ?></a>

@@ -518,7 +518,9 @@ function collect_payload(array $fields): array
         $type = $field['type'] ?? 'text';
         if ($type === 'file') {
             $current = trim((string)($_POST[$name . '_current'] ?? ''));
-            $payload[$name] = $current !== '' ? $current : null;
+            $removeFiles = $_POST['remove_file'] ?? [];
+            $removeCurrent = is_array($removeFiles) && isset($removeFiles[$name]);
+            $payload[$name] = (!$removeCurrent && $current !== '') ? $current : null;
             continue;
         }
 
@@ -1260,10 +1262,17 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         </select>
                     <?php elseif ($type === 'file'): ?>
                         <?php if ($value): ?>
-                            <a class="file-link" href="<?= h((string)$value) ?>" target="_blank" rel="noopener"><?= h(app_text('auto.k_ffa20070c6e2')) ?></a>
+                            <div class="file-control">
+                                <span class="cell-muted"><?= h(app_text('media.current_file')) ?></span>
+                                <a class="file-link" href="<?= h((string)$value) ?>" target="_blank" rel="noopener"><?= h(app_text('media.open_file')) ?></a>
                             <?php if (($field['accept'] ?? '') === 'image/*'): ?>
                                 <img class="file-preview" src="<?= h((string)$value) ?>" alt="">
                             <?php endif; ?>
+                                <label class="checkbox-line file-remove">
+                                    <input type="checkbox" name="remove_file[<?= h($name) ?>]" value="1">
+                                    <?= h(app_text('media.remove_current_file')) ?>
+                                </label>
+                            </div>
                         <?php endif; ?>
                         <input type="hidden" name="<?= h($name) ?>_current" value="<?= h((string)$value) ?>">
                         <input type="file" name="<?= h($name) ?>" <?= isset($field['accept']) ? 'accept="' . h($field['accept']) . '"' : '' ?>>

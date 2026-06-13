@@ -313,6 +313,63 @@ table {
     white-space: normal;
 }
 
+.lead-card-list {
+    display: grid;
+    gap: 10px;
+}
+
+.lead-card {
+    align-items: start;
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-soft);
+    display: grid;
+    gap: 14px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 14px;
+}
+
+.lead-card-top,
+.lead-card-meta {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.lead-card h3 {
+    font-size: 18px;
+    margin: 8px 0 6px;
+}
+
+.lead-card-message {
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    color: var(--text);
+    display: -webkit-box;
+    margin: 0 0 10px;
+    max-width: 760px;
+    overflow: hidden;
+    white-space: normal;
+}
+
+.lead-card-actions {
+    display: grid;
+    gap: 8px;
+    justify-items: end;
+}
+
+@media (max-width: 760px) {
+    .lead-card {
+        grid-template-columns: 1fr;
+    }
+
+    .lead-card-actions {
+        justify-items: stretch;
+    }
+}
+
 th,
 td {
     border-bottom: 1px solid var(--line);
@@ -430,6 +487,22 @@ button:disabled {
     display: inline-block;
     font-size: 13px;
     margin-bottom: 4px;
+}
+
+.file-control {
+    display: grid;
+    gap: 6px;
+    align-items: start;
+    padding: 10px;
+    margin-bottom: 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: #f8fafc;
+}
+
+.file-remove {
+    margin-top: 2px;
+    color: var(--danger);
 }
 
 .file-preview {
@@ -738,6 +811,51 @@ button:disabled {
     color: var(--muted);
     font-size: 13px;
     margin-top: 4px;
+}
+
+.showcase-group {
+    align-content: start;
+}
+
+.showcase-picker {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    display: grid;
+    gap: 8px;
+    max-height: 360px;
+    overflow: auto;
+    padding: 10px;
+}
+
+.showcase-option {
+    align-items: start;
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: grid;
+    gap: 4px 8px;
+    grid-template-columns: 20px 56px 1fr;
+    padding: 10px;
+}
+
+.showcase-option:has(input:checked) {
+    background: #eef8f6;
+    border-color: var(--accent);
+}
+
+.showcase-option input {
+    margin-top: 2px;
+}
+
+.showcase-option span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.showcase-option strong {
+    font-size: 14px;
 }
 
 .sticky-actions {

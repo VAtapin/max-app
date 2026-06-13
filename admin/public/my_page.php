@@ -356,17 +356,22 @@ require __DIR__ . '/../app/views/layouts/header.php';
             ];
             ?>
             <?php foreach ($selectGroups as $name => [$label, $options, $selected]): ?>
-                <label class="field">
+                <section class="field showcase-group">
                     <span><?= h($label) ?></span>
-                    <select name="<?= h($name) ?>[]" multiple size="8">
+                    <div class="showcase-picker">
                         <?php foreach ($options as $option): ?>
-                            <option value="<?= (int)$option['id'] ?>" <?= in_array((int)$option['id'], $selected, true) ? 'selected' : '' ?>>
-                                #<?= (int)$option['id'] ?> <?= h($option['label']) ?>
-                            </option>
+                            <label class="showcase-option">
+                                <input type="checkbox" name="<?= h($name) ?>[]" value="<?= (int)$option['id'] ?>" <?= in_array((int)$option['id'], $selected, true) ? 'checked' : '' ?>>
+                                <span>#<?= (int)$option['id'] ?></span>
+                                <strong><?= h($option['label']) ?></strong>
+                            </label>
                         <?php endforeach; ?>
-                    </select>
-                    <small class="cell-muted"><?= h(app_text('consultant_profile.multi_select_hint')) ?></small>
-                </label>
+                        <?php if (!$options): ?>
+                            <div class="cell-muted"><?= h(app_text('consultant_profile.no_showcase_items')) ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <small class="cell-muted"><?= h(app_text('consultant_profile.checkbox_select_hint')) ?></small>
+                </section>
             <?php endforeach; ?>
         </div>
     </section>
