@@ -56,7 +56,7 @@ function manager_referral_links(array $manager): array
         ];
         $links['web'] = [
             'label' => 'Web',
-            'url' => $miniAppUrl . $separator . 'ref=' . $encodedCode,
+            'url' => ($baseUrl !== '' ? $baseUrl : rtrim($miniAppUrl, '/')) . '/?ref=' . $encodedCode,
         ];
     }
 

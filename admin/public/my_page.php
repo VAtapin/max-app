@@ -40,8 +40,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
 
     $profileId = (int)$profile['id'];
-    $photoPath = consultant_profile_upload('photo_path', $_POST['photo_path_current'] ?? ($profile['photo_path'] ?? null), $errors);
-    $bannerPath = consultant_profile_upload('banner_path', $_POST['banner_path_current'] ?? ($profile['banner_path'] ?? null), $errors);
+    $currentPhotoPath = isset($_POST['remove_photo_path']) ? null : ($_POST['photo_path_current'] ?? ($profile['photo_path'] ?? null));
+    $currentBannerPath = isset($_POST['remove_banner_path']) ? null : ($_POST['banner_path_current'] ?? ($profile['banner_path'] ?? null));
+    $photoPath = consultant_profile_upload('photo_path', $currentPhotoPath, $errors);
+    $bannerPath = consultant_profile_upload('banner_path', $currentBannerPath, $errors);
     $slug = consultant_unique_slug(consultant_slug((string)($_POST['slug'] ?? ''), $owner['owner_type'] . '-' . $owner['owner_id']), $profileId);
 
     if (!$errors) {
@@ -165,7 +167,11 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <section class="panel profile-hero-editor">
         <div>
             <h2><?= h(app_text('consultant_profile.main_section')) ?></h2>
+            <p class="cell-muted"><?= h(app_text('consultant_profile.main_hint')) ?></p>
             <div class="profile-preview-card">
+                <?php if (!empty($profile['banner_path'])): ?>
+                    <img class="profile-preview-banner" src="<?= h((string)$profile['banner_path']) ?>" alt="">
+                <?php endif; ?>
                 <?php if (!empty($profile['photo_path'])): ?>
                     <img src="<?= h((string)$profile['photo_path']) ?>" alt="">
                 <?php else: ?>
@@ -185,6 +191,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <label class="field">
                 <span><?= h(app_text('consultant_profile.slug')) ?></span>
                 <input name="slug" value="<?= h((string)$profile['slug']) ?>">
+                <small class="cell-muted"><?= h(app_text('consultant_profile.slug_hint')) ?></small>
             </label>
             <label class="field">
                 <span><?= h(app_text('consultant_profile.profile_title')) ?></span>
@@ -202,11 +209,24 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <span><?= h(app_text('consultant_profile.photo')) ?></span>
                 <input type="hidden" name="photo_path_current" value="<?= h((string)$profile['photo_path']) ?>">
                 <input type="file" name="photo_path" accept="image/*">
+                <?php if (!empty($profile['photo_path'])): ?>
+                    <label class="checkbox-line subtle-checkbox">
+                        <input type="checkbox" name="remove_photo_path" value="1">
+                        <?= h(app_text('consultant_profile.remove_photo')) ?>
+                    </label>
+                <?php endif; ?>
             </label>
             <label class="field">
                 <span><?= h(app_text('consultant_profile.banner')) ?></span>
                 <input type="hidden" name="banner_path_current" value="<?= h((string)$profile['banner_path']) ?>">
                 <input type="file" name="banner_path" accept="image/*">
+                <small class="cell-muted"><?= h(app_text('consultant_profile.banner_hint')) ?></small>
+                <?php if (!empty($profile['banner_path'])): ?>
+                    <label class="checkbox-line subtle-checkbox">
+                        <input type="checkbox" name="remove_banner_path" value="1">
+                        <?= h(app_text('consultant_profile.remove_banner')) ?>
+                    </label>
+                <?php endif; ?>
             </label>
             <label class="checkbox-line wide">
                 <input type="checkbox" name="is_public" value="1" <?= (int)$profile['is_public'] === 1 ? 'checked' : '' ?>>
@@ -217,6 +237,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 
     <section class="panel">
         <h2><?= h(app_text('consultant_profile.video_about')) ?></h2>
+        <p class="cell-muted"><?= h(app_text('consultant_profile.video_about_hint')) ?></p>
         <div class="profile-form-grid">
             <label class="field wide">
                 <span><?= h(app_text('consultant_profile.video_url')) ?></span>
@@ -247,6 +268,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 
     <section class="panel">
         <h2><?= h(app_text('consultant_profile.contacts')) ?></h2>
+        <p class="cell-muted"><?= h(app_text('consultant_profile.contacts_hint')) ?></p>
         <div class="profile-form-grid">
             <?php foreach (['phone', 'email', 'telegram_url', 'whatsapp_url', 'vk_url', 'ok_url'] as $field): ?>
                 <label class="field">
@@ -259,6 +281,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 
     <section class="panel">
         <h2><?= h(app_text('consultant_profile.blocks')) ?></h2>
+        <p class="cell-muted"><?= h(app_text('consultant_profile.blocks_hint')) ?></p>
         <div class="block-settings">
             <?php foreach ($blocks as $block): ?>
                 <div class="block-row">
@@ -275,6 +298,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 
     <section class="panel">
         <h2><?= h(app_text('consultant_profile.showcase')) ?></h2>
+        <p class="cell-muted"><?= h(app_text('consultant_profile.showcase_hint')) ?></p>
         <div class="profile-form-grid">
             <?php
             $selectGroups = [

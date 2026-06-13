@@ -290,6 +290,29 @@ function profileBlockTitle(blockType, fallbackKey) {
     return block?.title || ui(fallbackKey);
 }
 
+function profileContactLink(profile) {
+    return profile.telegram_url || profile.whatsapp_url || profile.vk_url || profile.ok_url || '';
+}
+
+function platformLabel(platform) {
+    return ui(`platform.${String(platform || '').toLowerCase()}`, platform || '');
+}
+
+function leadStatusLabel(status) {
+    return ui(`lead_status.${status}`, status || '');
+}
+
+function userDisplayName(user) {
+    return [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || ui('profile.client');
+}
+
+function friendlyError(error) {
+    if (error instanceof AppApiError && error.message && !error.message.startsWith('API error')) {
+        return error.message;
+    }
+    return ui('common.load_failed');
+}
+
 async function loadConsultantProfile() {
     if (!hasTeamAccess()) {
         state.consultantProfile = null;
@@ -391,32 +414,70 @@ function renderHome() {
     const tests = data.tests || [];
     const materials = data.materials || [];
     const initials = String(profile.display_name || 'SW').slice(0, 2).toUpperCase();
+    const contactLink = profileContactLink(profile);
 
     page.innerHTML = `
-        <section class="manager-card">
-            ${profile.photo_path ? `<img class="manager-photo" src="${escapeHtml(profile.photo_path)}" alt="">` : `<div class="manager-photo placeholder">${escapeHtml(initials)}</div>`}
-            <div class="manager-info">
-                <span class="eyebrow">${escapeHtml(profile.title || ui('home.consultant'))}</span>
-                <h2>${escapeHtml(profile.display_name || ui('home.title'))}</h2>
-                <p>${escapeHtml(profile.subtitle || ui('home.default_subtitle'))}</p>
-                ${profile.short_description ? `<p class="muted">${escapeHtml(profile.short_description)}</p>` : ''}
-                <div class="quick-actions">
-                    <button class="primary" data-action="contact">${escapeHtml(ui('home.ask_manager'))}</button>
-                    ${profile.video_url ? `<a class="button-secondary-link" href="${escapeHtml(profile.video_url)}" target="_blank" rel="noopener">${escapeHtml(ui('home.watch_video'))}</a>` : ''}
+        <section class="home-hero">
+            ${profile.banner_path ? `<img class="home-banner" src="${escapeHtml(profile.banner_path)}" alt="">` : ''}
+            <div class="consultant-strip">
+                ${profile.photo_path ? `<img class="consultant-photo" src="${escapeHtml(profile.photo_path)}" alt="">` : `<div class="consultant-photo placeholder">${escapeHtml(initials)}</div>`}
+                <div class="consultant-meta">
+                    <span class="eyebrow">${escapeHtml(profile.title || ui('home.consultant'))}</span>
+                    <h2>${escapeHtml(profile.display_name || ui('home.title'))}</h2>
+                    <p>${escapeHtml(profile.subtitle || ui('home.default_subtitle'))}</p>
                 </div>
+            </div>
+            ${profile.short_description ? `<p class="consultant-note">${escapeHtml(profile.short_description)}</p>` : ''}
+            <div class="hero-actions">
+                <button class="primary" data-action="contact">${escapeHtml(ui('home.ask_manager'))}</button>
+                ${contactLink ? `<a class="soft-link" href="${escapeHtml(contactLink)}" target="_blank" rel="noopener">${escapeHtml(ui('home.open_contact'))}</a>` : ''}
+                ${profile.video_url ? `<a class="soft-link" href="${escapeHtml(profile.video_url)}" target="_blank" rel="noopener">${escapeHtml(ui('home.watch_video'))}</a>` : ''}
             </div>
         </section>
 
-        <section class="quick-grid">
-            <button class="secondary" data-action="tests">${escapeHtml(ui('home.start_test'))}</button>
-            <button class="secondary" data-page-target="recommendations">${escapeHtml(ui('home.show_recommendations'))}</button>
-            <button class="secondary" data-action="contact">${escapeHtml(ui('home.write_manager'))}</button>
+        <section class="action-row">
+            <button class="action-card" data-action="tests">
+                <span>01</span>
+                <strong>${escapeHtml(ui('home.start_test'))}</strong>
+                <small>${escapeHtml(ui('home.start_test_hint'))}</small>
+            </button>
+            <button class="action-card" data-page-target="recommendations">
+                <span>02</span>
+                <strong>${escapeHtml(ui('home.show_recommendations'))}</strong>
+                <small>${escapeHtml(ui('home.recommendations_hint'))}</small>
+            </button>
+            <button class="action-card" data-action="contact">
+                <span>03</span>
+                <strong>${escapeHtml(ui('home.write_manager'))}</strong>
+                <small>${escapeHtml(ui('home.write_manager_hint'))}</small>
+            </button>
         </section>
 
-        ${profileBlockEnabled('products') && products.length ? `
-            <section class="panel">
+        ${profileBlockEnabled('tests') ? `
+            <section class="home-section">
+                <div class="section-title">
+                    <h2>${escapeHtml(profileBlockTitle('tests', 'home.recommended_tests'))}</h2>
+                    <button class="text-button" data-action="tests">${escapeHtml(ui('common.all'))}</button>
+                </div>
+                ${tests.length ? `
+                    <div class="horizontal-list">
+                        ${tests.slice(0, 4).map((test) => `
+                            <article class="diagnostic-card">
+                                <span class="diagnostic-icon">✓</span>
+                                <strong>${escapeHtml(test.title)}</strong>
+                                <span class="muted">${escapeHtml(test.description || '')}</span>
+                                <button class="secondary compact" data-open-test-id="${test.id}">${escapeHtml(ui('tests.open'))}</button>
+                            </article>
+                        `).join('')}
+                    </div>
+                ` : `<div class="empty-card">${escapeHtml(ui('home.no_tests'))}</div>`}
+            </section>
+        ` : ''}
+
+        ${profileBlockEnabled('products') ? `
+            <section class="home-section">
                 <h2>${escapeHtml(profileBlockTitle('products', 'home.consultant_recommendations'))}</h2>
-                <div class="card-list">
+                ${products.length ? `<div class="horizontal-list">
                     ${products.slice(0, 4).map((product) => `
                         <article class="recommend-card">
                             ${product.image_path ? `<img src="${escapeHtml(product.image_path)}" alt="">` : ''}
@@ -425,30 +486,14 @@ function renderHome() {
                             <button class="secondary compact" data-product-id="${product.id}">${escapeHtml(ui('products.request_info'))}</button>
                         </article>
                     `).join('')}
-                </div>
+                </div>` : `<div class="empty-card">${escapeHtml(ui('home.no_products'))}</div>`}
             </section>
         ` : ''}
 
-        ${profileBlockEnabled('tests') && tests.length ? `
-            <section class="panel">
-                <h2>${escapeHtml(profileBlockTitle('tests', 'home.recommended_tests'))}</h2>
-                <div class="card-list">
-                    ${tests.slice(0, 4).map((test) => `
-                        <article class="diagnostic-card">
-                            <span class="diagnostic-icon">✓</span>
-                            <strong>${escapeHtml(test.title)}</strong>
-                            <span class="muted">${escapeHtml(test.description || '')}</span>
-                            <button class="secondary compact" data-open-test-id="${test.id}">${escapeHtml(ui('tests.open'))}</button>
-                        </article>
-                    `).join('')}
-                </div>
-            </section>
-        ` : ''}
-
-        ${profileBlockEnabled('materials') && materials.length ? `
-            <section class="panel">
+        ${profileBlockEnabled('materials') ? `
+            <section class="home-section">
                 <h2>${escapeHtml(profileBlockTitle('materials', 'home.materials'))}</h2>
-                <div class="card-list">
+                ${materials.length ? `<div class="card-list">
                     ${materials.slice(0, 3).map((material) => `
                         <article class="material-card">
                             ${material.image_path ? `<img src="${escapeHtml(material.image_path)}" alt="">` : ''}
@@ -456,7 +501,7 @@ function renderHome() {
                             <span class="muted">${escapeHtml(material.short_text || '')}</span>
                         </article>
                     `).join('')}
-                </div>
+                </div>` : `<div class="empty-card">${escapeHtml(ui('home.no_materials'))}</div>`}
             </section>
         ` : ''}
     `;
@@ -466,25 +511,32 @@ async function renderProfile() {
     const result = await api(`user.php?${userQuery()}`);
     const user = result.user;
     const accounts = result.platform_accounts || [];
+    const profile = state.consultantProfile?.profile || {};
     page.innerHTML = `
-        <section class="panel">
-            <h2>${escapeHtml(ui('profile.title'))}</h2>
-            <p>ID: ${user.id}</p>
-            <p>${escapeHtml(ui('profile.platform'))}: ${escapeHtml(state.platform)}</p>
-            <p>${escapeHtml(ui('profile.status'))}: ${escapeHtml(user.status)}</p>
-            <p class="muted">${escapeHtml(ui('profile.manager'))}: ${escapeHtml(user.manager_id || ui('profile.manager_later'))}</p>
+        <section class="profile-card">
+            <span class="eyebrow">${escapeHtml(ui('profile.title'))}</span>
+            <h2>${escapeHtml(userDisplayName(user))}</h2>
+            <div class="profile-lines">
+                <div>
+                    <span>${escapeHtml(ui('profile.manager'))}</span>
+                    <strong>${escapeHtml(profile.display_name || ui('profile.manager_later'))}</strong>
+                </div>
+                <div>
+                    <span>${escapeHtml(ui('profile.platform'))}</span>
+                    <strong>${escapeHtml(platformLabel(state.platform))}</strong>
+                </div>
+            </div>
         </section>
-        <section class="panel">
-            <h2>${escapeHtml(ui('profile.accounts', 'Подключенные платформы'))}</h2>
+        <section class="home-section">
+            <h2>${escapeHtml(ui('profile.accounts'))}</h2>
             ${accounts.length ? accounts.map((account) => `
-                <article class="item compact-item">
-                    <strong>${escapeHtml(account.platform)}</strong>
-                    <span class="muted">${escapeHtml(account.platform_user_id)}</span>
-                    ${account.display_name ? `<span>${escapeHtml(account.display_name)}</span>` : ''}
+                <article class="platform-card">
+                    <span class="platform-pill">${escapeHtml(platformLabel(account.platform))}</span>
+                    <strong>${escapeHtml(account.display_name || account.username || ui('profile.platform_account'))}</strong>
                     ${account.username ? `<span class="muted">${escapeHtml(account.username)}</span>` : ''}
                 </article>
-            `).join('') : `<div class="empty">${escapeHtml(ui('profile.no_accounts', 'Платформы пока не подключены.'))}</div>`}
-            <button class="secondary" data-action="create-link-token">${escapeHtml(ui('profile.connect_platform', 'Подключить другую платформу'))}</button>
+            `).join('') : `<div class="empty-card">${escapeHtml(ui('profile.no_accounts'))}</div>`}
+            <button class="secondary" data-action="create-link-token">${escapeHtml(ui('profile.connect_platform'))}</button>
             <div class="link-panel" id="link-panel"></div>
         </section>
     `;
@@ -518,13 +570,14 @@ async function renderTests() {
     const result = await api(`tests.php?${userQuery()}`);
     page.innerHTML = result.tests.length
         ? result.tests.map((test) => `
-            <article class="item">
+            <article class="diagnostic-card">
+                <span class="diagnostic-icon">✓</span>
                 <strong>${escapeHtml(test.title)}</strong>
                 <span class="muted">${escapeHtml(test.description || '')}</span>
                 <button class="secondary" data-open-test-id="${test.id}">${escapeHtml(ui('tests.open'))}</button>
             </article>
         `).join('')
-        : `<div class="empty">${escapeHtml(ui('tests.empty'))}</div>`;
+        : `<div class="empty-card">${escapeHtml(ui('tests.empty'))}</div>`;
 }
 
 async function renderTest(testId) {
@@ -640,13 +693,17 @@ async function renderRecommendations() {
     const result = await api(`recommendations.php?${userQuery()}`);
     page.innerHTML = result.recommendations.length
         ? result.recommendations.map((item) => `
-            <article class="item">
+            <article class="recommendation-card">
+                <span class="eyebrow">${escapeHtml(ui('recommendations.reason'))}</span>
                 <strong>${escapeHtml(item.product_title || ui('recommendations.default_title'))}</strong>
                 <span class="muted">${escapeHtml(item.short_description || item.reason_text || '')}</span>
-                ${item.product_id ? `<button class="secondary" data-product-id="${item.product_id}">${escapeHtml(ui('products.request_info'))}</button>` : ''}
+                <div class="recommendation-actions">
+                    ${item.product_id ? `<button class="secondary compact" data-product-id="${item.product_id}">${escapeHtml(ui('products.request_info'))}</button>` : ''}
+                    <button class="secondary compact" data-action="contact">${escapeHtml(ui('home.write_manager'))}</button>
+                </div>
             </article>
         `).join('')
-        : `<div class="empty">${escapeHtml(ui('recommendations.empty'))}</div>`;
+        : `<div class="empty-card">${escapeHtml(ui('recommendations.empty'))}</div>`;
 }
 
 function responseAttachmentLinks(response) {
@@ -657,6 +714,13 @@ function responseAttachmentLinks(response) {
     return attachments.map((path, index) => (
         `<a href="${escapeHtml(path)}" target="_blank" rel="noopener">${escapeHtml(ui('lead.file'))} ${index + 1}</a>`
     )).join('');
+}
+
+function leadTitle(lead) {
+    if (lead.product_title) {
+        return formatUi('leads.product_question', {product: lead.product_title});
+    }
+    return ui('leads.question');
 }
 
 function leadHasUnreadResponse(lead) {
@@ -678,24 +742,35 @@ async function renderLeads() {
     const unreadLeadIds = result.leads.filter(leadHasUnreadResponse).map((lead) => lead.id);
     page.innerHTML = result.leads.length
         ? result.leads.map((lead) => `
-            <article class="item">
-                <strong>${escapeHtml(ui('leads.title'))} #${lead.id} ${leadHasUnreadResponse(lead) ? `<span class="badge">${escapeHtml(ui('leads.new_response'))}</span>` : ''}</strong>
-                <span class="muted">${escapeHtml(ui('leads.status'))}: ${escapeHtml(lead.status)}</span>
-                <span class="muted">${escapeHtml(ui('leads.platform'))}: ${escapeHtml(lead.source_platform)}</span>
-                ${lead.product_title ? `<span>${escapeHtml(lead.product_title)}</span>` : ''}
-                ${lead.message ? `<span class="muted">${escapeHtml(lead.message)}</span>` : ''}
+            <article class="lead-chat-card">
+                <div class="lead-chat-head">
+                    <div>
+                        <strong>${escapeHtml(leadTitle(lead))}</strong>
+                        <span class="muted">${escapeHtml(platformLabel(lead.source_platform))} · ${escapeHtml(lead.created_at || '')}</span>
+                    </div>
+                    <span class="status-pill">${escapeHtml(leadStatusLabel(lead.status))}</span>
+                </div>
+                ${leadHasUnreadResponse(lead) ? `<span class="badge standalone">${escapeHtml(ui('leads.new_response'))}</span>` : ''}
+                ${lead.message ? `
+                    <div class="chat-bubble client">
+                        <span>${escapeHtml(ui('leads.client_message'))}</span>
+                        <p>${escapeHtml(lead.message)}</p>
+                    </div>
+                ` : ''}
                 ${(lead.responses || []).map((response) => `
-                    <div class="response">
-                        <strong>${escapeHtml(ui('leads.manager_response'))}</strong>
-                        <span>${escapeHtml(response.message_text || '')}</span>
-                        ${responseAttachmentLinks(response)}
-                        ${response.external_url ? `<a href="${escapeHtml(response.external_url)}" target="_blank" rel="noopener">${escapeHtml(ui('lead.link'))}</a>` : ''}
-                        <span class="muted">${escapeHtml(response.sent_at || response.created_at || '')}</span>
+                    <div class="chat-bubble manager">
+                        <span>${escapeHtml(ui('leads.manager_response'))}</span>
+                        <p>${escapeHtml(response.message_text || '')}</p>
+                        <div class="item-links">
+                            ${responseAttachmentLinks(response)}
+                            ${response.external_url ? `<a href="${escapeHtml(response.external_url)}" target="_blank" rel="noopener">${escapeHtml(ui('lead.link'))}</a>` : ''}
+                        </div>
+                        <small class="muted">${escapeHtml(response.sent_at || response.created_at || '')}</small>
                     </div>
                 `).join('')}
             </article>
         `).join('')
-        : `<div class="empty">${escapeHtml(ui('leads.empty'))}</div>`;
+        : `<div class="empty-card">${escapeHtml(ui('leads.empty'))}</div>`;
 
     await Promise.allSettled(unreadLeadIds.map(markLeadRead));
 }
@@ -752,7 +827,7 @@ async function render() {
         if (state.page === 'recommendations') await renderRecommendations();
         if (state.page === 'leads') await renderLeads();
     } catch (error) {
-        page.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+        page.innerHTML = `<div class="empty-card">${escapeHtml(friendlyError(error))}</div>`;
     }
 }
 
@@ -761,7 +836,9 @@ tabs.forEach((tab) => {
 });
 
 page.addEventListener('click', async (event) => {
-    const target = event.target;
+    const clicked = event.target;
+    if (!(clicked instanceof HTMLElement)) return;
+    const target = clicked.closest('[data-action], [data-page-target], [data-open-test-id], [data-product-id]');
     if (!(target instanceof HTMLElement)) return;
     if (target.dataset.action === 'tests') setPage('tests');
     if (target.dataset.action === 'back-to-tests') await renderTests();
@@ -819,5 +896,5 @@ loadI18n()
             renderStaffGate();
             return;
         }
-        page.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+        page.innerHTML = `<div class="empty-card">${escapeHtml(friendlyError(error))}</div>`;
     });

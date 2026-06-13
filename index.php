@@ -4,13 +4,21 @@ require_once __DIR__ . '/admin/app/core/db.php';
 require_once __DIR__ . '/admin/app/core/helpers.php';
 require_once __DIR__ . '/admin/app/core/consultant_profiles.php';
 
-$slug = trim((string)($_GET['m'] ?? $_POST['m'] ?? ''));
+$slug = trim((string)($_GET['m'] ?? ''));
+$referralCode = consultant_referral_code($_GET['ref'] ?? $_POST['ref'] ?? null);
 $profile = null;
 
 if ($slug !== '') {
     $stmt = db()->prepare('SELECT * FROM consultant_profiles WHERE slug = :slug AND is_public = 1 LIMIT 1');
     $stmt->execute(['slug' => consultant_slug($slug, $slug)]);
     $profile = $stmt->fetch();
+}
+
+if (!$profile && $referralCode) {
+    $candidate = consultant_profile_by_referral_code($referralCode);
+    if ($candidate && (int)$candidate['is_public'] === 1) {
+        $profile = $candidate;
+    }
 }
 
 $payload = $profile ? consultant_profile_payload($profile) : null;
@@ -62,9 +70,9 @@ function public_contact_links(array $profile): array
         <section class="public-card">
             <span class="eyebrow">SWPro</span>
             <h1>Найдите своего консультанта</h1>
-            <p>Откройте персональную ссылку консультанта или Mini App в Telegram, VK, OK или MAX.</p>
-            <form method="get" class="find-form">
-                <input name="m" placeholder="Код или адрес консультанта" required>
+            <p>Введите реферальный код консультанта или откройте персональную ссылку из Telegram, VK, OK или MAX.</p>
+            <form method="post" class="find-form">
+                <input name="ref" placeholder="Реферальный код консультанта" required>
                 <button type="submit">Открыть страницу</button>
             </form>
         </section>

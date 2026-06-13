@@ -655,6 +655,14 @@ button:disabled {
     padding: 16px;
 }
 
+.profile-preview-banner {
+    aspect-ratio: 16 / 7;
+    border-radius: var(--radius-md);
+    height: auto;
+    object-fit: cover;
+    width: 100%;
+}
+
 .profile-preview-card img,
 .profile-photo-placeholder {
     aspect-ratio: 1;
@@ -662,6 +670,11 @@ button:disabled {
     height: 180px;
     object-fit: cover;
     width: 180px;
+}
+
+.profile-preview-card img.profile-preview-banner {
+    height: auto;
+    width: 100%;
 }
 
 .profile-photo-placeholder {
@@ -719,6 +732,12 @@ button:disabled {
     align-items: center;
     display: flex;
     gap: 8px;
+}
+
+.subtle-checkbox {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 4px;
 }
 
 .sticky-actions {

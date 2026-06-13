@@ -1,13 +1,13 @@
 :root {
-    --color-primary: #0f766e;
-    --color-secondary: #14b8a6;
+    --color-primary: #16676f;
+    --color-secondary: #6aa7a5;
     --color-accent: #f59e0b;
-    --color-bg: #f8fafc;
+    --color-bg: #f6f7f8;
     --color-card: #ffffff;
-    --color-text: #1e293b;
-    --color-muted: #64748b;
-    --color-border: #e2e8f0;
-    --shadow-soft: 0 4px 12px rgba(15, 118, 110, 0.08);
+    --color-text: #172033;
+    --color-muted: #677489;
+    --color-border: #dde4ea;
+    --shadow-soft: 0 10px 30px rgba(23, 32, 51, 0.08);
 }
 
 * {
@@ -51,8 +51,9 @@ a {
 
 .hero-photo.placeholder {
     align-items: center;
-    background: var(--color-primary);
-    color: #ffffff;
+    background: linear-gradient(145deg, #e8f2f1, #ffffff);
+    border: 1px solid var(--color-border);
+    color: var(--color-primary);
     display: flex;
     font-size: 72px;
     font-weight: 800;
@@ -111,7 +112,7 @@ button {
 }
 
 .secondary {
-    background: #ecfdf5;
+    background: #eef6f5;
     color: var(--color-primary);
 }
 
@@ -154,7 +155,7 @@ button {
 .video-card {
     align-items: center;
     aspect-ratio: 16 / 9;
-    background: linear-gradient(135deg, #0f766e, #14b8a6);
+    background: linear-gradient(135deg, #172033, #16676f);
     border-radius: 28px;
     color: #ffffff;
     display: flex;
@@ -199,7 +200,7 @@ button {
 
 .test-icon {
     align-items: center;
-    background: #ecfdf5;
+    background: #eef6f5;
     border-radius: 16px;
     color: var(--color-primary);
     display: flex;

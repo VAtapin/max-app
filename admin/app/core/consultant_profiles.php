@@ -57,6 +57,44 @@ function consultant_slug(string $value, string $fallback): string
     return $value !== '' ? substr($value, 0, 190) : $fallback;
 }
 
+function consultant_referral_code(?string $value): ?string
+{
+    $value = trim((string)$value);
+    if ($value === '') {
+        return null;
+    }
+
+    if (str_starts_with($value, 'ref_')) {
+        $value = substr($value, 4);
+    }
+
+    return trim($value) !== '' ? trim($value) : null;
+}
+
+function consultant_profile_by_referral_code(?string $referralCode): ?array
+{
+    $referralCode = consultant_referral_code($referralCode);
+    if (!$referralCode) {
+        return null;
+    }
+
+    $manager = db()->prepare('SELECT id FROM managers WHERE referral_code = :code AND is_active = 1 LIMIT 1');
+    $manager->execute(['code' => $referralCode]);
+    $managerRow = $manager->fetch();
+    if ($managerRow) {
+        return ensure_consultant_profile('manager', (int)$managerRow['id']);
+    }
+
+    $reseller = db()->prepare('SELECT id FROM resellers WHERE referral_code = :code AND is_active = 1 LIMIT 1');
+    $reseller->execute(['code' => $referralCode]);
+    $resellerRow = $reseller->fetch();
+    if ($resellerRow) {
+        return ensure_consultant_profile('reseller', (int)$resellerRow['id']);
+    }
+
+    return null;
+}
+
 function ensure_consultant_profile(string $ownerType, int $ownerId): array
 {
     $stmt = db()->prepare('SELECT * FROM consultant_profiles WHERE owner_type = :owner_type AND owner_id = :owner_id LIMIT 1');
