@@ -10,6 +10,7 @@ json_response([
         'POST /api/telegram_auth.php',
         'GET /api/profile.php',
         'GET /api/products.php',
+        'GET /api/content.php',
         'GET /api/tests.php',
         'POST /api/tests.php?action=submit',
         'GET /api/recommendations.php',

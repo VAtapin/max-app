@@ -810,6 +810,85 @@ function save_default_manager_platforms(int $managerId, array $platforms): void
     }
 }
 
+function detach_owner_content(string $ownerType, int $ownerId): void
+{
+    foreach (['product_categories', 'products', 'tests', 'content_posts'] as $table) {
+        $stmt = db()->prepare(
+            "UPDATE {$table}
+             SET owner_type = NULL, owner_id = NULL
+             WHERE owner_type = :owner_type AND owner_id = :owner_id"
+        );
+        $stmt->execute([
+            'owner_type' => $ownerType,
+            'owner_id' => $ownerId,
+        ]);
+    }
+}
+
+function delete_owner_service_records(string $ownerType, int $ownerId): void
+{
+    $stmt = db()->prepare('DELETE FROM referral_links WHERE owner_type = :owner_type AND owner_id = :owner_id');
+    $stmt->execute(['owner_type' => $ownerType, 'owner_id' => $ownerId]);
+
+    $stmt = db()->prepare('DELETE FROM messaging_integrations WHERE owner_type = :owner_type AND owner_id = :owner_id');
+    $stmt->execute(['owner_type' => $ownerType, 'owner_id' => $ownerId]);
+
+    $stmt = db()->prepare('DELETE FROM consultant_profiles WHERE owner_type = :owner_type AND owner_id = :owner_id');
+    $stmt->execute(['owner_type' => $ownerType, 'owner_id' => $ownerId]);
+}
+
+function delete_crud_record(string $moduleKey, array $module, int $id, array $admin): void
+{
+    $pdo = db();
+    $pdo->beginTransaction();
+
+    try {
+        if ($moduleKey === 'users') {
+            $stmt = $pdo->prepare('DELETE FROM end_users WHERE id = :id');
+            $stmt->execute(['id' => $id]);
+            log_activity('admin', (int)$admin['id'], 'delete_end_users', 'end_users', $id);
+            $pdo->commit();
+            return;
+        }
+
+        if ($moduleKey === 'managers') {
+            detach_owner_content('manager', $id);
+            delete_owner_service_records('manager', $id);
+
+            $stmt = $pdo->prepare('DELETE FROM admin_users WHERE role = "manager" AND manager_id = :manager_id');
+            $stmt->execute(['manager_id' => $id]);
+
+            $stmt = $pdo->prepare('DELETE FROM managers WHERE id = :id');
+            $stmt->execute(['id' => $id]);
+            log_activity('admin', (int)$admin['id'], 'delete_managers', 'managers', $id);
+            $pdo->commit();
+            return;
+        }
+
+        if ($moduleKey === 'resellers') {
+            detach_owner_content('reseller', $id);
+            delete_owner_service_records('reseller', $id);
+
+            $stmt = $pdo->prepare('DELETE FROM admin_users WHERE role = "reseller" AND reseller_id = :reseller_id AND manager_id IS NULL');
+            $stmt->execute(['reseller_id' => $id]);
+
+            $stmt = $pdo->prepare('DELETE FROM resellers WHERE id = :id');
+            $stmt->execute(['id' => $id]);
+            log_activity('admin', (int)$admin['id'], 'delete_resellers', 'resellers', $id);
+            $pdo->commit();
+            return;
+        }
+
+        $stmt = $pdo->prepare("DELETE FROM {$module['table']} WHERE id = :id");
+        $stmt->execute(['id' => $id]);
+        log_activity('admin', (int)$admin['id'], 'delete_' . $module['table'], $module['table'], $id);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
 function manager_admin_access(int $managerId): ?array
 {
     if ($managerId <= 0) {
@@ -1097,9 +1176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
-            $stmt = db()->prepare("DELETE FROM {$module['table']} WHERE id = :id");
-            $stmt->execute(['id' => $postId]);
-            log_activity('admin', (int)$admin['id'], 'delete_' . $module['table'], $module['table'], $postId);
+            delete_crud_record($moduleKey, $module, $postId, $admin);
             redirect('crud.php?module=' . urlencode($moduleKey) . '&success=deleted');
         } catch (Throwable $e) {
             $errors[] = app_text('auto.k_cdec27146810') . $e->getMessage();
@@ -1448,37 +1525,61 @@ require __DIR__ . '/../app/views/layouts/header.php';
             }
             ?>
             <?php if ($responses): ?>
-                <table class="data-table">
-                    <thead>
-                    <tr>
-                        <th><?= h(app_text('auto.k_a5b49d2ebad2')) ?></th>
-                        <th><?= h(app_text('auto.k_8d98911527e4')) ?></th>
-                        <th><?= h(app_text('auto.k_e9d7bdd83831')) ?></th>
-                        <th><?= h(app_text('auto.k_8963194b107f')) ?></th>
-                        <th><?= h(app_text('auto.k_f7f293b5c58c')) ?></th>
-                    </tr>
-                    </thead>
-                    <tbody>
+                <div class="lead-response-timeline">
                     <?php foreach ($responses as $response): ?>
-                        <tr>
-                            <td><?= h($response['created_at']) ?></td>
-                            <td><?= h($response['admin_name'] ?? '—') ?></td>
-                            <td><?= nl2br(h($response['message_text'] ?? '')) ?></td>
-                            <td>
-                                <?= h($response['content_title'] ?? '') ?>
-                                <?= $response['test_title'] ? '<br>' . h($response['test_title']) : '' ?>
-                                <?php foreach (lead_response_attachment_paths($response['attachment_path'] ?? null) as $fileIndex => $attachmentPath): ?>
-                                    <br><a href="<?= h($attachmentPath) ?>" target="_blank" rel="noopener"><?= h(app_text('auto.k_94b8df93b6ec')) ?><?= $fileIndex + 1 ?></a>
-                                <?php endforeach; ?>
-                            </td>
-                            <td>
-                                <?= h(status_label($response['status'] ?? 'pending')) ?>
-                                <?= $response['error_message'] ? '<br>' . h($response['error_message']) : '' ?>
-                            </td>
-                        </tr>
+                        <?php
+                        $attachments = lead_response_attachment_paths($response['attachment_path'] ?? null);
+                        $status = status_label($response['status'] ?? 'pending');
+                        $contentUrl = !empty($response['content_post_id']) ? 'crud.php?module=content&action=edit&id=' . (int)$response['content_post_id'] : '#';
+                        $testUrl = !empty($response['test_id']) ? 'crud.php?module=tests&action=edit&id=' . (int)$response['test_id'] : '#';
+                        ?>
+                        <article class="lead-response-card">
+                            <div class="lead-response-head">
+                                <div>
+                                    <strong><?= h($response['admin_name'] ?? app_text('auto.k_1b93795b9768')) ?></strong>
+                                    <span><?= h($response['created_at']) ?></span>
+                                </div>
+                                <span class="<?= h(status_badge_class($status)) ?>"><?= h($status) ?></span>
+                            </div>
+
+                            <?php if (trim((string)($response['message_text'] ?? '')) !== ''): ?>
+                                <div class="lead-response-message"><?= nl2br(h($response['message_text'])) ?></div>
+                            <?php endif; ?>
+
+                            <?php if (($response['content_title'] ?? '') || ($response['test_title'] ?? '') || $attachments || ($response['external_url'] ?? '')): ?>
+                                <div class="lead-response-resources">
+                                    <?php if ($response['content_title'] ?? ''): ?>
+                                        <a href="<?= h($contentUrl) ?>">
+                                            <?= h(app_text('lead_response.open_material')) ?>: <?= h($response['content_title']) ?>
+                                        </a>
+                                    <?php endif; ?>
+                                    <?php if ($response['test_title'] ?? ''): ?>
+                                        <a href="<?= h($testUrl) ?>">
+                                            <?= h(app_text('lead_response.pass_test')) ?>: <?= h($response['test_title']) ?>
+                                        </a>
+                                    <?php endif; ?>
+                                    <?php foreach ($attachments as $fileIndex => $attachmentPath): ?>
+                                        <a href="<?= h($attachmentPath) ?>" target="_blank" rel="noopener">
+                                            <?= h(app_text('lead_response.lead_file_numbered', [
+                                                'index' => $fileIndex + 1,
+                                                'total' => count($attachments),
+                                            ])) ?>
+                                        </a>
+                                    <?php endforeach; ?>
+                                    <?php if ($response['external_url'] ?? ''): ?>
+                                        <a href="<?= h($response['external_url']) ?>" target="_blank" rel="noopener">
+                                            <?= h(app_text('lead_response.open_link')) ?>
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+
+                            <?php if ($response['error_message'] ?? ''): ?>
+                                <div class="alert error"><?= h($response['error_message']) ?></div>
+                            <?php endif; ?>
+                        </article>
                     <?php endforeach; ?>
-                    </tbody>
-                </table>
+                </div>
             <?php else: ?>
                 <div class="empty-state"><?= h(app_text('auto.k_06fe678de6fe')) ?></div>
             <?php endif; ?>

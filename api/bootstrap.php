@@ -198,14 +198,19 @@ function referral_binding(?string $referralCode): ?array
 
 function normalize_referral_code(?string $referralCode): ?string
 {
-    $referralCode = trim((string)$referralCode);
+    $referralCode = strtoupper(trim((string)$referralCode));
     if ($referralCode === '') {
         return null;
     }
 
-    if (str_starts_with($referralCode, 'ref_')) {
+    if (str_starts_with(strtolower($referralCode), 'ref_')) {
         $referralCode = substr($referralCode, 4);
     }
+
+    $referralCode = preg_replace('/\s+/', '-', $referralCode) ?? '';
+    $referralCode = preg_replace('/[^A-Z0-9_-]/', '', $referralCode) ?? '';
+    $referralCode = preg_replace('/[-_]{2,}/', '-', $referralCode) ?? '';
+    $referralCode = trim($referralCode, '-_');
 
     return trim($referralCode) !== '' ? trim($referralCode) : null;
 }
@@ -259,6 +264,7 @@ function reject_staff_client_registration(string $platform, string $platformUser
 
 function attach_referral_if_missing(array $user, ?string $referralCode): array
 {
+    $referralCode = normalize_referral_code($referralCode);
     if (!empty($user['reseller_id']) || !empty($user['manager_id']) || !$referralCode) {
         return $user;
     }

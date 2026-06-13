@@ -1,4 +1,9 @@
-<?php $config = app_config(); ?>
+<?php
+$config = app_config();
+$currentPath = basename((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH));
+$currentQuery = [];
+parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $currentQuery);
+?>
 <!doctype html>
 <html lang="ru">
 <head>
@@ -10,7 +15,10 @@
 <body>
 <div class="app-shell">
     <aside class="sidebar">
-        <div class="brand"><?= h($config['app']['name']) ?></div>
+        <div class="brand">
+            <span><?= h($config['app']['name']) ?></span>
+            <small>SWPro</small>
+        </div>
         <nav>
             <?php
             $navItems = [
@@ -27,20 +35,32 @@
                 'broadcasts' => [app_text('auto.k_08a679f215bd'), 'crud.php?module=broadcasts'],
                 'content' => [app_text('auto.k_5e30f01694b5'), 'crud.php?module=content'],
                 'integrations' => [app_text('integrations.title'), 'crud.php?module=integrations'],
+                'help' => [app_text('help.menu'), 'help.php'],
             ];
             ?>
             <?php foreach ($navItems as $module => [$label, $href]): ?>
-                <?php if (can_manage($module, $admin)): ?>
-                    <a href="<?= h($href) ?>"><?= h($label) ?></a>
+                <?php if ($module === 'help' || can_manage($module, $admin)): ?>
+                    <?php
+                    $hrefPath = basename((string)parse_url($href, PHP_URL_PATH));
+                    $hrefQuery = [];
+                    parse_str((string)parse_url($href, PHP_URL_QUERY), $hrefQuery);
+                    $isActive = $currentPath === $hrefPath
+                        && (($hrefQuery['module'] ?? null) === ($currentQuery['module'] ?? null)
+                            || (!isset($hrefQuery['module']) && !isset($currentQuery['module'])));
+                    ?>
+                    <a href="<?= h($href) ?>" class="<?= $isActive ? 'active' : '' ?>"><?= h($label) ?></a>
                 <?php endif; ?>
             <?php endforeach; ?>
         </nav>
     </aside>
     <main class="main">
         <header class="topbar">
-            <div><?= h($title ?? app_text('auto.dashboard')) ?></div>
+            <div class="topbar-title">
+                <span><?= h($title ?? app_text('auto.dashboard')) ?></span>
+                <small><?= h($config['app']['name']) ?></small>
+            </div>
             <div class="topbar-user">
-                <?= h($admin['name'] ?? '') ?>
+                <span class="user-chip"><?= h($admin['name'] ?? '') ?></span>
                 <a href="logout.php"><?= h(app_text('auto.k_026abb1e0a5e')) ?></a>
             </div>
         </header>

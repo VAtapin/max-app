@@ -7,7 +7,7 @@ function crud_create_enabled(string $moduleKey): bool
 
 function crud_delete_enabled(string $moduleKey): bool
 {
-    return !in_array($moduleKey, ['users', 'platform_accounts', 'leads'], true);
+    return !in_array($moduleKey, ['platform_accounts', 'leads'], true);
 }
 
 function crud_edit_enabled(string $moduleKey): bool
@@ -292,7 +292,8 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
                     CONCAT_WS(' ', NULLIF(eu.first_name, ''), NULLIF(eu.last_name, '')) AS full_name,
                     eu.username AS user_username,
                     p.title AS product_title, m.name AS manager_name, r.name AS reseller_name,
-                    lrc.response_count, lr.status AS last_response_status, lr.created_at AS last_response_at
+                    lrc.response_count, lr.status AS last_response_status, lr.created_at AS last_response_at,
+                    lr.message_text AS last_response_text
              FROM leads l
              LEFT JOIN end_users eu ON eu.id = l.end_user_id
              LEFT JOIN products p ON p.id = l.product_id
@@ -670,6 +671,9 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
             $responseRest = trim(substr($response, strlen($responseFirstLine)));
             $message = trim((string)($row['message'] ?? '')) ?: app_text('auto.k_503360e76342');
             $user = crud_cell_value('leads', 'user_name', $row);
+            $responseCount = (int)($row['response_count'] ?? 0);
+            $lastResponseText = trim((string)($row['last_response_text'] ?? ''));
+            $lastResponseText = mb_strlen($lastResponseText, 'UTF-8') > 180 ? mb_substr($lastResponseText, 0, 180, 'UTF-8') . '...' : $lastResponseText;
             ?>
             <article class="lead-card">
                 <div class="lead-card-main">
@@ -682,9 +686,15 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
                     <p class="lead-card-message"><?= nl2br(h($message)) ?></p>
                     <div class="lead-card-meta">
                         <span><?= h(app_text('auto.k_82a9ca014bb8')) ?>: <?= h((string)($row['product_title'] ?: app_text('auto.k_1b93795b9768'))) ?></span>
+                        <span><?= h(app_text('auto.k_8d98911527e4')) ?>: <?= h((string)($row['manager_name'] ?: app_text('auto.k_1b93795b9768'))) ?></span>
+                        <span><?= h(app_text('auto.k_86469fea3a4a')) ?>: <?= h((string)($row['reseller_name'] ?: app_text('auto.k_1b93795b9768'))) ?></span>
                         <span><?= h(app_text('auto.k_e9d7bdd83831')) ?>: <span class="<?= h(status_badge_class($responseFirstLine)) ?>"><?= h($responseFirstLine) ?></span></span>
+                        <span><?= h(app_text('lead_response.count_label')) ?>: <?= $responseCount ?></span>
                         <?php if ($responseRest !== ''): ?>
                             <span class="cell-muted"><?= nl2br(h($responseRest)) ?></span>
+                        <?php endif; ?>
+                        <?php if ($lastResponseText !== ''): ?>
+                            <span class="lead-last-response"><?= nl2br(h($lastResponseText)) ?></span>
                         <?php endif; ?>
                     </div>
                 </div>

@@ -126,6 +126,26 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
         }
     }
 
+    $answeredQuestions = [];
+    foreach ($answers as $answer) {
+        $questionId = (int)($answer['question_id'] ?? 0);
+        if (!$questionId || !isset($questions[$questionId])) {
+            continue;
+        }
+
+        $answerId = isset($answer['answer_id']) ? (int)$answer['answer_id'] : null;
+        $textAnswer = trim((string)($answer['text_answer'] ?? ''));
+        if ($answerId || $textAnswer !== '') {
+            $answeredQuestions[$questionId] = true;
+        }
+    }
+
+    foreach ($questions as $questionId => $question) {
+        if ((int)$question['is_required'] === 1 && empty($answeredQuestions[$questionId])) {
+            json_response(['error' => 'required questions are not answered'], 422);
+        }
+    }
+
     try {
         db()->beginTransaction();
         $sessionStmt = db()->prepare('INSERT INTO user_test_sessions (end_user_id, test_id) VALUES (:end_user_id, :test_id)');
@@ -228,12 +248,20 @@ if (isset($_GET['id'])) {
 }
 
 $user = null;
-$ownerWhere = 'owner_type IS NULL';
+$ownerWhere = 't.owner_type IS NULL';
 $ownerParams = [];
 if (isset($_GET['platform'], $_GET['platform_user_id'])) {
     $user = require_platform_user();
-    [$ownerWhere, $ownerParams] = client_owner_scope($user);
+    [$ownerWhere, $ownerParams] = client_owner_scope($user, 't');
 }
-$stmt = db()->prepare("SELECT id, title, description FROM tests WHERE is_active = 1 AND $ownerWhere ORDER BY sort_order, title");
+$stmt = db()->prepare(
+    "SELECT t.id, t.title, t.description, pc.title AS category_title, COUNT(q.id) AS questions_count
+     FROM tests t
+     LEFT JOIN product_categories pc ON pc.id = t.category_id
+     LEFT JOIN test_questions q ON q.test_id = t.id
+     WHERE t.is_active = 1 AND $ownerWhere
+     GROUP BY t.id, t.title, t.description, pc.title, t.sort_order
+     ORDER BY t.sort_order, t.title"
+);
 $stmt->execute($ownerParams);
 json_response(['tests' => $stmt->fetchAll()]);

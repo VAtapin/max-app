@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 require_once __DIR__ . '/admin/app/core/db.php';
 require_once __DIR__ . '/admin/app/core/helpers.php';
@@ -136,6 +136,45 @@ function public_youtube_embed_url(?string $url): ?string
 
     return 'https://www.youtube.com/embed/' . rawurlencode($videoId);
 }
+
+function public_profile_referral_code(array $profile): ?string
+{
+    $ownerType = (string)($profile['owner_type'] ?? '');
+    $ownerId = (int)($profile['owner_id'] ?? 0);
+    if ($ownerId <= 0 || !in_array($ownerType, ['manager', 'reseller'], true)) {
+        return null;
+    }
+
+    $table = $ownerType === 'manager' ? 'managers' : 'resellers';
+    $stmt = db()->prepare("SELECT referral_code FROM {$table} WHERE id = :id AND is_active = 1 LIMIT 1");
+    $stmt->execute(['id' => $ownerId]);
+    $code = trim((string)($stmt->fetchColumn() ?: ''));
+
+    return $code !== '' ? $code : null;
+}
+
+function public_mini_app_url(?string $referralCode = null, string $page = ''): string
+{
+    $config = app_config();
+    $baseUrl = rtrim(public_base_url(), '/');
+    $miniAppUrl = trim((string)($config['integrations']['mini_app_url'] ?? ''));
+    if ($miniAppUrl === '' && $baseUrl !== '') {
+        $miniAppUrl = $baseUrl . '/vk-mini-app/';
+    }
+    if ($miniAppUrl === '') {
+        $miniAppUrl = '/vk-mini-app/';
+    }
+
+    $params = [];
+    if ($referralCode) {
+        $params['ref'] = $referralCode;
+    }
+    if ($page !== '') {
+        $params['page'] = $page;
+    }
+
+    return $miniAppUrl . (str_contains($miniAppUrl, '?') ? '&' : '?') . http_build_query($params);
+}
 ?>
 <!doctype html>
 <html lang="ru">
@@ -147,20 +186,80 @@ function public_youtube_embed_url(?string $url): ?string
 </head>
 <body>
 <?php if (!$profile): ?>
-    <main class="public-empty">
-        <section class="public-card">
-            <span class="eyebrow">SWPro</span>
-            <h1>Найдите своего консультанта</h1>
-            <p>Введите реферальный код консультанта или откройте персональную ссылку из Telegram, VK, OK или MAX.</p>
-            <form method="post" class="find-form">
-                <input name="ref" placeholder="Реферальный код консультанта" required>
-                <button type="submit">Открыть страницу</button>
-            </form>
+    <main class="landing-page">
+        <header class="landing-topnav">
+            <a class="brand-link" href="/">SWPro</a>
+            <nav>
+                <a href="#how">Как работает</a>
+                <a href="#roles">Для кого</a>
+                <a href="#start">Открыть страницу</a>
+            </nav>
+        </header>
+        <section class="landing-hero">
+            <div class="landing-copy">
+                <span class="eyebrow">SWPro Assistant</span>
+                <h1>Персональная страница консультанта для клиентов</h1>
+                <p>Откройте страницу своего консультанта, пройдите рекомендованные тесты, получите материалы и задайте вопрос без интернет-магазина, корзины и оплаты.</p>
+                <form method="post" class="find-form" id="start">
+                    <input name="ref" placeholder="Код консультанта" required>
+                    <button type="submit">Открыть страницу</button>
+                </form>
+                <div class="landing-badges">
+                    <span>Без корзины</span>
+                    <span>Без оплат</span>
+                    <span>Через консультанта</span>
+                </div>
+            </div>
+            <div class="landing-panel" id="how">
+                <strong>Как это работает</strong>
+                <ol>
+                    <li>Консультант дает клиенту персональный код или ссылку.</li>
+                    <li>Клиент открывает страницу и видит рекомендации своего консультанта.</li>
+                    <li>Вопросы и заявки попадают менеджеру в SWPro.</li>
+                </ol>
+            </div>
+        </section>
+        <section class="landing-grid" id="roles">
+            <article class="public-card">
+                <span class="card-kicker">Для клиента</span>
+                <strong>Все вокруг своего консультанта</strong>
+                <p>Тесты, продукты, материалы и ответы собраны в одном месте и привязаны к персональному менеджеру.</p>
+            </article>
+            <article class="public-card">
+                <span class="card-kicker">Для менеджера</span>
+                <strong>Личная витрина вместо каталога</strong>
+                <p>Можно вести клиентов через свою страницу, рекомендации, материалы и заявки.</p>
+            </article>
+            <article class="public-card">
+                <span class="card-kicker">MVP</span>
+                <strong>Без магазина и оплат</strong>
+                <p>Система собирает интерес клиента и помогает консультанту продолжить общение.</p>
+            </article>
+        </section>
+        <section class="landing-band">
+            <div>
+                <span class="eyebrow">Главная идея</span>
+                <h2>SWPro показывает сначала человека, а потом продукты</h2>
+            </div>
+            <p>Клиент приходит не в каталог. Он открывает страницу своего консультанта, видит объяснение, материалы, тесты и может задать вопрос в удобном канале.</p>
         </section>
     </main>
 <?php else: ?>
     <?php $profileData = $payload['profile']; ?>
+    <?php $profileReferralCode = public_profile_referral_code($profileData); ?>
+    <?php $miniAppUrl = public_mini_app_url($profileReferralCode); ?>
     <main class="consultant-page">
+        <header class="public-topnav">
+            <a class="brand-link" href="/">SWPro</a>
+            <nav>
+                <?php if (public_block_enabled($blocks, 'about') && public_about_sections($profileData, $blocks)): ?><a href="#about">О консультанте</a><?php endif; ?>
+                <?php if (public_block_enabled($blocks, 'products') && !empty($payload['products'])): ?><a href="#products">Рекомендации</a><?php endif; ?>
+                <?php if (public_block_enabled($blocks, 'tests') && !empty($payload['tests'])): ?><a href="#tests">Тесты</a><?php endif; ?>
+                <?php if (public_block_enabled($blocks, 'materials') && !empty($payload['materials'])): ?><a href="#materials">Материалы</a><?php endif; ?>
+                <a href="#contacts">Контакты</a>
+            </nav>
+            <a class="topnav-action" href="<?= h($miniAppUrl) ?>">Открыть Mini App</a>
+        </header>
         <section class="hero">
             <div class="hero-photo-wrap">
                 <?php if (!empty($profileData['photo_path'])): ?>
@@ -178,7 +277,14 @@ function public_youtube_embed_url(?string $url): ?string
                 <?php endif; ?>
                 <div class="hero-actions">
                     <a class="primary" href="#contacts">Получить консультацию</a>
-                    <?php if (!empty($payload['tests'])): ?><a class="secondary" href="#tests">Пройти тест</a><?php endif; ?>
+                    <?php if (!empty($payload['tests'])): ?><a class="secondary" href="<?= h(public_mini_app_url($profileReferralCode, 'tests')) ?>">Пройти тест</a><?php endif; ?>
+                    <a class="secondary" href="<?= h($miniAppUrl) ?>">Открыть кабинет</a>
+                </div>
+                <?php if ($profileReferralCode): ?><p class="referral-note">Код консультанта: <strong><?= h($profileReferralCode) ?></strong></p><?php endif; ?>
+                <div class="hero-metrics">
+                    <?php if (!empty($payload['tests'])): ?><span><strong><?= count($payload['tests']) ?></strong> тестов</span><?php endif; ?>
+                    <?php if (!empty($payload['products'])): ?><span><strong><?= count($payload['products']) ?></strong> рекомендаций</span><?php endif; ?>
+                    <?php if (!empty($payload['materials'])): ?><span><strong><?= count($payload['materials']) ?></strong> материалов</span><?php endif; ?>
                 </div>
             </div>
         </section>
@@ -223,6 +329,7 @@ function public_youtube_embed_url(?string $url): ?string
             <section class="section" id="products">
                 <div class="section-head">
                     <h2><?= h(public_block_title($blocks, 'products', 'Что я рекомендую')) ?></h2>
+                    <p>Подборка продуктов и материалов, которые консультант считает полезными для своей аудитории.</p>
                 </div>
                 <div class="horizontal-cards">
                     <?php foreach ($payload['products'] as $product): ?>
@@ -235,7 +342,21 @@ function public_youtube_embed_url(?string $url): ?string
                             <div class="card-body">
                                 <span class="card-kicker">Рекомендация</span>
                                 <strong><?= h((string)$product['title']) ?></strong>
-                                <p><?= h((string)($product['short_description'] ?? '')) ?></p>
+                                <?php if (!empty($product['short_description'])): ?>
+                                    <p><?= h((string)$product['short_description']) ?></p>
+                                <?php endif; ?>
+                                <?php if (!empty($product['full_description'])): ?>
+                                    <details class="card-details">
+                                        <summary>Подробнее</summary>
+                                        <p><?= nl2br(h((string)$product['full_description'])) ?></p>
+                                    </details>
+                                <?php endif; ?>
+                                <div class="material-links">
+                                    <?php if (!empty($product['document_path'])): ?><a href="<?= h((string)$product['document_path']) ?>" target="_blank" rel="noopener">Файл</a><?php endif; ?>
+                                    <?php if (!empty($product['video_url'])): ?><a href="<?= h((string)$product['video_url']) ?>" target="_blank" rel="noopener">Видео</a><?php endif; ?>
+                                    <?php if (!empty($product['purchase_url'])): ?><a href="<?= h((string)$product['purchase_url']) ?>" target="_blank" rel="noopener">Подробнее</a><?php endif; ?>
+                                    <a href="<?= h(public_mini_app_url($profileReferralCode, 'products')) ?>">Задать вопрос</a>
+                                </div>
                             </div>
                         </article>
                     <?php endforeach; ?>
@@ -247,6 +368,7 @@ function public_youtube_embed_url(?string $url): ?string
             <section class="section" id="tests">
                 <div class="section-head">
                     <h2><?= h(public_block_title($blocks, 'tests', 'Рекомендуемые тесты')) ?></h2>
+                    <p>Короткие диагностики помогают понять запрос клиента и подготовить персональные рекомендации.</p>
                 </div>
                 <div class="grid-cards">
                     <?php foreach ($payload['tests'] as $test): ?>
@@ -254,6 +376,7 @@ function public_youtube_embed_url(?string $url): ?string
                             <span class="test-icon">✓</span>
                             <strong><?= h((string)$test['title']) ?></strong>
                             <p><?= h((string)($test['description'] ?? '')) ?></p>
+                            <a class="card-action-link" href="<?= h(public_mini_app_url($profileReferralCode, 'tests')) ?>">Открыть тест</a>
                         </article>
                     <?php endforeach; ?>
                 </div>
@@ -264,6 +387,7 @@ function public_youtube_embed_url(?string $url): ?string
             <section class="section" id="materials">
                 <div class="section-head">
                     <h2><?= h(public_block_title($blocks, 'materials', 'Полезные материалы')) ?></h2>
+                    <p>Статьи, видео и файлы, которые консультант подготовил для клиентов.</p>
                 </div>
                 <div class="grid-cards">
                     <?php foreach ($payload['materials'] as $material): ?>
@@ -274,10 +398,19 @@ function public_youtube_embed_url(?string $url): ?string
                             <div class="card-body">
                                 <span class="card-kicker"><?= h((string)$material['content_type']) ?></span>
                                 <strong><?= h((string)$material['title']) ?></strong>
-                                <p><?= h((string)($material['short_text'] ?? '')) ?></p>
+                                <?php if (!empty($material['short_text'])): ?>
+                                    <p><?= h((string)$material['short_text']) ?></p>
+                                <?php endif; ?>
+                                <?php if (!empty($material['full_text'])): ?>
+                                    <details class="card-details">
+                                        <summary>Читать материал</summary>
+                                        <p><?= nl2br(h((string)$material['full_text'])) ?></p>
+                                    </details>
+                                <?php endif; ?>
                                 <div class="material-links">
                                     <?php if (!empty($material['attachment_path'])): ?><a href="<?= h((string)$material['attachment_path']) ?>" target="_blank" rel="noopener">Файл</a><?php endif; ?>
                                     <?php if (!empty($material['video_url'])): ?><a href="<?= h((string)$material['video_url']) ?>" target="_blank" rel="noopener">Видео</a><?php endif; ?>
+                                    <a href="<?= h(public_mini_app_url($profileReferralCode)) ?>">Задать вопрос</a>
                                 </div>
                             </div>
                         </article>
@@ -292,6 +425,7 @@ function public_youtube_embed_url(?string $url): ?string
                 <div class="horizontal-cards">
                     <?php foreach ($payload['reviews'] as $review): ?>
                         <article class="public-card">
+                            <?php if (!empty($review['client_photo_path'])): ?><img class="review-photo" src="<?= h((string)$review['client_photo_path']) ?>" alt=""><?php endif; ?>
                             <strong><?= h((string)$review['client_name']) ?></strong>
                             <p><?= h((string)$review['review_text']) ?></p>
                         </article>

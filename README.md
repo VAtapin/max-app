@@ -143,6 +143,7 @@ api/auth.php
 api/telegram_auth.php
 api/user.php
 api/products.php
+api/content.php
 api/tests.php
 api/recommendations.php
 api/leads.php
@@ -159,6 +160,39 @@ api/telegram_auth.php
 VK and OK open through the VK Mini App launch parameters. OK is detected from VK launch parameters such as `vk_client=ok`, `vk_platform`, and `vk_ok_user_id`.
 
 If no supported platform context is available, the Mini App must not show the main functionality. It should ask the user to open the app through a supported platform.
+
+The Mini App is designed as the client's mobile space with their consultant. The first screen should show the consultant profile, not a technical menu:
+
+- consultant photo or initials;
+- consultant name, title, subtitle, and short description;
+- contact action;
+- embedded YouTube video when available;
+- short "about consultant" cards;
+- recommended tests;
+- consultant products;
+- useful materials;
+- user leads and unread manager responses.
+
+Product and material cards open inside the Mini App as detail screens. A detail screen can show:
+
+- main image;
+- category or content type;
+- short and full text;
+- embedded YouTube video when the URL is supported;
+- uploaded file/PDF link;
+- external button link;
+- manager contact action.
+
+The client should not receive only a short technical line for a product or material. The Mini App must present the item as useful consultant content.
+
+Current Mini App UI rules:
+
+- the first screen is consultant-first, with quick actions below the consultant block;
+- navigation is compact and mobile-friendly;
+- cards use the same visual language for products, tests, materials, recommendations, and leads;
+- lead responses are displayed as separated message blocks, not as one merged text string;
+- unread manager responses are highlighted with an accent marker;
+- technical API errors should be converted into friendly user messages.
 
 ## MVP Rules
 
@@ -288,6 +322,8 @@ https://t.me/SWProAssistant_bot?start=ref_ATAPIN
 https://swpro.ru/mini-app/?ref=ATAPIN
 ```
 
+Telegram referral links use the Bot API `start` parameter. Telegram sends it to the bot as `/start ref_CODE`. If the Telegram user already exists but has no manager/reseller binding yet, the bot attaches the user to the manager from that referral code. Existing primary binding is still permanent and is not overwritten.
+
 If a user first comes through a manager referral code:
 
 ```text
@@ -313,6 +349,14 @@ Mini App must show a "new response" marker when a user has unread manager respon
 
 Telegram and MAX may use direct bot delivery when configured.
 
+The admin lead list is designed for daily processing rather than a raw table dump:
+
+- filters by lead status, platform, and response state;
+- paginated list to avoid huge pages with thousands of leads;
+- compact cards with user, platform, product, manager, reseller, response count, and latest response preview;
+- lead edit screen with a response history timeline;
+- response history separates message text, selected material, selected test, uploaded files, external link, delivery status, and delivery error.
+
 ## Admin Panel
 
 The admin panel includes sections for:
@@ -328,11 +372,82 @@ The admin panel includes sections for:
 - tests;
 - broadcasts;
 - content/materials;
-- messaging integrations.
+- messaging integrations;
+- help and FAQ.
 
 The `platform_accounts` section is technical and may remain visible for admins. In regular work, platform accounts should also be visible inside the user card.
 
 Super-admins can create or update admin login access for resellers and managers from their edit cards. This creates linked `admin_users` records with the `reseller` or `manager` role; managers and resellers are not end users.
+
+The admin UI is intended to work as a practical CRM-style workspace:
+
+- the active menu item is highlighted;
+- the top bar shows the current section and logged-in user;
+- tables, forms, filters, alerts, cards, and action buttons use one consistent style;
+- destructive actions stay explicit and should remain easy to notice;
+- large operational sections such as leads should avoid raw endless tables and use filters, pagination, and compact cards.
+
+## Admin Deletion Rules
+
+Admin deletion is intentionally narrow. Deleting one record must not delete other people from the structure.
+
+- Deleting an end user removes only that end user. Platform accounts, leads, test sessions, recommendations, and broadcast logs are removed through database relations.
+- Deleting a manager removes only the manager record and its own service records: admin access, referral links, messaging integrations, and consultant profile. Assigned users remain in the database and are detached from that manager.
+- Deleting a reseller removes only the reseller record and its own service records: admin access, referral links, messaging integrations, and consultant profile. Managers and users remain in the database and are detached from that reseller.
+- Products, tests, product categories, and content owned by a deleted manager or reseller are not deleted. Their owner fields are cleared so the content can be reassigned later.
+
+## Consultant Pages
+
+SWPro is centered around the consultant, not around a shop catalog.
+
+Each manager or reseller can have a public consultant page. The profile is stored in:
+
+```text
+consultant_profiles
+profile_blocks
+profile_products
+profile_tests
+profile_materials
+profile_reviews
+```
+
+The admin section "My Page" allows a consultant profile to define:
+
+- display name;
+- public slug;
+- title and subtitle;
+- short description;
+- photo and banner;
+- video URL;
+- about text;
+- specialization;
+- experience;
+- certificates;
+- achievements;
+- contacts;
+- enabled page blocks;
+- selected products, tests, and materials.
+
+The public website root can open a profile by slug or referral code:
+
+```text
+https://swpro.ru/?m=consultant-slug
+https://swpro.ru/?ref=MANAGER-CODE
+```
+
+The page renders only filled sections. Empty biography, specialization, experience, certificates, and achievement blocks are not shown.
+
+The public consultant page includes a top navigation bar and Mini App entry links. When a referral code is known, links to the Mini App include that code so the client context remains connected to the consultant.
+
+When the website is opened without a consultant slug or referral code, it shows the SWPro public landing page. The landing page explains the consultant-first model and keeps the referral code form as the primary action.
+
+Current public site UI rules:
+
+- the public landing page explains SWPro as a consultant-led system, not as a shop;
+- the consultant page starts with the consultant profile, contact action, and useful counters;
+- YouTube video URLs are embedded directly when possible;
+- products, tests, materials, reviews, and contact blocks are shown only when they have content;
+- Mini App links keep the referral context when a consultant referral code is available.
 
 ## Products
 
@@ -346,7 +461,22 @@ Products can have:
 - price;
 - status.
 
-Product image/file delete and replacement controls are planned as a next admin improvement.
+Product and material forms support file replacement and removal from the card:
+
+- a new upload replaces the current file path;
+- "remove current file" clears the database path;
+- files are stored in the filesystem;
+- the database stores only paths.
+
+The current implementation does not physically delete old uploaded files from disk when a path is removed from a card. This avoids accidental data loss during MVP development.
+
+Client-facing product API supports detail mode:
+
+```text
+GET /api/products.php?id=PRODUCT_ID&platform=...&platform_user_id=...
+```
+
+The Mini App uses this endpoint for the product detail screen.
 
 ## Tests And Recommendations
 
@@ -373,6 +503,63 @@ recommendations
 ```
 
 Recommendation logic must remain centralized in API/shared services, not duplicated inside Telegram, MAX, VK, or OK clients.
+
+The seed data includes starter wellness tests inspired by common nutrition and lifestyle assessment themes:
+
+- energy and fatigue;
+- sleep and recovery;
+- skin and hair beauty;
+- nutrition and micronutrients;
+- immunity and stress.
+
+Each starter test includes questions, answer options, scores, and result ranges. The result text is informational and should lead the user toward a consultant conversation, not toward medical diagnosis.
+
+Required test questions are validated both in the Mini App and in the API. A test cannot be submitted if required questions are not answered.
+
+The test list API returns category title and question count so the Mini App can display tests as human-readable diagnostics instead of plain technical rows.
+
+The admin test builder supports editing the full test structure from one screen:
+
+- question text, type, required flag, and sort order;
+- answer text, score, linked product/category, and sort order;
+- result title, score range, summary, advice, linked product/category, and sort order;
+- add/delete actions for questions, answers, and results;
+- quick counters for questions, answers, and result ranges.
+
+## Help And FAQ
+
+The admin panel has a manager-facing Help/FAQ page:
+
+```text
+admin/public/help.php
+```
+
+FAQ content is stored in the database, not hardcoded in PHP or language files:
+
+```text
+help_faq_sections
+```
+
+The page reads active FAQ sections from the database. One section can be marked as featured and displayed as the intro block. Other sections are displayed as FAQ cards.
+
+Managers can edit FAQ sections directly from the Help page. FAQ text is saved into the database table; PHP only renders the data.
+
+Seed FAQ topics currently cover:
+
+- core SWPro idea;
+- leads;
+- tests;
+- products and materials;
+- client platforms;
+- referral links.
+
+For an existing live server, the current FAQ and starter test data can be applied without re-importing the whole seed file:
+
+```text
+database/live_update_20260613_help_tests.sql
+```
+
+This SQL file creates the FAQ table if needed, refreshes the seeded FAQ sections, and inserts the starter tests, questions, answers, and result ranges when they do not already exist.
 
 ## Localization
 

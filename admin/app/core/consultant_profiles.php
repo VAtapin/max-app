@@ -293,7 +293,7 @@ function consultant_profile_payload(array $profile): array
     $blocks = consultant_blocks($profileId);
 
     $products = db()->prepare(
-        'SELECT p.id, p.title, p.short_description, p.image_path, p.video_url, pp.sort_order
+        'SELECT p.id, p.title, p.short_description, p.full_description, p.image_path, p.document_path, p.video_url, p.purchase_url, p.price, pp.sort_order
          FROM profile_products pp
          JOIN products p ON p.id = pp.product_id
          WHERE pp.profile_id = :profile_id AND p.is_active = 1
@@ -311,7 +311,7 @@ function consultant_profile_payload(array $profile): array
     $tests->execute(['profile_id' => $profileId]);
 
     $materials = db()->prepare(
-        'SELECT c.id, c.title, c.short_text, c.image_path, c.video_url, c.attachment_path, c.content_type, pm.sort_order
+        'SELECT c.id, c.title, c.short_text, c.full_text, c.image_path, c.video_url, c.attachment_path, c.content_type, pm.sort_order
          FROM profile_materials pm
          JOIN content_posts c ON c.id = pm.content_post_id
          WHERE pm.profile_id = :profile_id AND c.status = "published"
