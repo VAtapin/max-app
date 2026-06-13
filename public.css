@@ -37,7 +37,8 @@ a {
     display: grid;
     gap: 48px;
     grid-template-columns: minmax(280px, 420px) 1fr;
-    min-height: 80vh;
+    min-height: 420px;
+    padding: 48px 0 64px;
 }
 
 .hero-photo,
@@ -117,7 +118,7 @@ button {
 }
 
 .section {
-    margin: 0 auto 80px;
+    margin: 0 auto 64px;
 }
 
 .public-card {
@@ -154,15 +155,32 @@ button {
 
 .video-card {
     align-items: center;
-    aspect-ratio: 16 / 9;
-    background: linear-gradient(135deg, #172033, #16676f);
-    border-radius: 28px;
-    color: #ffffff;
-    display: flex;
-    font-size: 24px;
+    background: #ffffff;
+    border: 1px solid var(--color-border);
+    border-radius: 16px;
+    box-shadow: var(--shadow-soft);
+    color: var(--color-primary);
+    display: inline-flex;
+    font-size: 16px;
     font-weight: 800;
     justify-content: center;
-    padding: 24px;
+    padding: 14px 18px;
+}
+
+.video-embed {
+    aspect-ratio: 16 / 9;
+    background: #0f172a;
+    border: 1px solid var(--color-border);
+    border-radius: 22px;
+    box-shadow: var(--shadow-soft);
+    max-width: 760px;
+    overflow: hidden;
+}
+
+.video-embed iframe {
+    border: 0;
+    height: 100%;
+    width: 100%;
 }
 
 .two-col {
@@ -234,7 +252,7 @@ button {
     .hero {
         gap: 24px;
         min-height: auto;
-        padding: 32px 0 56px;
+        padding: 24px 0 40px;
     }
 
     .section {

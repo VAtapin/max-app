@@ -55,6 +55,38 @@ function public_contact_links(array $profile): array
         'OK' => $profile['ok_url'] ?? null,
     ]);
 }
+
+function public_youtube_embed_url(?string $url): ?string
+{
+    $url = trim((string)$url);
+    if ($url === '') {
+        return null;
+    }
+
+    $parts = parse_url($url);
+    $host = strtolower((string)($parts['host'] ?? ''));
+    $path = trim((string)($parts['path'] ?? ''), '/');
+    $videoId = null;
+
+    if (str_contains($host, 'youtu.be')) {
+        $videoId = explode('/', $path)[0] ?? null;
+    } elseif (str_contains($host, 'youtube.com')) {
+        if ($path === 'watch') {
+            parse_str((string)($parts['query'] ?? ''), $query);
+            $videoId = $query['v'] ?? null;
+        } elseif (str_starts_with($path, 'shorts/')) {
+            $videoId = explode('/', substr($path, 7))[0] ?? null;
+        } elseif (str_starts_with($path, 'embed/')) {
+            $videoId = explode('/', substr($path, 6))[0] ?? null;
+        }
+    }
+
+    if (!$videoId || !preg_match('/^[a-zA-Z0-9_-]{6,}$/', $videoId)) {
+        return null;
+    }
+
+    return 'https://www.youtube.com/embed/' . rawurlencode($videoId);
+}
 ?>
 <!doctype html>
 <html lang="ru">
@@ -105,7 +137,14 @@ function public_contact_links(array $profile): array
         <?php if (public_block_enabled($blocks, 'video') && !empty($profileData['video_url'])): ?>
             <section class="section" id="video">
                 <h2><?= h(public_block_title($blocks, 'video', 'Видеообращение консультанта')) ?></h2>
-                <a class="video-card" href="<?= h((string)$profileData['video_url']) ?>" target="_blank" rel="noopener">Смотреть видеообращение</a>
+                <?php $embedUrl = public_youtube_embed_url((string)$profileData['video_url']); ?>
+                <?php if ($embedUrl): ?>
+                    <div class="video-embed">
+                        <iframe src="<?= h($embedUrl) ?>" title="Видеообращение" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+                    </div>
+                <?php else: ?>
+                    <a class="video-card" href="<?= h((string)$profileData['video_url']) ?>" target="_blank" rel="noopener">Смотреть видеообращение</a>
+                <?php endif; ?>
             </section>
         <?php endif; ?>
 
