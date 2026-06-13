@@ -756,6 +756,73 @@ button.compact {
     border-bottom-right-radius: 6px;
 }
 
+.response-text {
+    background: #ffffff;
+    border: 1px solid #d9e8e6;
+    border-radius: var(--radius-md);
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+}
+
+.response-text p {
+    margin: 0;
+}
+
+.response-resource {
+    background: #ffffff;
+    border: 1px solid #d9e8e6;
+    border-radius: var(--radius-md);
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+}
+
+.response-resource img {
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    width: 100%;
+}
+
+.response-resource p {
+    color: var(--muted);
+    margin: 0;
+}
+
+.response-resource-type {
+    background: #fff4d6;
+    border-radius: 999px;
+    color: #7a4d00;
+    font-size: 11px;
+    font-weight: 800;
+    justify-self: start;
+    padding: 4px 8px;
+}
+
+.response-resource-actions,
+.response-files {
+    display: grid;
+    gap: 8px;
+}
+
+.response-files > span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.response-file-link,
+.response-resource-actions a {
+    background: #f8fbfb;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--accent-dark);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 7px 10px;
+}
+
 .recommendation-actions {
     display: grid;
     gap: 8px;

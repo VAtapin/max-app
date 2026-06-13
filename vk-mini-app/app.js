@@ -712,8 +712,93 @@ function responseAttachmentLinks(response) {
         : (response.attachment_path ? [response.attachment_path] : []);
 
     return attachments.map((path, index) => (
-        `<a href="${escapeHtml(path)}" target="_blank" rel="noopener">${escapeHtml(ui('lead.file'))} ${index + 1}</a>`
+        `<a class="response-file-link" href="${escapeHtml(path)}" target="_blank" rel="noopener">${escapeHtml(ui('lead.file'))} ${index + 1}</a>`
     )).join('');
+}
+
+function responseTextParagraphs(response) {
+    const content = response.content || null;
+    const contentTexts = [
+        content?.short_text,
+        content?.full_text,
+        content?.title ? `${ui('lead_response.material')}: ${content.title}` : null,
+        content?.title ? `Материал: ${content.title}` : null,
+    ].filter(Boolean).map((value) => String(value).trim());
+
+    return String(response.message_text || '')
+        .split(/\n{2,}/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .filter((item) => !/^(Источник заявки|Материал|Рекомендуем пройти тест):/i.test(item))
+        .filter((item) => !contentTexts.includes(item));
+}
+
+function renderResponseText(response) {
+    const paragraphs = responseTextParagraphs(response);
+    if (!paragraphs.length) {
+        return '';
+    }
+
+    return `
+        <div class="response-text">
+            ${paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join('')}
+        </div>
+    `;
+}
+
+function renderResponseMaterial(response) {
+    const content = response.content;
+    if (!content) {
+        return '';
+    }
+
+    const text = content.short_text || content.full_text || '';
+    return `
+        <article class="response-resource">
+            <span class="response-resource-type">${escapeHtml(ui('lead_response.material'))}</span>
+            ${content.image_path ? `<img src="${escapeHtml(content.image_path)}" alt="">` : ''}
+            <strong>${escapeHtml(content.title || ui('lead_response.material'))}</strong>
+            ${text ? `<p>${escapeHtml(text)}</p>` : ''}
+            <div class="response-resource-actions">
+                ${content.attachment_path ? `<a href="${escapeHtml(content.attachment_path)}" target="_blank" rel="noopener">${escapeHtml(ui('lead_response.open_file'))}</a>` : ''}
+                ${content.video_url ? `<a href="${escapeHtml(content.video_url)}" target="_blank" rel="noopener">${escapeHtml(ui('lead_response.open_video'))}</a>` : ''}
+                ${content.button_url ? `<a href="${escapeHtml(content.button_url)}" target="_blank" rel="noopener">${escapeHtml(content.button_text || ui('lead_response.open_material'))}</a>` : ''}
+            </div>
+        </article>
+    `;
+}
+
+function renderResponseTest(response) {
+    const test = response.test;
+    if (!test) {
+        return '';
+    }
+
+    return `
+        <article class="response-resource">
+            <span class="response-resource-type">${escapeHtml(ui('lead_response.test'))}</span>
+            <strong>${escapeHtml(test.title || ui('tests.open'))}</strong>
+            ${test.description ? `<p>${escapeHtml(test.description)}</p>` : ''}
+            <button class="secondary compact" data-open-test-id="${test.id}">${escapeHtml(ui('tests.open'))}</button>
+        </article>
+    `;
+}
+
+function renderResponseFiles(response) {
+    const files = responseAttachmentLinks(response);
+    if (!files && !response.external_url) {
+        return '';
+    }
+
+    return `
+        <div class="response-files">
+            <span>${escapeHtml(ui('lead_response.attachments'))}</span>
+            <div class="item-links">
+                ${files}
+                ${response.external_url ? `<a class="response-file-link" href="${escapeHtml(response.external_url)}" target="_blank" rel="noopener">${escapeHtml(ui('lead.link'))}</a>` : ''}
+            </div>
+        </div>
+    `;
 }
 
 function leadTitle(lead) {
@@ -760,11 +845,10 @@ async function renderLeads() {
                 ${(lead.responses || []).map((response) => `
                     <div class="chat-bubble manager">
                         <span>${escapeHtml(ui('leads.manager_response'))}</span>
-                        <p>${escapeHtml(response.message_text || '')}</p>
-                        <div class="item-links">
-                            ${responseAttachmentLinks(response)}
-                            ${response.external_url ? `<a href="${escapeHtml(response.external_url)}" target="_blank" rel="noopener">${escapeHtml(ui('lead.link'))}</a>` : ''}
-                        </div>
+                        ${renderResponseText(response)}
+                        ${renderResponseMaterial(response)}
+                        ${renderResponseTest(response)}
+                        ${renderResponseFiles(response)}
                         <small class="muted">${escapeHtml(response.sent_at || response.created_at || '')}</small>
                     </div>
                 `).join('')}

@@ -74,15 +74,53 @@ if ($leads) {
     $leadIds = array_map(static fn($lead) => (int)$lead['id'], $leads);
     $placeholders = implode(',', array_fill(0, count($leadIds), '?'));
     $responsesStmt = db()->prepare(
-        "SELECT id, lead_id, message_text, attachment_path, external_url, status, sent_at, read_at, created_at
-         FROM lead_responses
-         WHERE lead_id IN ($placeholders)
-         ORDER BY id ASC"
+        "SELECT lr.id,
+                lr.lead_id,
+                lr.message_text,
+                lr.attachment_path,
+                lr.external_url,
+                lr.status,
+                lr.sent_at,
+                lr.read_at,
+                lr.created_at,
+                lr.content_post_id,
+                lr.test_id,
+                cp.title AS content_title,
+                cp.short_text AS content_short_text,
+                cp.full_text AS content_full_text,
+                cp.image_path AS content_image_path,
+                cp.attachment_path AS content_attachment_path,
+                cp.video_url AS content_video_url,
+                cp.button_text AS content_button_text,
+                cp.button_url AS content_button_url,
+                t.title AS test_title,
+                t.description AS test_description
+         FROM lead_responses lr
+         LEFT JOIN content_posts cp ON cp.id = lr.content_post_id
+         LEFT JOIN tests t ON t.id = lr.test_id
+         WHERE lr.lead_id IN ($placeholders)
+         ORDER BY lr.id ASC"
     );
     $responsesStmt->execute($leadIds);
     $responsesByLead = [];
     foreach ($responsesStmt->fetchAll() as $response) {
         $response['attachments'] = response_attachment_paths($response['attachment_path'] ?? null);
+        $response['content'] = !empty($response['content_post_id']) ? [
+            'id' => (int)$response['content_post_id'],
+            'title' => $response['content_title'],
+            'short_text' => $response['content_short_text'],
+            'full_text' => $response['content_full_text'],
+            'image_path' => $response['content_image_path'],
+            'attachment_path' => $response['content_attachment_path'],
+            'video_url' => $response['content_video_url'],
+            'button_text' => $response['content_button_text'],
+            'button_url' => $response['content_button_url'],
+        ] : null;
+        $response['test'] = !empty($response['test_id']) ? [
+            'id' => (int)$response['test_id'],
+            'title' => $response['test_title'],
+            'description' => $response['test_description'],
+        ] : null;
         $responsesByLead[(int)$response['lead_id']][] = $response;
     }
 
