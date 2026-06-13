@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../app/core/auth.php';
+require_once __DIR__ . '/../app/core/permissions.php';
 
 $admin = require_auth();
 $title = app_text('help.title');
