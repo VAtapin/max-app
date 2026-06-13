@@ -56,6 +56,55 @@ function public_contact_links(array $profile): array
     ]);
 }
 
+function public_about_titles(array $blocks): array
+{
+    $titles = [
+        'bio' => 'Обо мне',
+        'specialization' => 'Специализация',
+        'experience_text' => 'Опыт',
+        'certificates_text' => 'Сертификаты',
+        'achievements_text' => 'Достижения',
+    ];
+
+    foreach ($blocks as $block) {
+        if (($block['block_type'] ?? '') !== 'about') {
+            continue;
+        }
+
+        $settings = json_decode((string)($block['settings_json'] ?? ''), true);
+        if (!is_array($settings) || empty($settings['titles']) || !is_array($settings['titles'])) {
+            return $titles;
+        }
+
+        foreach ($titles as $key => $defaultTitle) {
+            if (!empty($settings['titles'][$key])) {
+                $titles[$key] = trim((string)$settings['titles'][$key]);
+            }
+        }
+    }
+
+    return $titles;
+}
+
+function public_about_sections(array $profile, array $blocks): array
+{
+    $titles = public_about_titles($blocks);
+    $sections = [];
+
+    foreach (['bio', 'specialization', 'experience_text', 'certificates_text', 'achievements_text'] as $field) {
+        $text = trim((string)($profile[$field] ?? ''));
+        if ($text !== '') {
+            $sections[] = [
+                'title' => $titles[$field],
+                'text' => $text,
+                'field' => $field,
+            ];
+        }
+    }
+
+    return $sections;
+}
+
 function public_youtube_embed_url(?string $url): ?string
 {
     $url = trim((string)$url);
@@ -148,15 +197,17 @@ function public_youtube_embed_url(?string $url): ?string
             </section>
         <?php endif; ?>
 
-        <?php if (public_block_enabled($blocks, 'about') && (!empty($profileData['bio']) || !empty($profileData['specialization']))): ?>
-            <section class="section two-col" id="about">
-                <div>
-                    <h2><?= h(public_block_title($blocks, 'about', 'Обо мне')) ?></h2>
-                    <p><?= nl2br(h((string)$profileData['bio'])) ?></p>
-                </div>
-                <div class="public-card">
-                    <strong>Специализация</strong>
-                    <p><?= nl2br(h((string)$profileData['specialization'])) ?></p>
+        <?php $aboutSections = public_about_sections($profileData, $blocks); ?>
+        <?php if (public_block_enabled($blocks, 'about') && $aboutSections): ?>
+            <section class="section" id="about">
+                <h2><?= h(public_block_title($blocks, 'about', 'Обо мне')) ?></h2>
+                <div class="about-grid">
+                    <?php foreach ($aboutSections as $section): ?>
+                        <article class="public-card about-card <?= $section['field'] === 'bio' ? 'about-card-main' : '' ?>">
+                            <strong><?= h($section['title']) ?></strong>
+                            <p><?= nl2br(h($section['text'])) ?></p>
+                        </article>
+                    <?php endforeach; ?>
                 </div>
             </section>
         <?php endif; ?>

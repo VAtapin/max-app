@@ -36,6 +36,34 @@ function profile_select_options(string $source): array
     };
 }
 
+function about_section_titles(array $blocks): array
+{
+    $defaults = [
+        'bio' => app_text('consultant_profile.bio'),
+        'specialization' => app_text('consultant_profile.specialization'),
+        'experience_text' => app_text('consultant_profile.experience'),
+        'certificates_text' => app_text('consultant_profile.certificates'),
+        'achievements_text' => app_text('consultant_profile.achievements'),
+    ];
+
+    foreach ($blocks as $block) {
+        if (($block['block_type'] ?? '') !== 'about') {
+            continue;
+        }
+        $settings = json_decode((string)($block['settings_json'] ?? ''), true);
+        if (!is_array($settings) || !isset($settings['titles']) || !is_array($settings['titles'])) {
+            return $defaults;
+        }
+        foreach ($defaults as $key => $title) {
+            if (isset($settings['titles'][$key]) && trim((string)$settings['titles'][$key]) !== '') {
+                $defaults[$key] = trim((string)$settings['titles'][$key]);
+            }
+        }
+    }
+
+    return $defaults;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
 
@@ -97,16 +125,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $blockStmt = db()->prepare(
             'UPDATE profile_blocks
-             SET title = :title, is_enabled = :is_enabled, sort_order = :sort_order
+             SET title = :title, is_enabled = :is_enabled, sort_order = :sort_order, settings_json = COALESCE(:settings_json, settings_json)
              WHERE profile_id = :profile_id AND block_type = :block_type'
         );
         foreach (default_consultant_blocks() as $blockType => [$defaultTitle, $defaultSort]) {
+            $settingsJson = null;
+            if ($blockType === 'about') {
+                $aboutTitles = [];
+                foreach (['bio', 'specialization', 'experience_text', 'certificates_text', 'achievements_text'] as $field) {
+                    $aboutTitles[$field] = trim((string)($_POST['about_titles'][$field] ?? app_text('consultant_profile.' . match ($field) {
+                        'experience_text' => 'experience',
+                        'certificates_text' => 'certificates',
+                        'achievements_text' => 'achievements',
+                        default => $field,
+                    })));
+                }
+                $settingsJson = json_encode(['titles' => $aboutTitles], JSON_UNESCAPED_UNICODE);
+            }
             $blockStmt->execute([
                 'profile_id' => $profileId,
                 'block_type' => $blockType,
                 'title' => trim((string)($_POST['block_titles'][$blockType] ?? $defaultTitle)),
                 'is_enabled' => isset($_POST['block_enabled'][$blockType]) ? 1 : 0,
                 'sort_order' => (int)($_POST['block_sort'][$blockType] ?? $defaultSort),
+                'settings_json' => $settingsJson,
             ]);
         }
 
@@ -121,6 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $profile = ensure_consultant_profile($owner['owner_type'], $owner['owner_id']);
 $blocks = consultant_blocks((int)$profile['id']);
+$aboutTitles = about_section_titles($blocks);
 $selectedProducts = consultant_selected_ids((int)$profile['id'], 'profile_products', 'product_id');
 $selectedTests = consultant_selected_ids((int)$profile['id'], 'profile_tests', 'test_id');
 $selectedMaterials = consultant_selected_ids((int)$profile['id'], 'profile_materials', 'content_post_id');
@@ -245,22 +288,27 @@ require __DIR__ . '/../app/views/layouts/header.php';
             </label>
             <label class="field wide">
                 <span><?= h(app_text('consultant_profile.bio')) ?></span>
+                <input name="about_titles[bio]" value="<?= h($aboutTitles['bio']) ?>">
                 <textarea name="bio" rows="5"><?= h((string)$profile['bio']) ?></textarea>
             </label>
             <label class="field">
                 <span><?= h(app_text('consultant_profile.specialization')) ?></span>
+                <input name="about_titles[specialization]" value="<?= h($aboutTitles['specialization']) ?>">
                 <textarea name="specialization" rows="4"><?= h((string)$profile['specialization']) ?></textarea>
             </label>
             <label class="field">
                 <span><?= h(app_text('consultant_profile.experience')) ?></span>
+                <input name="about_titles[experience_text]" value="<?= h($aboutTitles['experience_text']) ?>">
                 <textarea name="experience_text" rows="4"><?= h((string)$profile['experience_text']) ?></textarea>
             </label>
             <label class="field">
                 <span><?= h(app_text('consultant_profile.certificates')) ?></span>
+                <input name="about_titles[certificates_text]" value="<?= h($aboutTitles['certificates_text']) ?>">
                 <textarea name="certificates_text" rows="4"><?= h((string)$profile['certificates_text']) ?></textarea>
             </label>
             <label class="field">
                 <span><?= h(app_text('consultant_profile.achievements')) ?></span>
+                <input name="about_titles[achievements_text]" value="<?= h($aboutTitles['achievements_text']) ?>">
                 <textarea name="achievements_text" rows="4"><?= h((string)$profile['achievements_text']) ?></textarea>
             </label>
         </div>
