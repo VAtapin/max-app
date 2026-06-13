@@ -193,6 +193,12 @@ Current Mini App UI rules:
 - lead responses are displayed as separated message blocks, not as one merged text string;
 - unread manager responses are highlighted with an accent marker;
 - technical API errors should be converted into friendly user messages.
+- "Ask a question" and "Write to manager" open a modal with a message field. A lead is created only after the user writes and sends their own text.
+- tests open inside the current Mini App view, load questions, validate required answers, and submit results through the shared API.
+- materials open inside the current Mini App view by content id instead of redirecting the user to a VK wrapper page.
+- recommendations show the reason, description, full product text, files, video, and product actions when available.
+
+The Mini App applies the consultant profile theme through `profile.theme_key`. Initial themes are `classic`, `ocean`, `berry`, and `graphite`.
 
 ## MVP Rules
 
@@ -357,6 +363,26 @@ The admin lead list is designed for daily processing rather than a raw table dum
 - lead edit screen with a response history timeline;
 - response history separates message text, selected material, selected test, uploaded files, external link, delivery status, and delivery error.
 
+## Broadcasts
+
+Broadcasts are MVP-level scheduled messages.
+
+The admin section can create a broadcast and run it manually from the broadcast list. Delivery attempts are written into:
+
+```text
+broadcast_logs
+```
+
+Telegram recipients are sent through the configured Telegram Bot API token. VK, OK, MAX, and web recipients are currently recorded as internal/Mini App delivery records.
+
+Scheduled broadcasts can be processed by a server cron command:
+
+```bash
+php admin/cron/run-broadcasts.php
+```
+
+The cron script processes broadcasts with `status = scheduled` and `scheduled_at <= NOW()`. Recurring broadcasts with `daily`, `weekly`, or `monthly` schedule type are moved to the next scheduled date after each run.
+
 ## Admin Panel
 
 The admin panel includes sections for:
@@ -386,6 +412,8 @@ The admin UI is intended to work as a practical CRM-style workspace:
 - tables, forms, filters, alerts, cards, and action buttons use one consistent style;
 - destructive actions stay explicit and should remain easy to notice;
 - large operational sections such as leads should avoid raw endless tables and use filters, pagination, and compact cards.
+- dashboard statistic cards are clickable and open the related admin section.
+- the user edit screen does not render the full user list below the edit form. It keeps the user form, connected platform accounts, and merge actions.
 
 ## Admin Deletion Rules
 
@@ -448,6 +476,21 @@ Current public site UI rules:
 - YouTube video URLs are embedded directly when possible;
 - products, tests, materials, reviews, and contact blocks are shown only when they have content;
 - Mini App links keep the referral context when a consultant referral code is available.
+- the page applies the consultant profile theme through `profile.theme_key`.
+
+## Platform Linking
+
+Client account linking is explicit. VK, OK, Telegram, and MAX are not merged automatically by name or indirect platform hints.
+
+The Mini App profile can request an account-link token through:
+
+```text
+POST /api/account_link.php
+```
+
+When the user opens the returned link on another platform and authenticates there, that platform account is attached to the original end user. If the second platform had already created a separate end user for the same person, the confirmed link token merges that second user into the original profile.
+
+This is a user-confirmed linking flow, not automatic VK/OK recognition.
 
 ## Products
 

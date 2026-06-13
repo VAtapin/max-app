@@ -5,6 +5,7 @@ require_once __DIR__ . '/../app/core/permissions.php';
 require_once __DIR__ . '/../app/core/crud_views.php';
 require_once __DIR__ . '/../app/core/lead_responses.php';
 require_once __DIR__ . '/../app/core/test_admin.php';
+require_once __DIR__ . '/../app/core/broadcast_runner.php';
 
 $admin = require_auth();
 
@@ -1137,6 +1138,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = $postId;
     }
 
+    if ($postAction === 'run_broadcast') {
+        if ($moduleKey !== 'broadcasts' || !$postId || !scoped_row_exists($moduleKey, $module, $postId, $admin)) {
+            http_response_code(404);
+            exit('Record not found');
+        }
+
+        try {
+            $result = run_broadcast($postId);
+            redirect('crud.php?module=broadcasts&success=broadcast_sent&sent=' . (int)$result['sent'] . '&failed=' . (int)$result['failed']);
+        } catch (Throwable $e) {
+            $errors[] = app_text('broadcasts.run_failed') . $e->getMessage();
+            $action = 'list';
+        }
+    }
+
     if ($moduleKey === 'tests' && $postId && handle_test_builder_action($postAction, $postId, $admin, $errors)) {
         if (!scoped_row_exists($moduleKey, $module, $postId, $admin)) {
             http_response_code(404);
@@ -1300,6 +1316,11 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <div class="notice success"><?= h(app_text('auto.k_0184f257cbfc')) ?></div>
 <?php elseif ($success === 'merged'): ?>
     <div class="notice success"><?= h(app_text('user_merge.success')) ?></div>
+<?php elseif ($success === 'broadcast_sent'): ?>
+    <div class="notice success"><?= h(app_text('broadcasts.run_success', [
+        'sent' => (int)($_GET['sent'] ?? 0),
+        'failed' => (int)($_GET['failed'] ?? 0),
+    ])) ?></div>
 <?php endif; ?>
 <?php foreach ($errors as $error): ?>
     <div class="alert"><?= h($error) ?></div>
@@ -1586,9 +1607,12 @@ require __DIR__ . '/../app/views/layouts/header.php';
         </section>
     <?php endif; ?>
 <?php endif; ?>
-<section class="panel">
-    <?= $listHtml ?>
-</section>
+<?php $showList = !($moduleKey === 'users' && $action === 'edit'); ?>
+<?php if ($showList): ?>
+    <section class="panel">
+        <?= $listHtml ?>
+    </section>
+<?php endif; ?>
 <section class="panel">
     <h2><?= h(app_text('auto.k_770fa6d360ac')) ?></h2>
     <div class="access-rules">

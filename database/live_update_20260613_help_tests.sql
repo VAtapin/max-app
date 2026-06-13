@@ -1,5 +1,8 @@
 USE health_sales_system;
 
+ALTER TABLE consultant_profiles
+  ADD COLUMN IF NOT EXISTS theme_key VARCHAR(50) NOT NULL DEFAULT 'classic' AFTER ok_url;
+
 CREATE TABLE IF NOT EXISTS help_faq_sections (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   title VARCHAR(190) NOT NULL,

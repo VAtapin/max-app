@@ -365,6 +365,74 @@ function parse_account_link_token(?string $token): ?int
     return (int)$endUserId;
 }
 
+function link_existing_user_to_target(int $targetUserId, int $sourceUserId): ?array
+{
+    if ($targetUserId <= 0 || $sourceUserId <= 0 || $targetUserId === $sourceUserId) {
+        return null;
+    }
+
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $targetStmt = $pdo->prepare('SELECT * FROM end_users WHERE id = :id AND merged_into_user_id IS NULL FOR UPDATE');
+        $targetStmt->execute(['id' => $targetUserId]);
+        $target = $targetStmt->fetch();
+
+        $sourceStmt = $pdo->prepare('SELECT * FROM end_users WHERE id = :id AND merged_into_user_id IS NULL FOR UPDATE');
+        $sourceStmt->execute(['id' => $sourceUserId]);
+        $source = $sourceStmt->fetch();
+
+        if (!$target || !$source) {
+            $pdo->rollBack();
+            return null;
+        }
+
+        foreach ([
+            'platform_accounts' => 'end_user_id',
+            'leads' => 'end_user_id',
+            'user_test_sessions' => 'end_user_id',
+            'recommendations' => 'end_user_id',
+            'broadcast_logs' => 'end_user_id',
+        ] as $table => $column) {
+            $stmt = $pdo->prepare("UPDATE $table SET $column = :target_id WHERE $column = :source_id");
+            $stmt->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
+        }
+
+        $mergeFields = ['username', 'first_name', 'last_name', 'phone', 'email', 'referral_code_used'];
+        $assignments = [];
+        $params = ['target_id' => $targetUserId, 'source_id' => $sourceUserId];
+        foreach ($mergeFields as $field) {
+            if (($target[$field] ?? null) === null || trim((string)$target[$field]) === '') {
+                if (($source[$field] ?? null) !== null && trim((string)$source[$field]) !== '') {
+                    $assignments[] = "$field = :$field";
+                    $params[$field] = $source[$field];
+                }
+            }
+        }
+        if ($assignments) {
+            $update = $pdo->prepare('UPDATE end_users SET ' . implode(', ', $assignments) . ' WHERE id = :target_id');
+            $update->execute($params);
+        }
+
+        $mark = $pdo->prepare('UPDATE end_users SET merged_into_user_id = :target_id, status = "unsubscribed" WHERE id = :source_id');
+        $mark->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
+
+        $touch = $pdo->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
+        $touch->execute(['id' => $targetUserId]);
+
+        $pdo->commit();
+
+        $targetStmt = $pdo->prepare('SELECT * FROM end_users WHERE id = :id LIMIT 1');
+        $targetStmt->execute(['id' => $targetUserId]);
+        return $targetStmt->fetch() ?: null;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
 function create_or_get_user(array $data): array
 {
     $data = enrich_vk_ok_platform_data($data);
@@ -393,6 +461,12 @@ function create_or_get_user(array $data): array
         ]);
         $existing = $stmt->fetch();
         if ($existing) {
+            if ($linkTargetUserId && (int)$existing['id'] !== $linkTargetUserId) {
+                $linkedUser = link_existing_user_to_target($linkTargetUserId, (int)$existing['id']);
+                if ($linkedUser) {
+                    return attach_referral_if_missing($linkedUser, $data['referral_code'] ?? null);
+                }
+            }
             ensure_platform_account((int)$existing['id'], $account['platform'], $account['platform_user_id'], $account['username'] ?? null, $account['first_name'] ?? null, $account['last_name'] ?? null, $account['display_name'] ?? null);
             $touch = db()->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
             $touch->execute(['id' => $existing['id']]);

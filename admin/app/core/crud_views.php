@@ -754,6 +754,14 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
                                 <?php if ($canEdit): ?>
                                     <a class="link-button" href="crud.php?module=<?= h($moduleKey) ?>&action=edit&id=<?= (int)$row['id'] ?>"><?= h(crud_action_label($moduleKey)) ?></a>
                                 <?php endif; ?>
+                                <?php if ($moduleKey === 'broadcasts' && $canEdit && in_array((string)($row['status'] ?? ''), ['draft', 'scheduled'], true)): ?>
+                                    <form method="post" class="inline-form" onsubmit="return confirm('<?= h(app_text('broadcasts.run_confirm')) ?>');">
+                                        <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                        <input type="hidden" name="action" value="run_broadcast">
+                                        <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+                                        <button type="submit" class="link-button"><?= h(app_text('broadcasts.run_now')) ?></button>
+                                    </form>
+                                <?php endif; ?>
                                 <?php if ($canDelete): ?>
                                     <form method="post" class="inline-form" onsubmit="return confirm('<?= h(app_text('auto.k_112417195434', ['id' => (int)$row['id']])) ?>');">
                                         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">

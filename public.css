@@ -1,13 +1,46 @@
 :root {
-    --color-primary: #16676f;
-    --color-secondary: #6aa7a5;
-    --color-accent: #f59e0b;
-    --color-bg: #f6f7f8;
+    --color-primary: #315c72;
+    --color-secondary: #78a9ba;
+    --color-accent: #d88922;
+    --color-bg: #f4f6f8;
     --color-card: #ffffff;
     --color-text: #172033;
     --color-muted: #677489;
     --color-border: #dde4ea;
     --shadow-soft: 0 10px 30px rgba(23, 32, 51, 0.08);
+}
+
+.consultant-page[data-theme="ocean"] {
+    --color-primary: #0c6b80;
+    --color-secondary: #3bb2c6;
+    --color-accent: #e29a2d;
+    --color-bg: #eef7f8;
+    --color-text: #16323f;
+    --color-muted: #5d7480;
+    --color-border: #cde2e6;
+    --shadow-soft: 0 14px 36px rgba(12, 107, 128, 0.13);
+}
+
+.consultant-page[data-theme="berry"] {
+    --color-primary: #8f3f64;
+    --color-secondary: #d57a9f;
+    --color-accent: #c87921;
+    --color-bg: #fbf6f8;
+    --color-text: #2d2230;
+    --color-muted: #7a6674;
+    --color-border: #ead8e2;
+    --shadow-soft: 0 14px 36px rgba(143, 63, 100, 0.13);
+}
+
+.consultant-page[data-theme="graphite"] {
+    --color-primary: #344154;
+    --color-secondary: #7d8795;
+    --color-accent: #d69227;
+    --color-bg: #eef1f4;
+    --color-text: #1d2430;
+    --color-muted: #606a78;
+    --color-border: #d3dae3;
+    --shadow-soft: 0 14px 36px rgba(32, 43, 58, 0.14);
 }
 
 * {

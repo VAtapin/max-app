@@ -111,9 +111,9 @@ function ensure_consultant_profile(string $ownerType, int $ownerId): array
 
     $insert = db()->prepare(
         'INSERT INTO consultant_profiles
-            (owner_type, owner_id, slug, display_name, title, subtitle, phone, email, is_public)
+            (owner_type, owner_id, slug, display_name, title, subtitle, phone, email, theme_key, is_public)
          VALUES
-            (:owner_type, :owner_id, :slug, :display_name, :title, :subtitle, :phone, :email, 1)'
+            (:owner_type, :owner_id, :slug, :display_name, :title, :subtitle, :phone, :email, :theme_key, 1)'
     );
     $insert->execute([
         'owner_type' => $ownerType,
@@ -124,6 +124,7 @@ function ensure_consultant_profile(string $ownerType, int $ownerId): array
         'subtitle' => app_text('consultant_profile.default_subtitle'),
         'phone' => $owner['phone'] ?? null,
         'email' => $owner['email'] ?? null,
+        'theme_key' => 'classic',
     ]);
 
     $profileId = (int)db()->lastInsertId();
@@ -131,6 +132,16 @@ function ensure_consultant_profile(string $ownerType, int $ownerId): array
 
     $stmt->execute(['owner_type' => $ownerType, 'owner_id' => $ownerId]);
     return $stmt->fetch();
+}
+
+function consultant_theme_options(): array
+{
+    return [
+        'classic' => app_text('consultant_profile.theme_classic'),
+        'ocean' => app_text('consultant_profile.theme_ocean'),
+        'berry' => app_text('consultant_profile.theme_berry'),
+        'graphite' => app_text('consultant_profile.theme_graphite'),
+    ];
 }
 
 function consultant_unique_slug(string $slug, ?int $ignoreProfileId = null): string

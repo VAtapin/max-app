@@ -248,7 +248,7 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
     <?php $profileData = $payload['profile']; ?>
     <?php $profileReferralCode = public_profile_referral_code($profileData); ?>
     <?php $miniAppUrl = public_mini_app_url($profileReferralCode); ?>
-    <main class="consultant-page">
+    <main class="consultant-page" data-theme="<?= h((string)($profileData['theme_key'] ?? 'classic')) ?>">
         <header class="public-topnav">
             <a class="brand-link" href="/">SWPro</a>
             <nav>

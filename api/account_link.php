@@ -10,6 +10,11 @@ $user = require_platform_user();
 $token = create_account_link_token((int)$user['id']);
 $config = app_config();
 $miniAppUrl = (string)($config['integrations']['mini_app_url'] ?? getenv('SWPRO_MINI_APP_URL') ?: '');
+if ($miniAppUrl === '') {
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    $miniAppUrl = $host !== '' ? $scheme . '://' . $host . '/vk-mini-app/' : '../vk-mini-app/';
+}
 $telegramBot = (string)(getenv('TELEGRAM_BOT_USERNAME') ?: 'SWProAssistant_bot');
 
 json_response([

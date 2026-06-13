@@ -96,9 +96,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  whatsapp_url = :whatsapp_url,
                  vk_url = :vk_url,
                  ok_url = :ok_url,
+                 theme_key = :theme_key,
                  is_public = :is_public
              WHERE id = :id'
         );
+        $themeKey = (string)($_POST['theme_key'] ?? 'classic');
+        if (!array_key_exists($themeKey, consultant_theme_options())) {
+            $themeKey = 'classic';
+        }
         $stmt->execute([
             'id' => $profileId,
             'slug' => $slug,
@@ -120,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'whatsapp_url' => trim((string)($_POST['whatsapp_url'] ?? '')),
             'vk_url' => trim((string)($_POST['vk_url'] ?? '')),
             'ok_url' => trim((string)($_POST['ok_url'] ?? '')),
+            'theme_key' => $themeKey,
             'is_public' => isset($_POST['is_public']) ? 1 : 0,
         ]);
 
@@ -247,6 +253,15 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <label class="field wide">
                 <span><?= h(app_text('consultant_profile.short_description')) ?></span>
                 <textarea name="short_description" rows="3"><?= h((string)$profile['short_description']) ?></textarea>
+            </label>
+            <label class="field">
+                <span><?= h(app_text('consultant_profile.theme')) ?></span>
+                <select name="theme_key">
+                    <?php foreach (consultant_theme_options() as $themeKey => $themeLabel): ?>
+                        <option value="<?= h($themeKey) ?>" <?= ($profile['theme_key'] ?? 'classic') === $themeKey ? 'selected' : '' ?>><?= h($themeLabel) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <small class="cell-muted"><?= h(app_text('consultant_profile.theme_hint')) ?></small>
             </label>
             <label class="field">
                 <span><?= h(app_text('consultant_profile.photo')) ?></span>

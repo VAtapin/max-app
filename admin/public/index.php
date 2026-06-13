@@ -167,12 +167,12 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php endif; ?>
 
 <div class="grid stats-grid">
-    <div class="stat"><span><?= h(app_text('auto.k_0f0b8f55edcc')) ?></span><strong><?= $stats['users'] ?></strong></div>
-    <div class="stat"><span><?= h(app_text('auto.k_735d9fb6be56')) ?></span><strong><?= $stats['new_today'] ?></strong></div>
-    <div class="stat"><span><?= h(app_text('auto.k_6756aa53b5b5')) ?></span><strong><?= $stats['managers'] ?></strong></div>
-    <div class="stat"><span><?= h(app_text('auto.k_32cea47742bf')) ?></span><strong><?= $stats['resellers'] ?></strong></div>
-    <div class="stat"><span><?= h(app_text('auto.k_953522b53414')) ?></span><strong><?= $stats['tests'] ?></strong></div>
-    <div class="stat"><span><?= h(app_text('auto.k_be11d71726a6')) ?></span><strong><?= $stats['leads'] ?></strong></div>
+    <a class="stat" href="crud.php?module=users"><span><?= h(app_text('auto.k_0f0b8f55edcc')) ?></span><strong><?= $stats['users'] ?></strong></a>
+    <a class="stat" href="crud.php?module=users"><span><?= h(app_text('auto.k_735d9fb6be56')) ?></span><strong><?= $stats['new_today'] ?></strong></a>
+    <a class="stat" href="crud.php?module=managers"><span><?= h(app_text('auto.k_6756aa53b5b5')) ?></span><strong><?= $stats['managers'] ?></strong></a>
+    <a class="stat" href="crud.php?module=resellers"><span><?= h(app_text('auto.k_32cea47742bf')) ?></span><strong><?= $stats['resellers'] ?></strong></a>
+    <a class="stat" href="crud.php?module=tests"><span><?= h(app_text('auto.k_953522b53414')) ?></span><strong><?= $stats['tests'] ?></strong></a>
+    <a class="stat" href="crud.php?module=leads"><span><?= h(app_text('auto.k_be11d71726a6')) ?></span><strong><?= $stats['leads'] ?></strong></a>
 </div>
 
 <div class="two-columns">

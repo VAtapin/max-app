@@ -360,6 +360,7 @@ async function loadConsultantProfile() {
 
     const result = await api(`profile.php?${userQuery()}`);
     state.consultantProfile = result;
+    applyTheme(result.profile?.theme_key || 'classic');
     return result;
 }
 
@@ -396,6 +397,12 @@ function renderVideoBlock(url, title) {
     }
 
     return `<a class="soft-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(ui('products.video'))}</a>`;
+}
+
+function applyTheme(themeKey) {
+    const allowed = ['classic', 'ocean', 'berry', 'graphite'];
+    const key = allowed.includes(String(themeKey || '')) ? String(themeKey) : 'classic';
+    document.body.dataset.theme = key;
 }
 
 function setPage(nextPage) {
@@ -763,9 +770,32 @@ async function renderRecommendations() {
     page.innerHTML = result.recommendations.length
         ? result.recommendations.map((item) => `
             <article class="recommendation-card">
-                <span class="eyebrow">${escapeHtml(ui('recommendations.reason'))}</span>
+                <span class="eyebrow">${escapeHtml(item.category_title || ui('recommendations.reason'))}</span>
+                ${item.image_path ? `<img class="item-image" src="${escapeHtml(item.image_path)}" alt="">` : ''}
                 <strong>${escapeHtml(item.product_title || ui('recommendations.default_title'))}</strong>
-                <span class="muted">${escapeHtml(item.short_description || item.reason_text || '')}</span>
+                ${item.reason_text ? `
+                    <div class="recommendation-section">
+                        <span>${escapeHtml(ui('recommendations.reason'))}</span>
+                        ${renderTextBlocks(item.reason_text)}
+                    </div>
+                ` : ''}
+                ${item.short_description ? `
+                    <div class="recommendation-section">
+                        <span>${escapeHtml(ui('recommendations.details'))}</span>
+                        ${renderTextBlocks(item.short_description)}
+                    </div>
+                ` : ''}
+                ${item.full_description ? `
+                    <details class="recommendation-section">
+                        <summary>${escapeHtml(ui('recommendations.product_text'))}</summary>
+                        ${renderTextBlocks(item.full_description)}
+                    </details>
+                ` : ''}
+                ${renderVideoBlock(item.video_url, item.product_title || ui('recommendations.default_title'))}
+                <div class="item-links">
+                    ${item.document_path ? `<a href="${escapeHtml(item.document_path)}" target="_blank" rel="noopener">${escapeHtml(ui('products.open_file'))}</a>` : ''}
+                    ${item.purchase_url ? `<a href="${escapeHtml(item.purchase_url)}" target="_blank" rel="noopener">${escapeHtml(ui('products.open_link'))}</a>` : ''}
+                </div>
                 <div class="recommendation-actions">
                     ${item.product_id ? `<button class="secondary compact" data-open-product-id="${item.product_id}">${escapeHtml(ui('products.details'))}</button>` : ''}
                     ${item.product_id ? `<button class="secondary compact" data-product-id="${item.product_id}">${escapeHtml(ui('products.request_info'))}</button>` : ''}
@@ -792,7 +822,6 @@ function responseTextParagraphs(response) {
         content?.short_text,
         content?.full_text,
         content?.title ? `${ui('lead_response.material')}: ${content.title}` : null,
-        content?.title ? `Материал: ${content.title}` : null,
     ].filter(Boolean).map((value) => String(value).trim());
 
     return String(response.message_text || '')
@@ -830,9 +859,9 @@ function renderResponseMaterial(response) {
             <strong>${escapeHtml(content.title || ui('lead_response.material'))}</strong>
             ${text ? `<p>${escapeHtml(text)}</p>` : ''}
             <div class="response-resource-actions">
+                ${content.id ? `<button class="secondary compact" data-open-material-id="${content.id}">${escapeHtml(ui('lead_response.open_material'))}</button>` : ''}
                 ${content.attachment_path ? `<a href="${escapeHtml(content.attachment_path)}" target="_blank" rel="noopener">${escapeHtml(ui('lead_response.open_file'))}</a>` : ''}
                 ${content.video_url ? `<a href="${escapeHtml(content.video_url)}" target="_blank" rel="noopener">${escapeHtml(ui('lead_response.open_video'))}</a>` : ''}
-                ${content.button_url ? `<a href="${escapeHtml(content.button_url)}" target="_blank" rel="noopener">${escapeHtml(content.button_text || ui('lead_response.open_material'))}</a>` : ''}
             </div>
         </article>
     `;
@@ -929,16 +958,52 @@ async function renderLeads() {
     await Promise.allSettled(unreadLeadIds.map(markLeadRead));
 }
 
-async function contactManager(productId = null) {
-    const payload = {
-        ...userPayload(),
-        product_id: productId,
-        message: productId ? ui('lead.product_request_message') : ui('lead.contact_request_message'),
-    };
+function openContactModal(productId = null) {
+    document.querySelector('.modal-backdrop')?.remove();
+    const productTitle = productId
+        ? document.querySelector(`[data-product-id="${productId}"]`)?.closest('article')?.querySelector('strong')?.textContent || ''
+        : '';
+    document.body.insertAdjacentHTML('beforeend', `
+        <div class="modal-backdrop">
+            <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="contact-modal-title">
+                <button class="modal-close" type="button" data-action="close-modal" aria-label="${escapeHtml(ui('common.close'))}">×</button>
+                <h2 id="contact-modal-title">${escapeHtml(productId ? ui('lead.modal_product_title') : ui('lead.modal_title'))}</h2>
+                ${productTitle ? `<p class="muted">${escapeHtml(productTitle)}</p>` : ''}
+                <p class="muted">${escapeHtml(ui('lead.modal_hint'))}</p>
+                <form id="contact-form">
+                    <input type="hidden" name="product_id" value="${productId ? Number(productId) : ''}">
+                    <textarea name="message" rows="5" required placeholder="${escapeHtml(ui('lead.message_placeholder'))}"></textarea>
+                    <div class="form-error" id="contact-error"></div>
+                    <div class="modal-actions">
+                        <button class="secondary" type="button" data-action="close-modal">${escapeHtml(ui('lead.cancel'))}</button>
+                        <button class="primary" type="submit">${escapeHtml(ui('lead.send'))}</button>
+                    </div>
+                </form>
+            </section>
+        </div>
+    `);
+    document.querySelector('#contact-form textarea')?.focus();
+}
+
+function closeModal() {
+    document.querySelector('.modal-backdrop')?.remove();
+}
+
+async function createLeadFromMessage(productId = null, message = '') {
+    const text = String(message || '').trim();
+    if (!text) {
+        throw new Error(ui('lead.message_required'));
+    }
+
     const result = await api('contact_manager.php', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+            ...userPayload(),
+            product_id: productId,
+            message: text,
+        }),
     });
+
     page.insertAdjacentHTML('afterbegin', `
         <div class="panel">
             ${escapeHtml(formatUi('lead.created', {id: result.lead_id}))}
@@ -977,6 +1042,31 @@ async function renderTest(testId) {
                 <button class="primary" type="submit">${escapeHtml(ui('tests.submit'))}</button>
             </form>
         </section>
+    `;
+}
+
+function renderQuestion(question) {
+    const answers = question.answers || [];
+    const type = question.question_type;
+    const inputType = type === 'multiple_choice' ? 'checkbox' : 'radio';
+    const isRequired = Number(question.is_required) === 1;
+    const controls = answers.length
+        ? answers.map((answer) => `
+            <label class="answer">
+                <input type="${inputType}" name="question_${question.id}" value="${answer.id}">
+                <span>${escapeHtml(answer.answer_text)}</span>
+            </label>
+        `).join('')
+        : `<textarea class="text-answer" name="question_${question.id}" rows="3" placeholder="${escapeHtml(ui('tests.text_placeholder'))}"></textarea>`;
+
+    return `
+        <fieldset class="question" data-question-id="${question.id}" data-question-type="${escapeHtml(type)}">
+            <legend>
+                ${escapeHtml(question.question_text)}
+                ${isRequired ? `<span class="question-required">${escapeHtml(ui('tests.required'))}</span>` : ''}
+            </legend>
+            ${controls}
+        </fieldset>
     `;
 }
 
@@ -1101,13 +1191,24 @@ page.addEventListener('click', async (event) => {
     if (!(target instanceof HTMLElement)) return;
     if (target.dataset.action === 'tests') setPage('tests');
     if (target.dataset.action === 'back-to-tests') await renderTests();
-    if (target.dataset.action === 'contact') await contactManager();
+    if (target.dataset.action === 'contact') openContactModal();
+    if (target.dataset.action === 'close-modal') closeModal();
     if (target.dataset.action === 'create-link-token') await renderAccountLinkPanel();
     if (target.dataset.pageTarget) setPage(target.dataset.pageTarget);
     if (target.dataset.openTestId) await renderTest(Number(target.dataset.openTestId));
     if (target.dataset.openProductId) await renderProductDetail(Number(target.dataset.openProductId));
     if (target.dataset.openMaterialId) await renderMaterialDetail(Number(target.dataset.openMaterialId));
-    if (target.dataset.productId) await contactManager(Number(target.dataset.productId));
+    if (target.dataset.productId) openContactModal(Number(target.dataset.productId));
+});
+
+document.addEventListener('click', (event) => {
+    const clicked = event.target;
+    if (!(clicked instanceof HTMLElement)) {
+        return;
+    }
+    if (clicked.dataset.action === 'close-modal' || clicked.classList.contains('modal-backdrop')) {
+        closeModal();
+    }
 });
 
 page.addEventListener('submit', async (event) => {
@@ -1138,6 +1239,43 @@ page.addEventListener('submit', async (event) => {
     if (!(target instanceof HTMLFormElement) || target.id !== 'test-form') return;
     event.preventDefault();
     await submitTest(target);
+});
+
+document.addEventListener('submit', async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLFormElement) || target.id !== 'contact-form') {
+        return;
+    }
+
+    event.preventDefault();
+    const error = target.querySelector('#contact-error');
+    const button = target.querySelector('button[type="submit"]');
+    const formData = new FormData(target);
+    const productId = Number(formData.get('product_id') || 0) || null;
+    const message = String(formData.get('message') || '').trim();
+
+    if (!message) {
+        if (error) error.textContent = ui('lead.message_required');
+        return;
+    }
+
+    if (button) {
+        button.disabled = true;
+        button.dataset.originalText = button.textContent || '';
+        button.textContent = ui('lead.sending');
+    }
+
+    try {
+        await createLeadFromMessage(productId, message);
+        closeModal();
+    } catch (exception) {
+        if (error) error.textContent = exception instanceof Error ? exception.message : ui('common.load_failed');
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = button.dataset.originalText || ui('lead.send');
+        }
+    }
 });
 
 applyInitialRoute();
