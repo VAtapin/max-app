@@ -187,10 +187,7 @@ button {
 }
 
 .video-layout {
-    align-items: stretch;
-    display: grid;
-    gap: 20px;
-    grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+    max-width: 860px;
 }
 
 .video-embed {
@@ -206,18 +203,6 @@ button {
     border: 0;
     height: 100%;
     width: 100%;
-}
-
-.video-note {
-    align-content: center;
-    display: grid;
-    gap: 12px;
-}
-
-.video-note p {
-    color: var(--color-muted);
-    line-height: 1.55;
-    margin: 0;
 }
 
 .two-col {

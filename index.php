@@ -186,9 +186,7 @@ function public_youtube_embed_url(?string $url): ?string
         <?php if (public_block_enabled($blocks, 'video') && !empty($profileData['video_url'])): ?>
             <section class="section video-section" id="video">
                 <div class="section-head">
-                    <span class="eyebrow">Видео</span>
                     <h2><?= h(public_block_title($blocks, 'video', 'Видеообращение консультанта')) ?></h2>
-                    <p>Коротко о подходе консультанта и о том, чем он может быть полезен.</p>
                 </div>
                 <div class="video-layout">
                     <?php $embedUrl = public_youtube_embed_url((string)$profileData['video_url']); ?>
@@ -199,11 +197,6 @@ function public_youtube_embed_url(?string $url): ?string
                     <?php else: ?>
                         <a class="video-card" href="<?= h((string)$profileData['video_url']) ?>" target="_blank" rel="noopener">Смотреть видеообращение</a>
                     <?php endif; ?>
-                    <aside class="public-card video-note">
-                        <strong><?= h((string)$profileData['display_name']) ?></strong>
-                        <p><?= h((string)($profileData['subtitle'] ?: 'Ваш консультант SWPro')) ?></p>
-                        <a class="secondary" href="#contacts">Связаться после просмотра</a>
-                    </aside>
                 </div>
             </section>
         <?php endif; ?>
