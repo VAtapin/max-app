@@ -32,7 +32,7 @@ async def get_test(test_id: int) -> dict | None:
         return test
 
 
-async def save_test_result(end_user_id: int, test_id: int, answers: list[dict]) -> int:
+async def save_test_result(end_user_id: int, test_id: int, answers: list[dict]) -> dict:
     async with cursor() as cur:
         await cur.execute(
             "INSERT INTO user_test_sessions (end_user_id, test_id) VALUES (%s, %s)",
@@ -62,11 +62,32 @@ async def save_test_result(end_user_id: int, test_id: int, answers: list[dict]) 
 
         await cur.execute(
             """
+            SELECT title, summary_text, advice_text
+            FROM test_results
+            WHERE test_id = %s
+              AND min_score <= %s
+              AND max_score >= %s
+            ORDER BY sort_order, id
+            LIMIT 1
+            """,
+            (test_id, total_score, total_score),
+        )
+        result = await cur.fetchone()
+        summary = "\n\n".join(
+            part for part in [
+                result.get("summary_text") if result else None,
+                result.get("advice_text") if result else None,
+            ]
+            if part
+        ) or tr("test.result_summary")
+
+        await cur.execute(
+            """
             UPDATE user_test_sessions
             SET completed_at = NOW(), total_score = %s, result_summary = %s
             WHERE id = %s
             """,
-            (total_score, tr("test.result_summary"), session_id),
+            (total_score, summary, session_id),
         )
         await cur.execute(
             """
@@ -78,4 +99,9 @@ async def save_test_result(end_user_id: int, test_id: int, answers: list[dict]) 
 
     await build_recommendations(end_user_id, session_id)
 
-    return session_id
+    return {
+        "session_id": session_id,
+        "total_score": total_score,
+        "title": result.get("title") if result else tr("test.result_title"),
+        "summary": summary,
+    }

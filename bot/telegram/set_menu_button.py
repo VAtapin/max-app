@@ -2,11 +2,10 @@ import asyncio
 import os
 from pathlib import Path
 
-from aiogram.types import MenuButtonWebApp, WebAppInfo
 from dotenv import load_dotenv
 
-from bot.core.i18n import tr
 from bot.telegram.adapter import build_bot
+from bot.telegram.main import configure_telegram_menu
 
 
 async def main() -> None:
@@ -16,16 +15,10 @@ async def main() -> None:
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not set in bot/.env")
 
-    mini_app_url = os.getenv("SWPRO_MINI_APP_URL", "https://swpro.ru/mini-app/index.html")
     bot = build_bot(token)
     try:
-        await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(
-                text=tr("menu.open_swpro"),
-                web_app=WebAppInfo(url=mini_app_url),
-            )
-        )
-        print(f"Telegram menu button set: {mini_app_url}")
+        await configure_telegram_menu(bot)
+        print("Telegram command menu configured.")
     finally:
         await bot.session.close()
 

@@ -65,6 +65,19 @@ function appUrl() {
     return `../vk-mini-app/?${targetParams().toString()}`;
 }
 
+function hasTelegramContext() {
+    return Boolean(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
+}
+
+function hasVkOkContext() {
+    const params = query();
+    return params.has('vk_app_id') || params.has('vk_user_id') || params.has('vk_ok_user_id');
+}
+
+function hasKnownWebUser() {
+    return Boolean(localStorage.getItem('swpro_web_user_id'));
+}
+
 function launchHash() {
     return targetParams().toString();
 }
@@ -116,10 +129,20 @@ function updateLinks() {
 }
 
 function showKnownUserShortcut() {
-    const webUserId = localStorage.getItem('swpro_web_user_id');
-    if (webUserId && knownUserPanel) {
+    if (hasKnownWebUser() && knownUserPanel) {
         knownUserPanel.hidden = false;
     }
+}
+
+function autoOpenCabinetIfKnown() {
+    if (!hasTelegramContext() && !hasVkOkContext() && !hasKnownWebUser()) {
+        return false;
+    }
+    if (hasKnownWebUser()) {
+        localStorage.setItem('swpro_pending_referral_code', currentReferralCode());
+    }
+    window.location.replace(appUrl());
+    return true;
 }
 
 connectForm.addEventListener('submit', (event) => {
@@ -143,4 +166,6 @@ document.addEventListener('click', (event) => {
 
 refInput.value = initialReferralCode() || DEFAULT_REFERRAL_CODE;
 updateLinks();
-showKnownUserShortcut();
+if (!autoOpenCabinetIfKnown()) {
+    showKnownUserShortcut();
+}
