@@ -16,7 +16,7 @@ def button_text(value: object, limit: int = 58) -> str:
 
 
 def mini_app_url(referral_code: str | None = None, page: str | None = None, test_id: int | None = None) -> str:
-    base_url = os.getenv("SWPRO_MINI_APP_URL", "https://swpro.ru/mini-app/index.html").strip()
+    base_url = os.getenv("SWPRO_MINI_APP_URL", "https://swpro.ru/vk-mini-app/").strip()
     params: dict[str, str | int] = {}
     if referral_code:
         params["ref"] = referral_code
@@ -58,7 +58,7 @@ def main_menu_keyboard(referral_code: str | None = None, diagnosis_test_id: int 
         [
             InlineKeyboardButton(
                 text="📊 Результаты тестов",
-                web_app=WebAppInfo(url=mini_app_url(referral_code, page="recommendations")),
+                web_app=WebAppInfo(url=mini_app_url(referral_code, page="results")),
             )
         ],
         [
@@ -67,7 +67,7 @@ def main_menu_keyboard(referral_code: str | None = None, diagnosis_test_id: int 
         [
             InlineKeyboardButton(
                 text="🎥 Материалы",
-                web_app=WebAppInfo(url=mini_app_url(referral_code, page="home")),
+                callback_data="materials:list",
             )
         ],
         [

@@ -312,6 +312,25 @@ function latest_draft_session(int $endUserId, int $testId): ?array
     return $session ?: null;
 }
 
+function latest_completed_session(int $endUserId, int $testId): ?array
+{
+    $stmt = db()->prepare(
+        'SELECT *
+         FROM user_test_sessions
+         WHERE end_user_id = :end_user_id
+           AND test_id = :test_id
+           AND completed_at IS NOT NULL
+         ORDER BY completed_at DESC, id DESC
+         LIMIT 1'
+    );
+    $stmt->execute([
+        'end_user_id' => $endUserId,
+        'test_id' => $testId,
+    ]);
+    $session = $stmt->fetch();
+    return $session ?: null;
+}
+
 function draft_progress(int $sessionId, int $testId): array
 {
     $total = test_question_count($testId);
@@ -352,6 +371,91 @@ function session_answer_ids(int $sessionId): array
     $stmt = db()->prepare('SELECT answer_id FROM user_test_answers WHERE session_id = :session_id AND answer_id IS NOT NULL');
     $stmt->execute(['session_id' => $sessionId]);
     return array_map(static fn(array $row): int => (int)$row['answer_id'], $stmt->fetchAll());
+}
+
+function completed_scale_results(int $sessionId): array
+{
+    $stmt = db()->prepare(
+        'SELECT uts.score, ts.id AS scale_id, ts.slug, ts.title, ts.description,
+                tsr.title AS result_title, tsr.severity, tsr.summary_text, tsr.advice_text
+         FROM user_test_scale_scores uts
+         INNER JOIN test_scales ts ON ts.id = uts.scale_id
+         LEFT JOIN test_scale_results tsr ON tsr.id = uts.result_id
+         WHERE uts.session_id = :session_id
+         ORDER BY ts.sort_order, ts.id'
+    );
+    $stmt->execute(['session_id' => $sessionId]);
+
+    return array_map(static function (array $row): array {
+        return [
+            'scale_id' => (int)$row['scale_id'],
+            'slug' => $row['slug'],
+            'title' => $row['title'],
+            'description' => $row['description'],
+            'score' => (int)$row['score'],
+            'result' => $row['result_title'] ? [
+                'title' => $row['result_title'],
+                'severity' => $row['severity'],
+                'summary_text' => $row['summary_text'],
+                'advice_text' => $row['advice_text'],
+            ] : null,
+        ];
+    }, $stmt->fetchAll());
+}
+
+function completed_result_response(array $user, int $testId, ?array $session = null): ?array
+{
+    $session ??= latest_completed_session((int)$user['id'], $testId);
+    if (!$session) {
+        return null;
+    }
+
+    $total = (int)($session['total_score'] ?? 0);
+    $resultRule = test_result_for_score($testId, $total);
+
+    return [
+        'done' => true,
+        'already_completed' => true,
+        'session_id' => (int)$session['id'],
+        'completed_at' => $session['completed_at'],
+        'total_score' => $total,
+        'summary' => $session['result_summary'] ?: build_result_summary($resultRule),
+        'result' => $resultRule ? [
+            'title' => $resultRule['title'],
+            'summary_text' => $resultRule['summary_text'],
+            'advice_text' => $resultRule['advice_text'],
+        ] : null,
+        'scale_results' => completed_scale_results((int)$session['id']),
+        'materials' => test_result_materials(),
+        'recommendations' => [],
+    ];
+}
+
+function test_status_payload(array $user, int $testId): array
+{
+    $draft = latest_draft_session((int)$user['id'], $testId);
+    if ($draft) {
+        return [
+            'status' => 'draft',
+            'progress' => draft_progress((int)$draft['id'], $testId),
+            'completed_at' => null,
+        ];
+    }
+
+    $completed = latest_completed_session((int)$user['id'], $testId);
+    if ($completed) {
+        return [
+            'status' => 'completed',
+            'progress' => null,
+            'completed_at' => $completed['completed_at'],
+        ];
+    }
+
+    return [
+        'status' => 'new',
+        'progress' => null,
+        'completed_at' => null,
+    ];
 }
 
 function complete_test_session(array $user, int $testId, int $sessionId): array
@@ -427,6 +531,22 @@ if (($_GET['action'] ?? '') === 'resume') {
         'progress' => $session ? draft_progress((int)$session['id'], $testId) : null,
         'question' => $session ? next_question_for_session((int)$session['id'], $testId) : null,
     ]);
+}
+
+if (($_GET['action'] ?? '') === 'result') {
+    $user = require_platform_user();
+    $testId = (int)($_GET['test_id'] ?? 0);
+    $test = $testId ? load_client_test($testId, $user) : null;
+    if (!$test) {
+        json_response(['error' => 'test not found'], 404);
+    }
+
+    $result = completed_result_response($user, $testId);
+    if (!$result) {
+        json_response(['error' => 'result not found'], 404);
+    }
+
+    json_response($result + ['test' => public_test_payload($test)]);
 }
 
 if (($_GET['action'] ?? '') === 'start' && $_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -756,6 +876,7 @@ if (isset($_GET['id'])) {
     }
 
     $draft = $user ? latest_draft_session((int)$user['id'], (int)$test['id']) : null;
+    $completed = $user ? completed_result_response($user, (int)$test['id']) : null;
     $payload = [
         'test' => public_test_payload($test),
         'questions' => $items,
@@ -766,12 +887,15 @@ if (isset($_GET['id'])) {
             'percent' => 0,
         ],
         'question' => null,
+        'status' => $completed ? 'completed' : 'new',
+        'completed_result' => $completed,
     ];
     if ($draft) {
         $sessionPayload = session_response($test, $draft);
         $payload['session'] = $sessionPayload['session'];
         $payload['progress'] = $sessionPayload['progress'];
         $payload['question'] = $sessionPayload['question'];
+        $payload['status'] = 'draft';
     }
 
     json_response($payload);
@@ -797,4 +921,11 @@ $stmt = db()->prepare(
      ORDER BY t.sort_order, t.title"
 );
 $stmt->execute($ownerParams);
-json_response(['tests' => $stmt->fetchAll()]);
+$tests = $stmt->fetchAll();
+if ($user) {
+    foreach ($tests as &$test) {
+        $test += test_status_payload($user, (int)$test['id']);
+    }
+    unset($test);
+}
+json_response(['tests' => $tests]);

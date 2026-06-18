@@ -33,7 +33,7 @@ function applyInitialRoute() {
     const search = new URLSearchParams(window.location.search);
     const pageName = search.get('page');
     const testId = Number(search.get('test_id') || 0);
-    if (['home', 'profile', 'tests', 'products', 'recommendations', 'leads'].includes(pageName || '')) {
+    if (['home', 'profile', 'tests', 'products', 'recommendations', 'leads', 'results'].includes(pageName || '')) {
         state.page = pageName;
     }
     if (testId > 0) {
@@ -162,12 +162,27 @@ function hasVkLaunchParams() {
 }
 
 async function initVk() {
-    if (!window.vkBridge || !hasVkLaunchParams()) {
+    if (!hasVkLaunchParams()) {
         return null;
     }
 
-    await vkBridge.send('VKWebAppInit');
-    return vkBridge.send('VKWebAppGetUserInfo');
+    if (window.vkBridge) {
+        try {
+            await vkBridge.send('VKWebAppInit');
+            return await vkBridge.send('VKWebAppGetUserInfo');
+        } catch (_) {
+            // VK moderation can open the app with launch params before bridge user info is available.
+        }
+    }
+
+    const params = vkLaunchParams();
+    const fallbackId = params.get('vk_user_id') || params.get('vk_ok_user_id');
+    return fallbackId ? {
+        id: fallbackId,
+        first_name: 'VK',
+        last_name: 'User',
+        domain: '',
+    } : null;
 }
 
 async function initWebUser() {
@@ -434,6 +449,26 @@ function renderVideoBlock(url, title) {
     }
 
     return `<a class="soft-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(ui('products.video'))}</a>`;
+}
+
+function openPlatformUrl(url) {
+    if (!url) {
+        return;
+    }
+
+    const absoluteUrl = new URL(url, window.location.href).toString();
+    const tg = getTelegramApp();
+    if (tg && typeof tg.openLink === 'function') {
+        tg.openLink(absoluteUrl);
+        return;
+    }
+    if (window.vkBridge) {
+        vkBridge.send('VKWebAppOpenLink', {url: absoluteUrl}).catch(() => {
+            window.open(absoluteUrl, '_blank', 'noopener');
+        });
+        return;
+    }
+    window.open(absoluteUrl, '_blank', 'noopener');
 }
 
 function applyTheme(themeKey) {
@@ -1051,6 +1086,34 @@ async function createLeadFromMessage(productId = null, message = '') {
 }
 
 async function renderTests() {
+    const testsResponse = await api(`tests.php?${userQuery()}`);
+    page.innerHTML = testsResponse.tests.length
+        ? testsResponse.tests.map((test) => {
+            const status = test.status || 'new';
+            const actionText = status === 'completed'
+                ? ui('tests.show_result', 'Посмотреть результат')
+                : (status === 'draft' ? ui('tests.resume', 'Продолжить') : ui('tests.start', 'Начать тест'));
+            const statusText = status === 'completed'
+                ? ui('tests.completed_badge', 'Тест уже пройден')
+                : (status === 'draft' ? ui('tests.draft_badge', 'Тест начат') : '');
+            return `
+                <article class="diagnostic-card">
+                    ${test.intro_image_path ? `<img class="diagnostic-cover" src="${escapeHtml(test.intro_image_path)}" alt="">` : ''}
+                    <span class="diagnostic-icon">${escapeHtml(test.emoji || '🌿')}</span>
+                    <span class="eyebrow">${escapeHtml(test.category_title || ui('tests.diagnostic'))}</span>
+                    <strong>${escapeHtml(test.title)}</strong>
+                    <span class="muted">${escapeHtml(test.description || '')}</span>
+                    <span class="test-meta">${escapeHtml(test.scoring_type === 'multiscale' ? ui('tests.matrix_type', 'Матрица здоровья') : ui('tests.simple_type', 'Тест'))}</span>
+                    <span class="test-meta">${escapeHtml(formatUi('tests.questions_count', {count: test.questions_count || 0}))}</span>
+                    ${statusText ? `<span class="status-pill status-${escapeHtml(status)}">${escapeHtml(statusText)}</span>` : ''}
+                    ${status === 'draft' && test.progress ? renderProgress(test.progress) : ''}
+                    <button class="${status === 'completed' ? 'primary' : 'secondary'}" data-open-test-id="${test.id}">${escapeHtml(actionText)}</button>
+                </article>
+            `;
+        }).join('')
+        : `<div class="empty-card">${escapeHtml(ui('tests.empty'))}</div>`;
+    return;
+
     const result = await api(`tests.php?${userQuery()}`);
     page.innerHTML = result.tests.length
         ? result.tests.map((test) => `
@@ -1074,7 +1137,72 @@ async function renderTest(testId) {
         renderResumeTest(result);
         return;
     }
+    if (result.completed_result) {
+        renderCompletedTest(result);
+        return;
+    }
     renderTestIntro(result);
+}
+
+async function renderTestResultsList() {
+    const result = await api(`tests.php?${userQuery()}`);
+    const completed = result.tests.filter((test) => test.status === 'completed');
+    page.innerHTML = completed.length
+        ? `
+            <section class="home-section">
+                <div class="section-title">
+                    <h2>${escapeHtml(ui('results.title', 'Результаты тестов'))}</h2>
+                    <button class="text-button" data-page-target="tests">${escapeHtml(ui('nav.tests', 'Тесты'))}</button>
+                </div>
+                ${completed.map((test) => `
+                    <article class="diagnostic-card">
+                        <span class="diagnostic-icon">${escapeHtml(test.emoji || '🌿')}</span>
+                        <span class="eyebrow">${escapeHtml(ui('tests.completed_badge', 'Тест уже пройден'))}</span>
+                        <strong>${escapeHtml(test.title)}</strong>
+                        <span class="muted">${escapeHtml(test.description || '')}</span>
+                        <button class="primary" data-open-test-id="${test.id}">${escapeHtml(ui('tests.show_result', 'Посмотреть результат'))}</button>
+                    </article>
+                `).join('')}
+            </section>
+        `
+        : `
+            <section class="panel">
+                <h2>${escapeHtml(ui('results.title', 'Результаты тестов'))}</h2>
+                <p class="muted">${escapeHtml(ui('results.empty', 'Вы пока не завершили ни один тест.'))}</p>
+                <button class="primary" data-page-target="tests">${escapeHtml(ui('home.start_test', 'Пройти тест'))}</button>
+            </section>
+        `;
+}
+
+function renderCompletedTest(result) {
+    const test = result.test;
+    page.innerHTML = `
+        <section class="panel test-panel">
+            <button class="secondary compact" data-action="back-to-tests">${escapeHtml(ui('tests.back'))}</button>
+            <div class="resume-card completed-card">
+                <span class="test-emoji">${escapeHtml(test.emoji || '🌿')}</span>
+                <h2>${escapeHtml(test.title)}</h2>
+                <p class="muted">${escapeHtml(ui('tests.completed_hint', 'Вы уже проходили этот тест. Можно посмотреть результат или пройти заново.'))}</p>
+                <button class="primary" data-action="show-test-result">${escapeHtml(ui('tests.show_result', 'Посмотреть результат'))}</button>
+                <button class="secondary" data-action="restart-test">${escapeHtml(ui('tests.retake', 'Пройти заново'))}</button>
+            </div>
+        </section>
+    `;
+}
+
+async function showCompletedTestResult() {
+    if (state.activeTest?.completed_result) {
+        renderTestResult(state.activeTest.completed_result);
+        return;
+    }
+
+    const testId = state.activeTest?.test?.id;
+    if (!testId) {
+        return;
+    }
+
+    const result = await api(`tests.php?action=result&test_id=${encodeURIComponent(testId)}&${userQuery()}`);
+    renderTestResult(result);
 }
 
 function renderTestIntro(result) {
@@ -1354,6 +1482,7 @@ async function render() {
         }
         if (state.page === 'products') await renderProducts();
         if (state.page === 'recommendations') await renderRecommendations();
+        if (state.page === 'results') await renderTestResultsList();
         if (state.page === 'leads') await renderLeads();
     } catch (error) {
         page.innerHTML = `<div class="empty-card">${escapeHtml(friendlyError(error))}</div>`;
@@ -1362,6 +1491,17 @@ async function render() {
 
 tabs.forEach((tab) => {
     tab.addEventListener('click', () => setPage(tab.dataset.page));
+});
+
+document.addEventListener('click', (event) => {
+    const clicked = event.target;
+    if (!(clicked instanceof HTMLElement)) return;
+    const link = clicked.closest('a[href]');
+    if (!(link instanceof HTMLAnchorElement)) return;
+    if (!link.target && !link.classList.contains('soft-link') && !link.classList.contains('response-file-link')) return;
+
+    event.preventDefault();
+    openPlatformUrl(link.getAttribute('href') || '');
 });
 
 page.addEventListener('click', async (event) => {
@@ -1382,6 +1522,7 @@ page.addEventListener('click', async (event) => {
     if (target.dataset.action === 'start-test') await startTestSession(false);
     if (target.dataset.action === 'resume-test') renderTestQuestion(state.activeTest);
     if (target.dataset.action === 'restart-test') await startTestSession(true);
+    if (target.dataset.action === 'show-test-result') await showCompletedTestResult();
     if (target.dataset.action === 'answer-test') await answerCurrentQuestion(Number(target.dataset.answerId || 0));
     if (target.dataset.action === 'close-modal') closeModal();
     if (target.dataset.action === 'create-link-token') await renderAccountLinkPanel();

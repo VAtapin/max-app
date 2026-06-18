@@ -241,7 +241,7 @@ function test_snippet(?int $testId): ?array
 function mini_app_url(?int $testId = null): string
 {
     $configured = app_config()['integrations']['mini_app_url'] ?? '';
-    $url = $configured !== '' ? $configured : (absolute_public_url('/mini-app/index.html') ?: '/mini-app/index.html');
+    $url = $configured !== '' ? $configured : (absolute_public_url('/vk-mini-app/') ?: '/vk-mini-app/');
     if ($testId) {
         $separator = str_contains($url, '?') ? '&' : '?';
         $url .= $separator . 'page=tests&test_id=' . $testId;

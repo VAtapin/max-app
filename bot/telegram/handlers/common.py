@@ -416,6 +416,18 @@ async def materials_command(message: Message) -> None:
     await message.answer(tr("materials.choose"), reply_markup=materials_keyboard(materials))
 
 
+@router.callback_query(F.data == "materials:list")
+async def materials_list_callback(callback: CallbackQuery) -> None:
+    user = await resolve_telegram_user(callback.from_user)
+    materials = await list_materials(user)
+    if callback.message:
+        if materials:
+            await callback.message.answer(tr("materials.choose"), reply_markup=materials_keyboard(materials))
+        else:
+            await callback.message.answer(tr("materials.empty"))
+    await callback.answer()
+
+
 @router.message(Command("recommendations"))
 async def recommendations_command(message: Message) -> None:
     user = await resolve_user(message)
