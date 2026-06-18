@@ -109,6 +109,15 @@ def resume_test_keyboard(test_id: int) -> InlineKeyboardMarkup:
     )
 
 
+def completed_test_keyboard(test_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Посмотреть результат", callback_data=f"test:result:{test_id}")],
+            [InlineKeyboardButton(text="Пройти заново", callback_data=f"test:restart:{test_id}")],
+        ]
+    )
+
+
 def tests_keyboard(tests: list[dict]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[

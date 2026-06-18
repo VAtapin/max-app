@@ -159,6 +159,97 @@ async def get_or_create_test_session(end_user_id: int, test_id: int, reset: bool
         return {"id": cur.lastrowid, "end_user_id": end_user_id, "test_id": test_id, "is_new": True}
 
 
+async def latest_draft_test_session(end_user_id: int, test_id: int) -> dict | None:
+    async with cursor() as cur:
+        await cur.execute(
+            """
+            SELECT *
+            FROM user_test_sessions
+            WHERE end_user_id = %s AND test_id = %s AND completed_at IS NULL
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (end_user_id, test_id),
+        )
+        return await cur.fetchone()
+
+
+async def latest_completed_test_result(end_user_id: int, test_id: int) -> dict | None:
+    async with cursor() as cur:
+        await cur.execute(
+            """
+            SELECT uts.*, t.title AS test_title
+            FROM user_test_sessions uts
+            INNER JOIN tests t ON t.id = uts.test_id
+            WHERE uts.end_user_id = %s
+              AND uts.test_id = %s
+              AND uts.completed_at IS NOT NULL
+            ORDER BY uts.completed_at DESC, uts.id DESC
+            LIMIT 1
+            """,
+            (end_user_id, test_id),
+        )
+        session = await cur.fetchone()
+        if not session:
+            return None
+
+        total_score = int(session.get("total_score") or 0)
+        await cur.execute(
+            """
+            SELECT title
+            FROM test_results
+            WHERE test_id = %s
+              AND min_score <= %s
+              AND max_score >= %s
+            ORDER BY sort_order, id
+            LIMIT 1
+            """,
+            (test_id, total_score, total_score),
+        )
+        result_rule = await cur.fetchone()
+
+        await cur.execute(
+            """
+            SELECT utsc.scale_id, utsc.score, ts.title,
+                   tsr.title AS result_title,
+                   tsr.summary_text,
+                   tsr.advice_text,
+                   tsr.severity
+            FROM user_test_scale_scores utsc
+            INNER JOIN test_scales ts ON ts.id = utsc.scale_id
+            LEFT JOIN test_scale_results tsr ON tsr.id = utsc.result_id
+            WHERE utsc.session_id = %s
+            ORDER BY ts.sort_order, ts.id
+            """,
+            (session["id"],),
+        )
+        scale_rows = await cur.fetchall()
+        scale_results = [
+            {
+                "scale_id": row["scale_id"],
+                "title": row["title"],
+                "score": int(row["score"] or 0),
+                "result": {
+                    "title": row.get("result_title"),
+                    "summary_text": row.get("summary_text"),
+                    "advice_text": row.get("advice_text"),
+                    "severity": row.get("severity"),
+                } if row.get("result_title") else None,
+            }
+            for row in scale_rows
+        ]
+
+        return {
+            "session_id": session["id"],
+            "test_id": test_id,
+            "total_score": total_score,
+            "title": result_rule.get("title") if result_rule else session.get("test_title") or tr("test.result_title"),
+            "summary": session.get("result_summary") or tr("test.result_summary"),
+            "scale_results": scale_results,
+            "completed_at": session.get("completed_at"),
+        }
+
+
 async def session_answered_question_ids(session_id: int) -> set[int]:
     async with cursor() as cur:
         await cur.execute(

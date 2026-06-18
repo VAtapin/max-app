@@ -19,6 +19,8 @@ from bot.core.tests import (
     complete_test_session,
     get_or_create_test_session,
     get_test,
+    latest_completed_test_result,
+    latest_draft_test_session,
     list_tests,
     save_session_answer,
     save_test_result,
@@ -28,6 +30,7 @@ from bot.core.users import StaffAccountError, get_or_create_user
 from bot.telegram.keyboards.menu import (
     app_button,
     answers_keyboard,
+    completed_test_keyboard,
     main_menu_keyboard,
     materials_keyboard,
     mini_app_url,
@@ -98,6 +101,34 @@ async def delete_message_silently(message: Message | None) -> None:
         pass
 
 
+async def delete_message_by_id_silently(message: Message, message_id: int | None) -> None:
+    if not message_id:
+        return
+    try:
+        await message.bot.delete_message(chat_id=message.chat.id, message_id=message_id)
+    except Exception:
+        pass
+
+
+async def deliver_test_message(
+    message: Message,
+    state: FSMContext,
+    text: str,
+    *,
+    reply_markup=None,
+    replace_current: bool = False,
+) -> None:
+    if replace_current:
+        try:
+            await message.edit_text(text, reply_markup=reply_markup, parse_mode="HTML")
+            return
+        except Exception:
+            pass
+
+    sent = await message.answer(text, reply_markup=reply_markup, parse_mode="HTML")
+    await state.update_data(current_question_message_id=sent.message_id)
+
+
 def format_material(item: dict) -> str:
     parts = [f"<b>{html.escape(str(item['title']))}</b>"]
     text = item.get("full_text") or item.get("short_text")
@@ -149,7 +180,49 @@ def format_recommendation(item: dict) -> str:
     return "\n".join(parts)
 
 
-async def send_test_question(message: Message, state: FSMContext) -> None:
+async def send_test_result_message(
+    message: Message,
+    user: dict,
+    result: dict,
+    *,
+    replace_current: bool = False,
+) -> None:
+    score_line = "" if result.get("scale_results") else f"\n\nБаллы: {result['total_score']}"
+    text = (
+        f"<b>{html.escape(str(result['title']))}</b>"
+        f"{score_line}\n\n"
+        f"{html.escape(str(result['summary']))}\n\n"
+        f"{html.escape(MEDICAL_DISCLAIMER)}"
+    )
+    if replace_current:
+        try:
+            await message.edit_text(
+                text,
+                reply_markup=result_actions_keyboard(user_referral_code(user)),
+                parse_mode="HTML",
+            )
+        except Exception:
+            await message.answer(
+                text,
+                reply_markup=result_actions_keyboard(user_referral_code(user)),
+                parse_mode="HTML",
+            )
+    else:
+        await message.answer(
+            text,
+            reply_markup=result_actions_keyboard(user_referral_code(user)),
+            parse_mode="HTML",
+        )
+
+    materials = await list_materials(user)
+    if materials:
+        await message.answer(
+            "Материалы по результату:",
+            reply_markup=materials_keyboard(materials[:5]),
+        )
+
+
+async def send_test_question(message: Message, state: FSMContext, *, replace_current: bool = False) -> None:
     data = await state.get_data()
     questions = data["questions"]
     index = int(data["index"])
@@ -160,23 +233,7 @@ async def send_test_question(message: Message, state: FSMContext) -> None:
         else:
             result = await save_test_result(data["end_user_id"], data["test_id"], data["answers"])
         await state.clear()
-        score_line = "" if result.get("scale_results") else f"\n\nБаллы: {result['total_score']}"
-        await message.answer(
-            (
-                f"<b>{html.escape(str(result['title']))}</b>"
-                f"{score_line}\n\n"
-                f"{html.escape(str(result['summary']))}\n\n"
-                f"{html.escape(MEDICAL_DISCLAIMER)}"
-            ),
-            reply_markup=result_actions_keyboard(user_referral_code(data.get("user", {}))),
-            parse_mode="HTML",
-        )
-        materials = await list_materials(data.get("user", {}))
-        if materials:
-            await message.answer(
-                "Материалы по результату:",
-                reply_markup=materials_keyboard(materials[:5]),
-            )
+        await send_test_result_message(message, data.get("user", {}), result, replace_current=replace_current)
         return
 
     question = questions[index]
@@ -191,10 +248,21 @@ async def send_test_question(message: Message, state: FSMContext) -> None:
     )
 
     if question["question_type"] == "text" or not question.get("answers"):
-        await message.answer(text + "\n\n" + html.escape(tr("tests.text_answer_hint")), parse_mode="HTML")
+        await deliver_test_message(
+            message,
+            state,
+            text + "\n\n" + html.escape(tr("tests.text_answer_hint")),
+            replace_current=replace_current,
+        )
         return
 
-    await message.answer(text, reply_markup=answers_keyboard(question), parse_mode="HTML")
+    await deliver_test_message(
+        message,
+        state,
+        text,
+        reply_markup=answers_keyboard(question),
+        replace_current=replace_current,
+    )
 
 
 async def start_test(
@@ -211,14 +279,27 @@ async def start_test(
         await message.answer(tr("tests.no_questions"))
         return
 
+    if not reset and not force_resume:
+        draft = await latest_draft_test_session(user["id"], test["id"])
+        if draft:
+            answered_ids = await session_answered_question_ids(int(draft["id"]))
+            if answered_ids:
+                await message.answer(
+                    "У вас есть незавершенный тест. Продолжить с прошлого вопроса или начать заново?",
+                    reply_markup=resume_test_keyboard(test["id"]),
+                )
+                return
+
+        completed = await latest_completed_test_result(user["id"], test["id"])
+        if completed:
+            await message.answer(
+                "Этот тест уже пройден вами. Можно посмотреть результат или пройти тест заново.",
+                reply_markup=completed_test_keyboard(test["id"]),
+            )
+            return
+
     session = await get_or_create_test_session(user["id"], test["id"], reset=reset)
     answered_ids = await session_answered_question_ids(int(session["id"]))
-    if answered_ids and not force_resume and not reset:
-        await message.answer(
-            "У вас есть незавершенный тест. Продолжить с прошлого вопроса или начать заново?",
-            reply_markup=resume_test_keyboard(test["id"]),
-        )
-        return
 
     start_index = 0
     for item_index, question in enumerate(test["questions"]):
@@ -238,6 +319,7 @@ async def start_test(
         index=start_index,
         answers=[],
         current_selected=[],
+        current_question_message_id=None,
     )
     intro = (test.get("intro_text") or test.get("description") or "").strip()
     emoji = test.get("emoji") or "🌿"
@@ -407,6 +489,18 @@ async def test_resume_callback(callback: CallbackQuery, state: FSMContext) -> No
     await callback.answer()
 
 
+@router.callback_query(F.data.startswith("test:result:"))
+async def test_result_callback(callback: CallbackQuery) -> None:
+    user = await resolve_telegram_user(callback.from_user)
+    test_id = int((callback.data or "").split(":")[-1])
+    result = await latest_completed_test_result(user["id"], test_id)
+    if callback.message and result:
+        await send_test_result_message(callback.message, user, result, replace_current=True)
+    elif callback.message:
+        await callback.message.answer("Результат пока не найден. Можно пройти тест заново.")
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("test:restart:"))
 async def test_restart_callback(callback: CallbackQuery, state: FSMContext) -> None:
     user = await resolve_telegram_user(callback.from_user)
@@ -440,8 +534,7 @@ async def test_answer_callback(callback: CallbackQuery, state: FSMContext) -> No
     answers.append({"question_id": question["id"], "answer_id": answer_id})
     await state.update_data(answers=answers, index=int(data["index"]) + 1)
     if callback.message:
-        await delete_message_silently(callback.message)
-        await send_test_question(callback.message, state)
+        await send_test_question(callback.message, state, replace_current=True)
     await callback.answer()
 
 
@@ -476,8 +569,7 @@ async def test_multi_done_callback(callback: CallbackQuery, state: FSMContext) -
         answers.append({"question_id": question["id"], "answer_id": answer_id})
     await state.update_data(answers=answers, index=int(data["index"]) + 1, current_selected=[])
     if callback.message:
-        await delete_message_silently(callback.message)
-        await send_test_question(callback.message, state)
+        await send_test_question(callback.message, state, replace_current=True)
     await callback.answer()
 
 
@@ -497,6 +589,8 @@ async def test_text_answer(message: Message, state: FSMContext) -> None:
         )
     answers.append({"question_id": question["id"], "text_answer": message.text or ""})
     await state.update_data(answers=answers, index=int(data["index"]) + 1)
+    await delete_message_by_id_silently(message, data.get("current_question_message_id"))
+    await delete_message_silently(message)
     await send_test_question(message, state)
 
 
