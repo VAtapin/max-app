@@ -54,35 +54,41 @@ UPDATE tests
 SET
   emoji = '🌿',
   intro_text = 'Ответьте на вопросы о самочувствии, привычках и сигналах организма. После прохождения вы увидите карту по 10 направлениям: где всё спокойно, а где стоит уделить больше внимания. Это не медицинский диагноз, а удобная wellness-диагностика для дальнейшего разбора с консультантом Siberian Wellness.',
+  intro_image_path = '/admin/uploads/tests/diagnostics-organism.png',
   scoring_type = 'multiscale'
 WHERE title = 'Диагностика организма';
 
 UPDATE content_posts
 SET
+  image_path = '/admin/uploads/content/health-diagnostics-guide.png',
   short_text = 'Короткое видео/материал о том, как читать результат диагностики и что делать дальше.',
   button_text = 'Разобрать с консультантом'
 WHERE title = 'Как читать диагностику организма';
 
 UPDATE content_posts
 SET
+  image_path = '/admin/uploads/content/energy-recovery.png',
   short_text = 'Что влияет на ежедневный ресурс: сон, питание, стресс, движение и поддерживающие привычки.',
   button_text = 'Подобрать первый шаг'
 WHERE title = 'Энергия, восстановление и ежедневный ресурс';
 
 UPDATE content_posts
 SET
+  image_path = '/admin/uploads/content/digestion-comfort.png',
   short_text = 'Пищеварение часто первым реагирует на режим, рацион, стресс и индивидуальные особенности.',
   button_text = 'Обсудить комфорт после еды'
 WHERE title = 'Пищеварение и комфорт после еды';
 
 UPDATE content_posts
 SET
+  image_path = '/admin/uploads/content/beauty-habits.png',
   short_text = 'Кожа, волосы и ногти как сигналы рутины: питание, сон, уход, стресс и восстановление.',
   button_text = 'Разобрать цель красоты'
 WHERE title = 'Кожа, волосы и внешний вид как зеркало привычек';
 
 UPDATE content_posts
 SET
+  image_path = '/admin/uploads/content/personal-program.png',
   short_text = 'Как строится персональный wellness-маршрут и как узнать о возможностях команды Siberian Wellness.',
   button_text = 'Узнать про программу'
 WHERE title = 'Персональная программа с консультантом';
