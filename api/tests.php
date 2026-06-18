@@ -76,6 +76,153 @@ function add_result_recommendation(int $endUserId, int $sessionId, ?array $resul
     ]);
 }
 
+function test_scale_result_for_score(int $scaleId, int $score): ?array
+{
+    $stmt = db()->prepare(
+        'SELECT *
+         FROM test_scale_results
+         WHERE scale_id = :scale_id
+           AND min_score <= :score_min
+           AND max_score >= :score_max
+         ORDER BY sort_order, min_score DESC, id DESC
+         LIMIT 1'
+    );
+    $stmt->execute([
+        'scale_id' => $scaleId,
+        'score_min' => $score,
+        'score_max' => $score,
+    ]);
+
+    $result = $stmt->fetch();
+    return $result ?: null;
+}
+
+function save_test_scale_scores(int $testId, int $sessionId, array $answerIds): array
+{
+    $scalesStmt = db()->prepare(
+        'SELECT id, slug, title, description, sort_order
+         FROM test_scales
+         WHERE test_id = :test_id
+         ORDER BY sort_order, id'
+    );
+    $scalesStmt->execute(['test_id' => $testId]);
+    $scales = $scalesStmt->fetchAll();
+    if (!$scales) {
+        return [];
+    }
+
+    $scores = [];
+    foreach ($scales as $scale) {
+        $scores[(int)$scale['id']] = 0;
+    }
+
+    $answerIds = array_values(array_unique(array_filter(array_map('intval', $answerIds))));
+    if ($answerIds) {
+        $placeholders = implode(',', array_fill(0, count($answerIds), '?'));
+        $scoreStmt = db()->prepare(
+            "SELECT scale_id, SUM(score) AS score
+             FROM test_answer_scale_scores
+             WHERE answer_id IN ($placeholders)
+             GROUP BY scale_id"
+        );
+        $scoreStmt->execute($answerIds);
+        foreach ($scoreStmt->fetchAll() as $item) {
+            $scaleId = (int)$item['scale_id'];
+            if (array_key_exists($scaleId, $scores)) {
+                $scores[$scaleId] = (int)$item['score'];
+            }
+        }
+    }
+
+    $insert = db()->prepare(
+        'INSERT INTO user_test_scale_scores (session_id, scale_id, score, result_id)
+         VALUES (:session_id, :scale_id, :score, :result_id)'
+    );
+
+    $items = [];
+    foreach ($scales as $scale) {
+        $scaleId = (int)$scale['id'];
+        $score = $scores[$scaleId] ?? 0;
+        $result = test_scale_result_for_score($scaleId, $score);
+        $resultId = $result ? (int)$result['id'] : null;
+        $insert->execute([
+            'session_id' => $sessionId,
+            'scale_id' => $scaleId,
+            'score' => $score,
+            'result_id' => $resultId,
+        ]);
+
+        $items[] = [
+            'scale_id' => $scaleId,
+            'slug' => $scale['slug'],
+            'title' => $scale['title'],
+            'description' => $scale['description'],
+            'score' => $score,
+            'result' => $result ? [
+                'title' => $result['title'],
+                'severity' => $result['severity'],
+                'summary_text' => $result['summary_text'],
+                'advice_text' => $result['advice_text'],
+            ] : null,
+        ];
+    }
+
+    return $items;
+}
+
+function build_scale_result_summary(array $scaleResults): string
+{
+    if (!$scaleResults) {
+        return '';
+    }
+
+    $severityWeight = ['critical' => 4, 'risk' => 3, 'good' => 2, 'excellent' => 1];
+    usort($scaleResults, static function (array $left, array $right) use ($severityWeight): int {
+        $leftSeverity = $left['result']['severity'] ?? 'good';
+        $rightSeverity = $right['result']['severity'] ?? 'good';
+        $weightDiff = ($severityWeight[$rightSeverity] ?? 0) <=> ($severityWeight[$leftSeverity] ?? 0);
+        return $weightDiff !== 0 ? $weightDiff : ($right['score'] <=> $left['score']);
+    });
+
+    $parts = ['Ваши результаты по системам организма готовы. Ниже показаны направления, которым стоит уделить внимание в первую очередь.'];
+    foreach (array_slice($scaleResults, 0, 3) as $item) {
+        $result = $item['result'] ?? null;
+        if (!$result) {
+            continue;
+        }
+        $parts[] = $item['title'] . ': ' . $result['title'] . ' (' . $item['score'] . '). ' . trim((string)($result['summary_text'] ?? ''));
+    }
+    $parts[] = 'Чтобы получить персональный разбор и подобрать программу под ваши цели, отправьте результат консультанту.';
+    $parts[] = medical_disclaimer();
+
+    return implode("\n\n", array_filter($parts));
+}
+
+function test_result_materials(): array
+{
+    $stmt = db()->query(
+        "SELECT id, title, short_text, content_type
+         FROM content_posts
+         WHERE status = 'published'
+           AND title IN (
+             'Как читать диагностику организма',
+             'Энергия, восстановление и ежедневный ресурс',
+             'Пищеварение и комфорт после еды',
+             'Кожа, волосы и внешний вид как зеркало привычек',
+             'Персональная программа с консультантом'
+           )
+         ORDER BY FIELD(title,
+             'Как читать диагностику организма',
+             'Энергия, восстановление и ежедневный ресурс',
+             'Пищеварение и комфорт после еды',
+             'Кожа, волосы и внешний вид как зеркало привычек',
+             'Персональная программа с консультантом'
+         )"
+    );
+
+    return $stmt->fetchAll();
+}
+
 
 if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = input_json() ?: $_POST;
@@ -153,6 +300,7 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
         $sessionId = (int)db()->lastInsertId();
 
         $total = 0;
+        $selectedAnswerIds = [];
         foreach ($answers as $answer) {
             $answerId = isset($answer['answer_id']) ? (int)$answer['answer_id'] : null;
             $questionId = (int)($answer['question_id'] ?? 0);
@@ -166,6 +314,7 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
                     throw new RuntimeException('answer does not belong to this question');
                 }
                 $score = (int)$answerMap[$answerId]['score'];
+                $selectedAnswerIds[] = $answerId;
             }
             $total += $score;
 
@@ -183,7 +332,8 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
         }
 
         $resultRule = test_result_for_score($testId, $total);
-        $summary = build_result_summary($resultRule);
+        $scaleResults = save_test_scale_scores($testId, $sessionId, $selectedAnswerIds);
+        $summary = $scaleResults ? build_scale_result_summary($scaleResults) : build_result_summary($resultRule);
         $done = db()->prepare('UPDATE user_test_sessions SET completed_at = NOW(), total_score = :total, result_summary = :summary WHERE id = :id');
         $done->execute(['total' => $total, 'summary' => $summary, 'id' => $sessionId]);
         $recommendations = build_recommendations((int)$user['id'], $sessionId);
@@ -215,6 +365,8 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
             'summary_text' => $resultRule['summary_text'],
             'advice_text' => $resultRule['advice_text'],
         ] : null,
+        'scale_results' => $scaleResults ?? [],
+        'materials' => test_result_materials(),
         'recommendations' => $recommendations,
     ]);
 }

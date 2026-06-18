@@ -1107,6 +1107,61 @@ function renderQuestion(question) {
     `;
 }
 
+function scaleSeverityLabel(severity) {
+    return {
+        excellent: 'Очень хорошо',
+        good: 'Хорошо',
+        risk: 'Зона риска',
+        critical: 'Требует внимания',
+    }[severity] || 'Результат';
+}
+
+function renderScaleResults(scaleResults = []) {
+    if (!scaleResults.length) {
+        return '';
+    }
+
+    return `
+        <div class="scale-results">
+            ${scaleResults.map((item) => {
+                const result = item.result || {};
+                const severity = result.severity || 'good';
+                return `
+                    <article class="scale-result scale-result-${escapeHtml(severity)}">
+                        <div>
+                            <strong>${escapeHtml(item.title)}</strong>
+                            <span>${escapeHtml(scaleSeverityLabel(severity))}</span>
+                        </div>
+                        <span class="scale-score">${escapeHtml(item.score)}</span>
+                        ${result.summary_text ? `<p>${escapeHtml(result.summary_text)}</p>` : ''}
+                        ${result.advice_text ? `<p class="muted">${escapeHtml(result.advice_text)}</p>` : ''}
+                    </article>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function renderResultMaterials(materials = []) {
+    if (!materials.length) {
+        return '';
+    }
+
+    return `
+        <div class="result-materials">
+            <strong>${escapeHtml(ui('home.materials'))}</strong>
+            ${materials.map((item) => `
+                <article class="result-material">
+                    <span>${escapeHtml(item.content_type || '')}</span>
+                    <b>${escapeHtml(item.title)}</b>
+                    ${item.short_text ? `<p>${escapeHtml(item.short_text)}</p>` : ''}
+                    <button class="secondary compact" data-open-material-id="${item.id}">${escapeHtml(ui('materials.read'))}</button>
+                </article>
+            `).join('')}
+        </div>
+    `;
+}
+
 async function submitTest(form) {
     const submitButton = form.querySelector('button[type="submit"]');
     if (submitButton) {
@@ -1173,6 +1228,8 @@ async function submitTest(form) {
                 <span class="result-score">${escapeHtml(ui('result.score'))}: ${escapeHtml(result.total_score)}</span>
                 <div class="result-summary">${renderTextBlocks(result.summary)}</div>
             </div>
+            ${renderScaleResults(result.scale_results || [])}
+            ${renderResultMaterials(result.materials || [])}
             <button class="primary" data-page-target="recommendations">${escapeHtml(ui('result.show_recommendations'))}</button>
             <button class="secondary" data-action="contact">${escapeHtml(ui('lead.contact_manager'))}</button>
         </section>

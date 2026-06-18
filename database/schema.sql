@@ -14,8 +14,12 @@ DROP TABLE IF EXISTS leads;
 DROP TABLE IF EXISTS profile_materials;
 DROP TABLE IF EXISTS content_posts;
 DROP TABLE IF EXISTS recommendations;
+DROP TABLE IF EXISTS user_test_scale_scores;
 DROP TABLE IF EXISTS user_test_answers;
 DROP TABLE IF EXISTS user_test_sessions;
+DROP TABLE IF EXISTS test_scale_results;
+DROP TABLE IF EXISTS test_answer_scale_scores;
+DROP TABLE IF EXISTS test_scales;
 DROP TABLE IF EXISTS test_results;
 DROP TABLE IF EXISTS test_answers;
 DROP TABLE IF EXISTS test_questions;
@@ -406,6 +410,57 @@ CREATE TABLE test_answers (
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE test_scales (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  test_id BIGINT UNSIGNED NOT NULL,
+  slug VARCHAR(100) NOT NULL,
+  title VARCHAR(190) NOT NULL,
+  description TEXT NULL,
+  sort_order INT NOT NULL DEFAULT 100,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_test_scale_slug (test_id, slug),
+  INDEX idx_test_scales_test_id (test_id),
+  CONSTRAINT fk_test_scales_test
+    FOREIGN KEY (test_id) REFERENCES tests(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE test_answer_scale_scores (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  answer_id BIGINT UNSIGNED NOT NULL,
+  scale_id BIGINT UNSIGNED NOT NULL,
+  score INT NOT NULL DEFAULT 1,
+  UNIQUE KEY uq_answer_scale_score (answer_id, scale_id),
+  INDEX idx_test_answer_scale_answer_id (answer_id),
+  INDEX idx_test_answer_scale_scale_id (scale_id),
+  CONSTRAINT fk_test_answer_scale_answer
+    FOREIGN KEY (answer_id) REFERENCES test_answers(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_test_answer_scale_scale
+    FOREIGN KEY (scale_id) REFERENCES test_scales(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE test_scale_results (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  scale_id BIGINT UNSIGNED NOT NULL,
+  title VARCHAR(190) NOT NULL,
+  min_score INT NOT NULL DEFAULT 0,
+  max_score INT NOT NULL DEFAULT 0,
+  severity ENUM('excellent', 'good', 'risk', 'critical') NOT NULL DEFAULT 'good',
+  summary_text TEXT NULL,
+  advice_text TEXT NULL,
+  sort_order INT NOT NULL DEFAULT 100,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_test_scale_results_scale_id (scale_id),
+  INDEX idx_test_scale_results_score (scale_id, min_score, max_score),
+  CONSTRAINT fk_test_scale_results_scale
+    FOREIGN KEY (scale_id) REFERENCES test_scales(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 CREATE TABLE test_results (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -469,6 +524,28 @@ CREATE TABLE user_test_answers (
     ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_user_test_answers_answer
     FOREIGN KEY (answer_id) REFERENCES test_answers(id)
+    ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE user_test_scale_scores (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  session_id BIGINT UNSIGNED NOT NULL,
+  scale_id BIGINT UNSIGNED NOT NULL,
+  score INT NOT NULL DEFAULT 0,
+  result_id BIGINT UNSIGNED NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_user_test_scale_score (session_id, scale_id),
+  INDEX idx_user_test_scale_session_id (session_id),
+  INDEX idx_user_test_scale_scale_id (scale_id),
+  INDEX idx_user_test_scale_result_id (result_id),
+  CONSTRAINT fk_user_test_scale_session
+    FOREIGN KEY (session_id) REFERENCES user_test_sessions(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_user_test_scale_scale
+    FOREIGN KEY (scale_id) REFERENCES test_scales(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_user_test_scale_result
+    FOREIGN KEY (result_id) REFERENCES test_scale_results(id)
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
