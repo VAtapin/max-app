@@ -45,6 +45,70 @@ def app_button(referral_code: str | None = None, page: str | None = None, test_i
     )
 
 
+def main_menu_keyboard(referral_code: str | None = None, diagnosis_test_id: int | None = None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if diagnosis_test_id:
+        rows.append([
+            InlineKeyboardButton(
+                text="🌿 Диагностика организма",
+                web_app=WebAppInfo(url=mini_app_url(referral_code, page="tests", test_id=diagnosis_test_id)),
+            )
+        ])
+    rows.extend([
+        [
+            InlineKeyboardButton(
+                text="📊 Результаты тестов",
+                web_app=WebAppInfo(url=mini_app_url(referral_code, page="recommendations")),
+            )
+        ],
+        [
+            InlineKeyboardButton(text="📌 Связь с экспертом", callback_data="lead:contact"),
+        ],
+        [
+            InlineKeyboardButton(
+                text="🎥 Материалы",
+                web_app=WebAppInfo(url=mini_app_url(referral_code, page="home")),
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🛍 Продукты",
+                web_app=WebAppInfo(url=mini_app_url(referral_code, page="products")),
+            )
+        ],
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def result_actions_keyboard(referral_code: str | None = None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📌 Разобрать с экспертом", callback_data="lead:contact")],
+            [
+                InlineKeyboardButton(
+                    text="📊 Рекомендации",
+                    web_app=WebAppInfo(url=mini_app_url(referral_code, page="recommendations")),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🛍 Продукты",
+                    web_app=WebAppInfo(url=mini_app_url(referral_code, page="products")),
+                )
+            ],
+        ]
+    )
+
+
+def resume_test_keyboard(test_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Продолжить с прошлого вопроса", callback_data=f"test:resume:{test_id}")],
+            [InlineKeyboardButton(text="Начать заново", callback_data=f"test:restart:{test_id}")],
+        ]
+    )
+
+
 def tests_keyboard(tests: list[dict]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[

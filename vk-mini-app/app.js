@@ -995,21 +995,22 @@ async function renderLeads() {
     await Promise.allSettled(unreadLeadIds.map(markLeadRead));
 }
 
-function openContactModal(productId = null) {
+function openContactModal(productId = null, presetMessage = '', titleOverride = '') {
     document.querySelector('.modal-backdrop')?.remove();
     const productTitle = productId
         ? document.querySelector(`[data-product-id="${productId}"]`)?.closest('article')?.querySelector('strong')?.textContent || ''
         : '';
+    const modalTitle = titleOverride || (productId ? ui('lead.modal_product_title') : ui('lead.modal_title'));
     document.body.insertAdjacentHTML('beforeend', `
         <div class="modal-backdrop">
             <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="contact-modal-title">
                 <button class="modal-close" type="button" data-action="close-modal" aria-label="${escapeHtml(ui('common.close'))}">×</button>
-                <h2 id="contact-modal-title">${escapeHtml(productId ? ui('lead.modal_product_title') : ui('lead.modal_title'))}</h2>
+                <h2 id="contact-modal-title">${escapeHtml(modalTitle)}</h2>
                 ${productTitle ? `<p class="muted">${escapeHtml(productTitle)}</p>` : ''}
                 <p class="muted">${escapeHtml(ui('lead.modal_hint'))}</p>
                 <form id="contact-form">
                     <input type="hidden" name="product_id" value="${productId ? Number(productId) : ''}">
-                    <textarea name="message" rows="5" required placeholder="${escapeHtml(ui('lead.message_placeholder'))}"></textarea>
+                    <textarea name="message" rows="5" required placeholder="${escapeHtml(ui('lead.message_placeholder'))}">${escapeHtml(presetMessage)}</textarea>
                     <div class="form-error" id="contact-error"></div>
                     <div class="modal-actions">
                         <button class="secondary" type="button" data-action="close-modal">${escapeHtml(ui('lead.cancel'))}</button>
@@ -1054,12 +1055,13 @@ async function renderTests() {
     page.innerHTML = result.tests.length
         ? result.tests.map((test) => `
             <article class="diagnostic-card">
-                <span class="diagnostic-icon">✓</span>
+                <span class="diagnostic-icon">${escapeHtml(test.emoji || '🌿')}</span>
                 <span class="eyebrow">${escapeHtml(test.category_title || ui('tests.diagnostic'))}</span>
                 <strong>${escapeHtml(test.title)}</strong>
                 <span class="muted">${escapeHtml(test.description || '')}</span>
+                <span class="test-meta">${escapeHtml(test.scoring_type === 'multiscale' ? ui('tests.matrix_type', 'Матрица здоровья') : ui('tests.simple_type', 'Тест'))}</span>
                 <span class="test-meta">${escapeHtml(formatUi('tests.questions_count', {count: test.questions_count || 0}))}</span>
-                <button class="secondary" data-open-test-id="${test.id}">${escapeHtml(ui('tests.open'))}</button>
+                <button class="secondary" data-open-test-id="${test.id}">${escapeHtml(ui('tests.start', 'Начать тест'))}</button>
             </article>
         `).join('')
         : `<div class="empty-card">${escapeHtml(ui('tests.empty'))}</div>`;
@@ -1068,43 +1070,175 @@ async function renderTests() {
 async function renderTest(testId) {
     const result = await api(`tests.php?id=${encodeURIComponent(testId)}&${userQuery()}`);
     state.activeTest = result;
+    if (result.session && result.question) {
+        renderResumeTest(result);
+        return;
+    }
+    renderTestIntro(result);
+}
+
+function renderTestIntro(result) {
+    const test = result.test;
     page.innerHTML = `
         <section class="panel test-panel">
             <button class="secondary compact" data-action="back-to-tests">${escapeHtml(ui('tests.back'))}</button>
-            <h2>${escapeHtml(result.test.title)}</h2>
-            <p class="muted">${escapeHtml(result.test.description || '')}</p>
-            <div class="test-progress">${escapeHtml(formatUi('tests.questions_count', {count: result.questions.length}))}</div>
-            <form id="test-form" class="test-form">
-                ${result.questions.length ? result.questions.map((question) => renderQuestion(question)).join('') : `<div class="empty">${escapeHtml(ui('tests.no_questions'))}</div>`}
-                <button class="primary" type="submit">${escapeHtml(ui('tests.submit'))}</button>
-            </form>
+            <div class="test-intro">
+                ${test.intro_image_path ? `<img class="test-intro-media" src="${escapeHtml(test.intro_image_path)}" alt="">` : ''}
+                ${renderVideoBlock(test.intro_video_url, test.title)}
+                <span class="test-emoji">${escapeHtml(test.emoji || '🌿')}</span>
+                <span class="eyebrow">${escapeHtml(test.scoring_type === 'multiscale' ? ui('tests.matrix_type', 'Матрица здоровья') : ui('tests.simple_type', 'Тест'))}</span>
+                <h2>${escapeHtml(test.title)}</h2>
+                ${test.intro_text ? `<div class="detail-lead">${renderTextBlocks(test.intro_text)}</div>` : ''}
+                <div class="test-progress">${escapeHtml(formatUi('tests.questions_count', {count: test.questions_count || result.questions.length || 0}))}</div>
+                <button class="primary" data-action="start-test">${escapeHtml(ui('tests.start', 'Начать тест'))}</button>
+            </div>
         </section>
     `;
 }
 
-function renderQuestion(question) {
-    const answers = question.answers || [];
-    const type = question.question_type;
-    const inputType = type === 'multiple_choice' ? 'checkbox' : 'radio';
-    const isRequired = Number(question.is_required) === 1;
-    const controls = answers.length
-        ? answers.map((answer) => `
-            <label class="answer">
-                <input type="${inputType}" name="question_${question.id}" value="${answer.id}">
-                <span>${escapeHtml(answer.answer_text)}</span>
-            </label>
-        `).join('')
-        : `<textarea class="text-answer" name="question_${question.id}" rows="3" placeholder="${escapeHtml(ui('tests.text_placeholder'))}"></textarea>`;
-
-    return `
-        <fieldset class="question" data-question-id="${question.id}" data-question-type="${escapeHtml(type)}">
-            <legend>
-                ${escapeHtml(question.question_text)}
-                ${isRequired ? `<span class="question-required">${escapeHtml(ui('tests.required'))}</span>` : ''}
-            </legend>
-            ${controls}
-        </fieldset>
+function renderResumeTest(result) {
+    const progress = result.progress || {answered: 0, total: result.test.questions_count || 0, percent: 0};
+    page.innerHTML = `
+        <section class="panel test-panel">
+            <button class="secondary compact" data-action="back-to-tests">${escapeHtml(ui('tests.back'))}</button>
+            <div class="resume-card">
+                <span class="test-emoji">${escapeHtml(result.test.emoji || '🌿')}</span>
+                <h2>${escapeHtml(result.test.title)}</h2>
+                <p class="muted">${escapeHtml(ui('tests.resume_hint', 'У вас есть незавершенный тест. Можно продолжить с того вопроса, где остановились, или начать заново.'))}</p>
+                ${renderProgress(progress)}
+                <button class="primary" data-action="resume-test">${escapeHtml(ui('tests.resume', 'Продолжить'))}</button>
+                <button class="secondary" data-action="restart-test">${escapeHtml(ui('tests.restart', 'Начать заново'))}</button>
+            </div>
+        </section>
     `;
+}
+
+function renderProgress(progress = {}) {
+    const answered = Number(progress.answered || 0);
+    const total = Math.max(0, Number(progress.total || 0));
+    const percent = total ? Math.round((answered / total) * 100) : 0;
+    return `
+        <div class="test-progress-box" aria-label="${escapeHtml(ui('tests.progress', 'Прогресс'))}">
+            <div class="test-progress-line">
+                <span style="width: ${Math.max(0, Math.min(100, percent))}%"></span>
+            </div>
+            <small>${escapeHtml(formatUi('tests.progress_count', {answered, total}, `${answered} из ${total}`))}</small>
+        </div>
+    `;
+}
+
+async function startTestSession(reset = false) {
+    const result = await api('tests.php?action=start', {
+        method: 'POST',
+        body: JSON.stringify({
+            ...userPayload(),
+            test_id: state.activeTest.test.id,
+            reset,
+        }),
+    });
+    state.activeTest = result;
+    renderTestQuestion(result);
+}
+
+function renderTestQuestion(result) {
+    if (!result.question) {
+        renderTestResult(result);
+        return;
+    }
+
+    state.activeTest = result;
+    const question = result.question;
+    const progress = result.progress || {answered: 0, total: result.test.questions_count || 0};
+    const currentNumber = Math.min(Number(progress.answered || 0) + 1, Number(progress.total || 1));
+    const answers = question.answers || [];
+    const isMultiple = question.question_type === 'multiple_choice';
+    const controls = isMultiple
+        ? `
+            <form id="test-question-form" class="answer-button-list">
+                ${answers.map((answer) => `
+                    <label class="answer">
+                        <input type="checkbox" name="answer_ids" value="${answer.id}">
+                        <span>${escapeHtml(answer.answer_text)}</span>
+                    </label>
+                `).join('')}
+                <button class="primary" type="submit">${escapeHtml(ui('tests.next', 'Дальше'))}</button>
+            </form>
+        `
+        : answers.length
+            ? `
+                <div class="answer-button-list">
+                    ${answers.map((answer) => `
+                        <button class="answer-button" type="button" data-action="answer-test" data-answer-id="${answer.id}">
+                            ${escapeHtml(answer.answer_text)}
+                        </button>
+                    `).join('')}
+                </div>
+            `
+            : `
+                <form id="test-question-form" class="answer-button-list">
+                    <textarea class="text-answer" name="text_answer" rows="4" required placeholder="${escapeHtml(ui('tests.text_placeholder'))}"></textarea>
+                    <button class="primary" type="submit">${escapeHtml(ui('tests.next', 'Дальше'))}</button>
+                </form>
+            `;
+
+    page.innerHTML = `
+        <section class="panel test-panel">
+            <button class="secondary compact" data-action="back-to-tests">${escapeHtml(ui('tests.back'))}</button>
+            <div class="question-step">
+                <span class="test-emoji">${escapeHtml(result.test.emoji || '🌿')}</span>
+                <span class="eyebrow">${escapeHtml(formatUi('tests.question_short', {number: currentNumber, total: progress.total}, `Вопрос ${currentNumber} из ${progress.total}`))}</span>
+                ${renderProgress(progress)}
+                <h2>${escapeHtml(question.question_text)}</h2>
+                ${controls}
+            </div>
+        </section>
+    `;
+}
+
+async function answerCurrentQuestion(answerId = null, answerIds = [], textAnswer = '') {
+    const question = state.activeTest.question;
+    const result = await api('tests.php?action=answer', {
+        method: 'POST',
+        body: JSON.stringify({
+            ...userPayload(),
+            session_id: state.activeTest.session.id,
+            question_id: question.id,
+            answer_id: answerId,
+            answer_ids: answerIds,
+            text_answer: textAnswer,
+        }),
+    });
+
+    if (result.done && result.session_id) {
+        renderTestResult(result);
+        return;
+    }
+    renderTestQuestion(result);
+}
+
+async function submitCurrentTextAnswer(form) {
+    const button = form.querySelector('button[type="submit"]');
+    if (button) {
+        button.disabled = true;
+        button.dataset.originalText = button.textContent || '';
+        button.textContent = ui('tests.submitting', 'Отправляем...');
+    }
+
+    try {
+        const formData = new FormData(form);
+        const answerIds = formData.getAll('answer_ids').map((value) => Number(value)).filter(Boolean);
+        const textAnswer = String(formData.get('text_answer') || '').trim();
+        if (!answerIds.length && !textAnswer) {
+            throw new Error(ui('tests.answer_required'));
+        }
+        await answerCurrentQuestion(null, answerIds, textAnswer);
+    } catch (error) {
+        form.insertAdjacentHTML('afterbegin', `<div class="form-error">${escapeHtml(friendlyError(error))}</div>`);
+        if (button) {
+            button.disabled = false;
+            button.textContent = button.dataset.originalText || ui('tests.next', 'Дальше');
+        }
+    }
 }
 
 function scaleSeverityLabel(severity) {
@@ -1149,78 +1283,27 @@ function renderResultMaterials(materials = []) {
 
     return `
         <div class="result-materials">
-            <strong>${escapeHtml(ui('home.materials'))}</strong>
+            <strong>${escapeHtml(ui('result.materials_title', 'Что посмотреть дальше'))}</strong>
             ${materials.map((item) => `
                 <article class="result-material">
+                    ${item.image_path ? `<img class="item-image" src="${escapeHtml(item.image_path)}" alt="">` : ''}
+                    ${renderVideoBlock(item.video_url, item.title)}
                     <span>${escapeHtml(item.content_type || '')}</span>
                     <b>${escapeHtml(item.title)}</b>
                     ${item.short_text ? `<p>${escapeHtml(item.short_text)}</p>` : ''}
-                    <button class="secondary compact" data-open-material-id="${item.id}">${escapeHtml(ui('materials.read'))}</button>
+                    <div class="material-actions">
+                        <button class="secondary compact" data-open-material-id="${item.id}">${escapeHtml(ui('materials.read'))}</button>
+                        ${item.button_url ? `<a class="soft-link" href="${escapeHtml(item.button_url)}" target="_blank" rel="noopener">${escapeHtml(item.button_text || ui('materials.open_link'))}</a>` : ''}
+                        ${item.button_text && !item.button_url ? `<button class="secondary compact" data-action="contact-result">${escapeHtml(item.button_text)}</button>` : ''}
+                        ${item.attachment_path ? `<a class="soft-link" href="${escapeHtml(item.attachment_path)}" target="_blank" rel="noopener">${escapeHtml(ui('products.open_file'))}</a>` : ''}
+                    </div>
                 </article>
             `).join('')}
         </div>
     `;
 }
 
-async function submitTest(form) {
-    const submitButton = form.querySelector('button[type="submit"]');
-    if (submitButton) {
-        submitButton.disabled = true;
-        submitButton.dataset.originalText = submitButton.textContent || '';
-        submitButton.textContent = ui('tests.submitting', '...');
-    }
-    form.querySelectorAll('.form-error, .empty.error').forEach((item) => item.remove());
-
-    const answers = [];
-    const missing = [];
-    form.querySelectorAll('.question').forEach((question) => {
-        const questionId = Number(question.dataset.questionId);
-        const checked = question.querySelectorAll('input[type="radio"]:checked, input[type="checkbox"]:checked');
-        if (checked.length) {
-            checked.forEach((input) => answers.push({question_id: questionId, answer_id: Number(input.value)}));
-            return;
-        }
-
-        const textInput = question.querySelector('.text-answer');
-        if (textInput && textInput.value.trim()) {
-            answers.push({question_id: questionId, text_answer: textInput.value.trim()});
-            return;
-        }
-
-        if (question.querySelector('.question-required')) {
-            missing.push(question);
-        }
-    });
-
-    if (missing.length) {
-        missing[0].scrollIntoView({block: 'center', behavior: 'smooth'});
-        form.insertAdjacentHTML('afterbegin', `<div class="form-error">${escapeHtml(ui('tests.answer_required'))}</div>`);
-        if (submitButton) {
-            submitButton.disabled = false;
-            submitButton.textContent = submitButton.dataset.originalText || ui('tests.submit');
-        }
-        return;
-    }
-
-    let result;
-    try {
-        result = await api('tests.php?action=submit', {
-            method: 'POST',
-            body: JSON.stringify({
-                ...userPayload(),
-                test_id: state.activeTest.test.id,
-                answers,
-            }),
-        });
-    } catch (error) {
-        form.insertAdjacentHTML('afterbegin', `<div class="empty error">${escapeHtml(friendlyError(error))}</div>`);
-        if (submitButton) {
-            submitButton.disabled = false;
-            submitButton.textContent = submitButton.dataset.originalText || ui('tests.submit');
-        }
-        return;
-    }
-
+function renderTestResult(result) {
     page.innerHTML = `
         <section class="panel">
             <div class="result-card">
@@ -1230,8 +1313,11 @@ async function submitTest(form) {
             </div>
             ${renderScaleResults(result.scale_results || [])}
             ${renderResultMaterials(result.materials || [])}
-            <button class="primary" data-page-target="recommendations">${escapeHtml(ui('result.show_recommendations'))}</button>
-            <button class="secondary" data-action="contact">${escapeHtml(ui('lead.contact_manager'))}</button>
+            <div class="result-actions">
+                <button class="primary" data-action="contact-result">${escapeHtml(ui('result.contact_manager', 'Разобрать с консультантом'))}</button>
+                <button class="secondary" data-page-target="recommendations">${escapeHtml(ui('result.show_recommendations'))}</button>
+                <button class="secondary" data-page-target="products">${escapeHtml(ui('products.title', 'Продукты'))}</button>
+            </div>
         </section>
     `;
 }
@@ -1286,6 +1372,17 @@ page.addEventListener('click', async (event) => {
     if (target.dataset.action === 'tests') setPage('tests');
     if (target.dataset.action === 'back-to-tests') await renderTests();
     if (target.dataset.action === 'contact') openContactModal();
+    if (target.dataset.action === 'contact-result') {
+        openContactModal(
+            null,
+            ui('result.contact_message', 'Здравствуйте! Хочу разобрать результаты диагностики и понять, с чего начать.'),
+            ui('result.contact_manager', 'Разобрать с консультантом')
+        );
+    }
+    if (target.dataset.action === 'start-test') await startTestSession(false);
+    if (target.dataset.action === 'resume-test') renderTestQuestion(state.activeTest);
+    if (target.dataset.action === 'restart-test') await startTestSession(true);
+    if (target.dataset.action === 'answer-test') await answerCurrentQuestion(Number(target.dataset.answerId || 0));
     if (target.dataset.action === 'close-modal') closeModal();
     if (target.dataset.action === 'create-link-token') await renderAccountLinkPanel();
     if (target.dataset.pageTarget) setPage(target.dataset.pageTarget);
@@ -1330,9 +1427,9 @@ page.addEventListener('submit', async (event) => {
         }
         return;
     }
-    if (!(target instanceof HTMLFormElement) || target.id !== 'test-form') return;
+    if (!(target instanceof HTMLFormElement) || target.id !== 'test-question-form') return;
     event.preventDefault();
-    await submitTest(target);
+    await submitCurrentTextAnswer(target);
 });
 
 document.addEventListener('submit', async (event) => {
