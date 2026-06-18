@@ -339,6 +339,7 @@ CREATE TABLE tests (
   title VARCHAR(190) NOT NULL,
   description TEXT NULL,
   category_id BIGINT UNSIGNED NULL,
+  scoring_type ENUM('single', 'multiscale') NOT NULL DEFAULT 'single',
   owner_type ENUM('superadmin', 'reseller', 'manager') NULL,
   owner_id BIGINT UNSIGNED NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,

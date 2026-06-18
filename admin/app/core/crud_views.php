@@ -149,8 +149,10 @@ function crud_display_columns(string $moduleKey): array
         'tests' => [
             'id' => 'ID',
             'title' => app_text('auto.k_ec1868c5a7fb'),
+            'test_type' => 'Тип',
             'category_title' => app_text('auto.k_19c85838e63f'),
             'questions_count' => app_text('auto.k_beeac564c743'),
+            'scales_count' => 'Шкалы',
             'sort_order' => app_text('auto.k_c00d5a4cbda0'),
             'state' => app_text('auto.k_f7f293b5c58c'),
         ],
@@ -381,12 +383,14 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     if ($moduleKey === 'tests') {
         [$where, $params] = owner_scope_condition($admin, 't');
         return [
-            "SELECT t.id, t.title, c.title AS category_title, t.sort_order,
+            "SELECT t.id, t.title, t.scoring_type, c.title AS category_title, t.sort_order,
                     IF(t.is_active = 1, 'active', 'inactive') AS state,
-                    COUNT(q.id) AS questions_count
+                    COUNT(DISTINCT q.id) AS questions_count,
+                    COUNT(DISTINCT ts.id) AS scales_count
              FROM tests t
              LEFT JOIN product_categories c ON c.id = t.category_id
              LEFT JOIN test_questions q ON q.test_id = t.id
+             LEFT JOIN test_scales ts ON ts.test_id = t.id
              $where
              GROUP BY t.id
              ORDER BY t.sort_order ASC, t.id DESC
@@ -493,6 +497,10 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
         return $items ? implode("\n", $items) : app_text('auto.k_1b93795b9768');
     }
 
+    if ($column === 'test_type') {
+        return ($row['scoring_type'] ?? 'single') === 'multiscale' ? 'Многошкальная матрица' : 'Обычный тест';
+    }
+
     return format_cell_value($row[$column] ?? null);
 }
 
@@ -580,6 +588,12 @@ function render_cell(string $moduleKey, string $key, array $row): string
 
     if ($key === 'platform') {
         return render_platform_badge((string)($row['platform'] ?? ''));
+    }
+
+    if ($moduleKey === 'tests' && $key === 'test_type') {
+        $type = (string)($row['scoring_type'] ?? 'single');
+        $class = $type === 'multiscale' ? 'badge badge-pending' : 'badge';
+        return '<span class="' . h($class) . '">' . h(crud_cell_value($moduleKey, $key, $row)) . '</span>';
     }
 
     return nl2br(h(crud_cell_value($moduleKey, $key, $row)));

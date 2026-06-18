@@ -119,11 +119,12 @@ $modules = [
     'tests' => [
         'title' => app_text('auto.k_663c94d30018'),
         'table' => 'tests',
-        'columns' => ['id', 'title', 'category_id', 'is_active', 'sort_order'],
+        'columns' => ['id', 'title', 'category_id', 'scoring_type', 'is_active', 'sort_order'],
         'fields' => [
             'title' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
             'description' => ['label' => app_text('auto.k_f5441f6aee76'), 'type' => 'textarea'],
             'category_id' => ['label' => app_text('auto.k_19c85838e63f'), 'type' => 'select', 'source' => 'product_categories', 'nullable' => true],
+            'scoring_type' => ['label' => 'Тип теста', 'type' => 'select', 'options' => ['single', 'multiscale'], 'required' => true],
             'sort_order' => ['label' => app_text('auto.k_ed030118aad8'), 'type' => 'number', 'default' => 100],
             'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
         ],
@@ -476,6 +477,10 @@ function form_option_label(string $fieldName, string $option): string
 
     if ($fieldName === 'target_type') {
         return target_label($option);
+    }
+
+    if ($fieldName === 'scoring_type') {
+        return $option === 'multiscale' ? 'Многошкальная матрица' : 'Обычный тест';
     }
 
     return $option;
