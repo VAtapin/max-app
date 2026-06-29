@@ -129,6 +129,32 @@ function hasTelegramLaunchParams() {
     return hash.has('tgWebAppData') || search.has('tgWebAppData') || hash.has('tgWebAppVersion') || search.has('tgWebAppVersion');
 }
 
+function loadTelegramSdk() {
+    if (getTelegramApp()) {
+        return Promise.resolve(getTelegramApp());
+    }
+    if (!hasTelegramLaunchParams()) {
+        return Promise.resolve(null);
+    }
+
+    return new Promise((resolve) => {
+        const existing = document.querySelector('script[data-telegram-sdk]');
+        if (existing) {
+            existing.addEventListener('load', () => resolve(getTelegramApp()), {once: true});
+            existing.addEventListener('error', () => resolve(null), {once: true});
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = 'https://telegram.org/js/telegram-web-app.js';
+        script.async = true;
+        script.dataset.telegramSdk = '1';
+        script.onload = () => resolve(getTelegramApp());
+        script.onerror = () => resolve(null);
+        document.head.appendChild(script);
+    });
+}
+
 async function waitForTelegramApp(timeoutMs = 900) {
     if (getTelegramApp() || !hasTelegramLaunchParams()) {
         return getTelegramApp();
@@ -146,7 +172,7 @@ async function waitForTelegramApp(timeoutMs = 900) {
 }
 
 async function initTelegram() {
-    const tg = getTelegramApp() || await waitForTelegramApp();
+    const tg = getTelegramApp() || await loadTelegramSdk() || await waitForTelegramApp();
     if (!tg || !tg.initData) {
         return null;
     }
