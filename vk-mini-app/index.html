@@ -4,31 +4,36 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SWPro</title>
-    <link rel="stylesheet" href="style.css?v=20260618-4">
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css?v=20260629-1">
+    <script async src="https://telegram.org/js/telegram-web-app.js"></script>
     <script async src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
 </head>
 <body>
     <main class="app">
         <header class="app-header">
             <div>
-                <span class="eyebrow" data-i18n="app.eyebrow"></span>
+                <span class="eyebrow" data-i18n="app.eyebrow">SWPro Ассистент</span>
                 <h1 data-i18n="app.title">SWPro</h1>
             </div>
         </header>
 
         <nav class="tabs" aria-label="" data-i18n-attr="aria-label:nav.aria">
-            <button data-page="home" data-i18n="nav.home" class="active"></button>
-            <button data-page="tests" data-i18n="nav.tests"></button>
-            <button data-page="recommendations" data-i18n="nav.recommendations"></button>
-            <button data-page="leads" data-i18n="nav.leads"></button>
-            <button data-page="profile" data-i18n="nav.profile"></button>
+            <button data-page="home" data-i18n="nav.home" class="active">Главная</button>
+            <button data-page="tests" data-i18n="nav.tests">Тесты</button>
+            <button data-page="recommendations" data-i18n="nav.recommendations">Рекомендации</button>
+            <button data-page="leads" data-i18n="nav.leads">Заявки</button>
+            <button data-page="profile" data-i18n="nav.profile">Профиль</button>
         </nav>
 
-        <section id="page" class="page"></section>
+        <section id="page" class="page">
+            <section class="panel">
+                <h2>Загрузка...</h2>
+                <p class="muted">Открываем SWPro.</p>
+            </section>
+        </section>
 
-        <p class="disclaimer" data-i18n="medical_disclaimer"></p>
+        <p class="disclaimer" data-i18n="medical_disclaimer">Информация носит ознакомительный характер и не является медицинской рекомендацией.</p>
     </main>
-    <script src="app.js?v=20260618-4"></script>
+    <script src="app.js?v=20260629-1"></script>
 </body>
 </html>

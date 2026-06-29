@@ -13,6 +13,7 @@ const state = {
     i18n: {},
     defaultManager: null,
     consultantProfile: null,
+    consultantProfilePromise: null,
 };
 
 const page = document.querySelector('#page');
@@ -44,7 +45,7 @@ function applyInitialRoute() {
 
 async function loadI18n() {
     try {
-        const response = await fetch('i18n/ru.json', {cache: 'no-store'});
+        const response = await fetch('i18n/ru.json?v=20260629-1', {cache: 'force-cache'});
         state.i18n = response.ok ? await response.json() : {};
         applyStaticI18n();
     } catch (_) {
@@ -122,8 +123,30 @@ function getTelegramApp() {
     return window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
 }
 
+function hasTelegramLaunchParams() {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const search = new URLSearchParams(window.location.search);
+    return hash.has('tgWebAppData') || search.has('tgWebAppData') || hash.has('tgWebAppVersion') || search.has('tgWebAppVersion');
+}
+
+async function waitForTelegramApp(timeoutMs = 900) {
+    if (getTelegramApp() || !hasTelegramLaunchParams()) {
+        return getTelegramApp();
+    }
+
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        const tg = getTelegramApp();
+        if (tg) {
+            return tg;
+        }
+    }
+    return getTelegramApp();
+}
+
 async function initTelegram() {
-    const tg = getTelegramApp();
+    const tg = getTelegramApp() || await waitForTelegramApp();
     if (!tg || !tg.initData) {
         return null;
     }
@@ -409,11 +432,51 @@ async function loadConsultantProfile() {
         state.consultantProfile = null;
         return null;
     }
+    if (state.consultantProfile) {
+        return state.consultantProfile;
+    }
+    if (state.consultantProfilePromise) {
+        return state.consultantProfilePromise;
+    }
 
-    const result = await api(`profile.php?${userQuery()}`);
-    state.consultantProfile = result;
-    applyTheme(result.profile?.theme_key || 'classic');
-    return result;
+    state.consultantProfilePromise = api(`profile.php?${userQuery()}`)
+        .then((result) => {
+            state.consultantProfile = result;
+            applyTheme(result.profile?.theme_key || 'classic');
+            return result;
+        })
+        .finally(() => {
+            state.consultantProfilePromise = null;
+        });
+
+    return state.consultantProfilePromise;
+}
+
+function pageNeedsConsultantProfile(pageName = state.page) {
+    return pageName === 'home' || pageName === 'profile';
+}
+
+function runWhenIdle(callback) {
+    if ('requestIdleCallback' in window) {
+        window.requestIdleCallback(callback, {timeout: 1800});
+        return;
+    }
+    window.setTimeout(callback, 350);
+}
+
+function prefetchConsultantProfile() {
+    if (!hasTeamAccess() || state.consultantProfile || state.consultantProfilePromise) {
+        return;
+    }
+    runWhenIdle(() => {
+        loadConsultantProfile()
+            .then(() => {
+                if (state.page === 'home') {
+                    renderHome();
+                }
+            })
+            .catch(() => {});
+    });
 }
 
 function escapeHtml(value) {
@@ -443,7 +506,7 @@ function renderVideoBlock(url, title) {
     if (embed) {
         return `
             <div class="detail-video">
-                <iframe src="${escapeHtml(embed)}" title="${escapeHtml(title)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+                <iframe src="${escapeHtml(embed)}" title="${escapeHtml(title)}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
             </div>
         `;
     }
@@ -469,6 +532,10 @@ function openPlatformUrl(url) {
         return;
     }
     window.open(absoluteUrl, '_blank', 'noopener');
+}
+
+function lazyImageAttrs() {
+    return 'loading="lazy" decoding="async"';
 }
 
 function applyTheme(themeKey) {
@@ -562,6 +629,7 @@ function renderReferralGate() {
 
 function renderHome() {
     const data = state.consultantProfile || {};
+    const profileReady = Boolean(state.consultantProfile);
     const profile = data.profile || {};
     const products = data.products || [];
     const tests = data.tests || [];
@@ -573,9 +641,9 @@ function renderHome() {
 
     page.innerHTML = `
         <section class="home-hero">
-            ${profile.banner_path ? `<img class="home-banner" src="${escapeHtml(profile.banner_path)}" alt="">` : ''}
+            ${profile.banner_path ? `<img class="home-banner" src="${escapeHtml(profile.banner_path)}" alt="" ${lazyImageAttrs()}>` : ''}
             <div class="consultant-strip">
-                ${profile.photo_path ? `<img class="consultant-photo" src="${escapeHtml(profile.photo_path)}" alt="">` : `<div class="consultant-photo placeholder">${escapeHtml(initials)}</div>`}
+                ${profile.photo_path ? `<img class="consultant-photo" src="${escapeHtml(profile.photo_path)}" alt="" ${lazyImageAttrs()}>` : `<div class="consultant-photo placeholder">${escapeHtml(initials)}</div>`}
                 <div class="consultant-meta">
                     <span class="eyebrow">${escapeHtml(profile.title || ui('home.consultant'))}</span>
                     <h2>${escapeHtml(profile.display_name || ui('home.title'))}</h2>
@@ -594,18 +662,18 @@ function renderHome() {
             </div>
         </section>
 
-        ${profileBlockEnabled('video') && profile.video_url ? `
+        ${profileReady && profileBlockEnabled('video') && profile.video_url ? `
             <section class="home-section">
                 <h2>${escapeHtml(profileBlockTitle('video', 'home.watch_video'))}</h2>
                 ${videoEmbed ? `
                     <div class="mini-video">
-                        <iframe src="${escapeHtml(videoEmbed)}" title="${escapeHtml(ui('home.watch_video'))}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+                        <iframe src="${escapeHtml(videoEmbed)}" title="${escapeHtml(ui('home.watch_video'))}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
                     </div>
                 ` : `<a class="soft-link" href="${escapeHtml(profile.video_url)}" target="_blank" rel="noopener">${escapeHtml(ui('home.watch_video'))}</a>`}
             </section>
         ` : ''}
 
-        ${profileBlockEnabled('about') && aboutSections.length ? `
+        ${profileReady && profileBlockEnabled('about') && aboutSections.length ? `
             <section class="home-section">
                 <h2>${escapeHtml(profileBlockTitle('about', 'consultant.about'))}</h2>
                 <div class="about-mini-grid">
@@ -637,7 +705,7 @@ function renderHome() {
             </button>
         </section>
 
-        ${profileBlockEnabled('tests') ? `
+        ${profileReady && profileBlockEnabled('tests') ? `
             <section class="home-section">
                 <div class="section-title">
                     <h2>${escapeHtml(profileBlockTitle('tests', 'home.recommended_tests'))}</h2>
@@ -658,13 +726,13 @@ function renderHome() {
             </section>
         ` : ''}
 
-        ${profileBlockEnabled('products') ? `
+        ${profileReady && profileBlockEnabled('products') ? `
             <section class="home-section">
                 <h2>${escapeHtml(profileBlockTitle('products', 'home.consultant_recommendations'))}</h2>
                 ${products.length ? `<div class="horizontal-list">
                     ${products.slice(0, 4).map((product) => `
                         <article class="recommend-card">
-                            ${product.image_path ? `<img src="${escapeHtml(product.image_path)}" alt="">` : ''}
+                            ${product.image_path ? `<img src="${escapeHtml(product.image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
                             <strong>${escapeHtml(product.title)}</strong>
                             <span class="muted">${escapeHtml(product.short_description || '')}</span>
                             <div class="item-links">
@@ -681,13 +749,13 @@ function renderHome() {
             </section>
         ` : ''}
 
-        ${profileBlockEnabled('materials') ? `
+        ${profileReady && profileBlockEnabled('materials') ? `
             <section class="home-section">
                 <h2>${escapeHtml(profileBlockTitle('materials', 'home.materials'))}</h2>
                 ${materials.length ? `<div class="card-list">
                     ${materials.slice(0, 3).map((material) => `
                         <article class="material-card">
-                            ${material.image_path ? `<img src="${escapeHtml(material.image_path)}" alt="">` : ''}
+                            ${material.image_path ? `<img src="${escapeHtml(material.image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
                             <span class="eyebrow">${escapeHtml(material.content_type || ui('lead_response.material'))}</span>
                             <strong>${escapeHtml(material.title)}</strong>
                             <span class="muted">${escapeHtml(material.short_text || '')}</span>
@@ -772,7 +840,7 @@ async function renderProducts() {
     page.innerHTML = result.products.length
         ? result.products.map((product) => `
             <article class="item">
-                ${product.image_path ? `<img class="item-image" src="${escapeHtml(product.image_path)}" alt="">` : ''}
+                ${product.image_path ? `<img class="item-image" src="${escapeHtml(product.image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
                 <span class="eyebrow">${escapeHtml(product.category_title || ui('home.consultant_recommendations'))}</span>
                 <strong>${escapeHtml(product.title)}</strong>
                 <span class="muted">${escapeHtml(product.short_description || '')}</span>
@@ -796,7 +864,7 @@ async function renderProductDetail(productId) {
     page.innerHTML = `
         <section class="detail-page">
             <button class="secondary compact back-button" data-page-target="products">${escapeHtml(ui('common.back'))}</button>
-            ${product.image_path ? `<img class="detail-cover" src="${escapeHtml(product.image_path)}" alt="">` : ''}
+            ${product.image_path ? `<img class="detail-cover" src="${escapeHtml(product.image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
             <div class="detail-header">
                 <span class="eyebrow">${escapeHtml(product.category_title || ui('home.consultant_recommendations'))}</span>
                 <h2>${escapeHtml(product.title)}</h2>
@@ -820,7 +888,7 @@ async function renderMaterialDetail(materialId) {
     page.innerHTML = `
         <section class="detail-page">
             <button class="secondary compact back-button" data-page-target="home">${escapeHtml(ui('common.back'))}</button>
-            ${material.image_path ? `<img class="detail-cover" src="${escapeHtml(material.image_path)}" alt="">` : ''}
+            ${material.image_path ? `<img class="detail-cover" src="${escapeHtml(material.image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
             <div class="detail-header">
                 <span class="eyebrow">${escapeHtml(material.category_title || material.content_type || ui('lead_response.material'))}</span>
                 <h2>${escapeHtml(material.title)}</h2>
@@ -843,7 +911,7 @@ async function renderRecommendations() {
         ? result.recommendations.map((item) => `
             <article class="recommendation-card">
                 <span class="eyebrow">${escapeHtml(item.category_title || ui('recommendations.reason'))}</span>
-                ${item.image_path ? `<img class="item-image" src="${escapeHtml(item.image_path)}" alt="">` : ''}
+                ${item.image_path ? `<img class="item-image" src="${escapeHtml(item.image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
                 <strong>${escapeHtml(item.product_title || ui('recommendations.default_title'))}</strong>
                 ${item.reason_text ? `
                     <div class="recommendation-section">
@@ -927,7 +995,7 @@ function renderResponseMaterial(response) {
     return `
         <article class="response-resource">
             <span class="response-resource-type">${escapeHtml(ui('lead_response.material'))}</span>
-            ${content.image_path ? `<img src="${escapeHtml(content.image_path)}" alt="">` : ''}
+            ${content.image_path ? `<img src="${escapeHtml(content.image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
             <strong>${escapeHtml(content.title || ui('lead_response.material'))}</strong>
             ${text ? `<p>${escapeHtml(text)}</p>` : ''}
             <div class="response-resource-actions">
@@ -1098,7 +1166,7 @@ async function renderTests() {
                 : (status === 'draft' ? ui('tests.draft_badge', 'Тест начат') : '');
             return `
                 <article class="diagnostic-card">
-                    ${test.intro_image_path ? `<img class="diagnostic-cover" src="${escapeHtml(test.intro_image_path)}" alt="">` : ''}
+                    ${test.intro_image_path ? `<img class="diagnostic-cover" src="${escapeHtml(test.intro_image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
                     <span class="diagnostic-icon">${escapeHtml(test.emoji || '🌿')}</span>
                     <span class="eyebrow">${escapeHtml(test.category_title || ui('tests.diagnostic'))}</span>
                     <strong>${escapeHtml(test.title)}</strong>
@@ -1111,22 +1179,6 @@ async function renderTests() {
                 </article>
             `;
         }).join('')
-        : `<div class="empty-card">${escapeHtml(ui('tests.empty'))}</div>`;
-    return;
-
-    const result = await api(`tests.php?${userQuery()}`);
-    page.innerHTML = result.tests.length
-        ? result.tests.map((test) => `
-            <article class="diagnostic-card">
-                <span class="diagnostic-icon">${escapeHtml(test.emoji || '🌿')}</span>
-                <span class="eyebrow">${escapeHtml(test.category_title || ui('tests.diagnostic'))}</span>
-                <strong>${escapeHtml(test.title)}</strong>
-                <span class="muted">${escapeHtml(test.description || '')}</span>
-                <span class="test-meta">${escapeHtml(test.scoring_type === 'multiscale' ? ui('tests.matrix_type', 'Матрица здоровья') : ui('tests.simple_type', 'Тест'))}</span>
-                <span class="test-meta">${escapeHtml(formatUi('tests.questions_count', {count: test.questions_count || 0}))}</span>
-                <button class="secondary" data-open-test-id="${test.id}">${escapeHtml(ui('tests.start', 'Начать тест'))}</button>
-            </article>
-        `).join('')
         : `<div class="empty-card">${escapeHtml(ui('tests.empty'))}</div>`;
 }
 
@@ -1211,7 +1263,7 @@ function renderTestIntro(result) {
         <section class="panel test-panel">
             <button class="secondary compact" data-action="back-to-tests">${escapeHtml(ui('tests.back'))}</button>
             <div class="test-intro">
-                ${test.intro_image_path ? `<img class="test-intro-media" src="${escapeHtml(test.intro_image_path)}" alt="">` : ''}
+                ${test.intro_image_path ? `<img class="test-intro-media" src="${escapeHtml(test.intro_image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
                 ${renderVideoBlock(test.intro_video_url, test.title)}
                 <span class="test-emoji">${escapeHtml(test.emoji || '🌿')}</span>
                 <span class="eyebrow">${escapeHtml(test.scoring_type === 'multiscale' ? ui('tests.matrix_type', 'Матрица здоровья') : ui('tests.simple_type', 'Тест'))}</span>
@@ -1414,7 +1466,7 @@ function renderResultMaterials(materials = []) {
             <strong>${escapeHtml(ui('result.materials_title', 'Что посмотреть дальше'))}</strong>
             ${materials.map((item) => `
                 <article class="result-material">
-                    ${item.image_path ? `<img class="item-image" src="${escapeHtml(item.image_path)}" alt="">` : ''}
+                    ${item.image_path ? `<img class="item-image" src="${escapeHtml(item.image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
                     ${renderVideoBlock(item.video_url, item.title)}
                     <span>${escapeHtml(item.content_type || '')}</span>
                     <b>${escapeHtml(item.title)}</b>
@@ -1459,9 +1511,6 @@ async function render() {
         renderReferralGate();
         return;
     }
-    if (!state.consultantProfile) {
-        await loadConsultantProfile();
-    }
     document.body.classList.remove('auth-required', 'referral-required');
     tabs.forEach((tab) => {
         tab.disabled = false;
@@ -1469,8 +1518,26 @@ async function render() {
     });
     page.innerHTML = `<div class="empty">${escapeHtml(ui('common.loading'))}</div>`;
     try {
-        if (state.page === 'home') renderHome();
-        if (state.page === 'profile') await renderProfile();
+        if (state.page === 'home') {
+            if (!state.consultantProfile) {
+                renderHome();
+                loadConsultantProfile()
+                    .then(() => {
+                        if (state.page === 'home') {
+                            renderHome();
+                        }
+                    })
+                    .catch(() => {});
+                return;
+            }
+            renderHome();
+        }
+        if (state.page === 'profile') {
+            if (!state.consultantProfile) {
+                await loadConsultantProfile();
+            }
+            await renderProfile();
+        }
         if (state.page === 'tests') {
             if (state.initialTestId) {
                 const testId = state.initialTestId;
@@ -1484,6 +1551,9 @@ async function render() {
         if (state.page === 'recommendations') await renderRecommendations();
         if (state.page === 'results') await renderTestResultsList();
         if (state.page === 'leads') await renderLeads();
+        if (!pageNeedsConsultantProfile()) {
+            prefetchConsultantProfile();
+        }
     } catch (error) {
         page.innerHTML = `<div class="empty-card">${escapeHtml(friendlyError(error))}</div>`;
     }
@@ -1612,8 +1682,7 @@ document.addEventListener('submit', async (event) => {
 
 applyInitialRoute();
 
-loadI18n()
-    .then(() => authorize())
+Promise.all([loadI18n(), authorize()])
     .then(() => {
         if (!state.user) {
             renderAuthGate();
