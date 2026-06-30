@@ -210,6 +210,15 @@ function hasVkLaunchParams() {
     return params.has('vk_app_id') || params.has('vk_user_id') || params.has('vk_ok_user_id');
 }
 
+function withTimeout(promise, timeoutMs) {
+    return Promise.race([
+        promise,
+        new Promise((resolve) => {
+            window.setTimeout(() => resolve(null), timeoutMs);
+        }),
+    ]);
+}
+
 async function initVk() {
     if (!hasVkLaunchParams()) {
         return null;
@@ -217,8 +226,11 @@ async function initVk() {
 
     if (window.vkBridge) {
         try {
-            await vkBridge.send('VKWebAppInit');
-            return await vkBridge.send('VKWebAppGetUserInfo');
+            await withTimeout(vkBridge.send('VKWebAppInit'), 1000);
+            const user = await withTimeout(vkBridge.send('VKWebAppGetUserInfo'), 1500);
+            if (user && user.id) {
+                return user;
+            }
         } catch (_) {
             // VK moderation can open the app with launch params before bridge user info is available.
         }
