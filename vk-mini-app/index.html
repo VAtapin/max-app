@@ -4,25 +4,23 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SWPro</title>
-    <link rel="stylesheet" href="style.css?v=20260701-1">
-    <script defer src="vendor/vk-bridge.min.js?v=3.0.2"></script>
-    <script defer src="app.js?v=20260701-1"></script>
+    <link rel="stylesheet" href="style.css?v=20260703-1">
+    <script defer src="app.js?v=20260703-1"></script>
 </head>
 <body>
     <main class="app">
         <header class="app-header">
-            <div>
+            <button class="home-link" id="home-link" type="button" aria-label="Главная">
                 <span class="eyebrow" data-i18n="app.eyebrow">SWPro Ассистент</span>
                 <h1 data-i18n="app.title">SWPro</h1>
-            </div>
+            </button>
         </header>
 
         <nav class="tabs" aria-label="" data-i18n-attr="aria-label:nav.aria">
-            <button data-page="home" data-i18n="nav.home" class="active">Главная</button>
-            <button data-page="tests" data-i18n="nav.tests">Тесты</button>
-            <button data-page="recommendations" data-i18n="nav.recommendations">Рекомендации</button>
-            <button data-page="leads" data-i18n="nav.leads">Заявки</button>
-            <button data-page="profile" data-i18n="nav.profile">Профиль</button>
+            <button data-page="tests">Чек-ап</button>
+            <button data-page="cashback">Кэшбэк</button>
+            <button data-page="contact">Связаться</button>
+            <button data-page="cooperation">Сотрудничество</button>
         </nav>
 
         <section id="page" class="page">
@@ -32,6 +30,10 @@
             </section>
         </section>
 
+        <div class="legal-links">
+            <a href="/legal.php?type=privacy_policy" target="_blank" rel="noopener">Политика данных</a>
+            <a href="/legal.php?type=user_agreement" target="_blank" rel="noopener">Соглашение</a>
+        </div>
         <p class="disclaimer" data-i18n="medical_disclaimer">Информация носит ознакомительный характер и не является медицинской рекомендацией.</p>
     </main>
 </body>

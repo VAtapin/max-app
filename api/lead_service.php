@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../admin/app/core/client_journey.php';
+
 function create_lead_for_user(array $user, array $data): int
 {
     $sourcePlatform = $data['platform'] ?? $user['platform'];
@@ -31,6 +33,9 @@ function create_lead_for_user(array $user, array $data): int
         'entity_id' => $leadId,
         'details' => json_encode(['platform' => $sourcePlatform], JSON_UNESCAPED_UNICODE),
     ]);
+
+    update_client_stage((int)$user['id'], 'consultation_requested');
+    notify_consultant_about_contact($user, $leadId);
 
     return $leadId;
 }

@@ -13,13 +13,14 @@ from bot.telegram.adapter import build_bot, build_dispatcher
 async def configure_telegram_menu(bot) -> None:
     await bot.set_my_commands(
         [
-            BotCommand(command="start", description="Запуск и привязка"),
+            BotCommand(command="start", description="Начать работу"),
+            BotCommand(command="menu", description="Главное меню"),
             BotCommand(command="app", description="Открыть SWPro"),
-            BotCommand(command="tests", description="Пройти тест"),
-            BotCommand(command="materials", description="Материалы"),
-            BotCommand(command="recommendations", description="Рекомендации"),
-            BotCommand(command="manager", description="Написать менеджеру"),
-            BotCommand(command="profile", description="Профиль"),
+            BotCommand(command="tests", description="Чек-ап организма"),
+            BotCommand(command="manager", description="Связаться с консультантом"),
+            BotCommand(command="privacy", description="Документы и согласия"),
+            BotCommand(command="unsubscribe", description="Отключить рассылки"),
+            BotCommand(command="revoke", description="Отозвать согласия"),
             BotCommand(command="help", description="Помощь"),
         ]
     )

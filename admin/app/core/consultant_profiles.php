@@ -102,6 +102,7 @@ function ensure_consultant_profile(string $ownerType, int $ownerId): array
     $profile = $stmt->fetch();
     if ($profile) {
         ensure_consultant_blocks((int)$profile['id']);
+        ensure_consultant_primary_test((int)$profile['id']);
         return $profile;
     }
 
@@ -129,9 +130,23 @@ function ensure_consultant_profile(string $ownerType, int $ownerId): array
 
     $profileId = (int)db()->lastInsertId();
     ensure_consultant_blocks($profileId);
+    ensure_consultant_primary_test($profileId);
 
     $stmt->execute(['owner_type' => $ownerType, 'owner_id' => $ownerId]);
     return $stmt->fetch();
+}
+
+function ensure_consultant_primary_test(int $profileId): void
+{
+    $stmt = db()->prepare(
+        'INSERT IGNORE INTO profile_tests (profile_id, test_id, sort_order)
+         SELECT :profile_id, id, 10
+         FROM tests
+         WHERE title = "Диагностика организма" AND is_active = 1
+         ORDER BY id
+         LIMIT 1'
+    );
+    $stmt->execute(['profile_id' => $profileId]);
 }
 
 function consultant_theme_options(): array
@@ -172,11 +187,13 @@ function default_consultant_blocks(): array
         'hero' => [app_text('consultant_profile.block_hero'), 10],
         'video' => [app_text('consultant_profile.block_video'), 20],
         'about' => [app_text('consultant_profile.block_about'), 30],
-        'tests' => [app_text('consultant_profile.block_tests'), 40],
-        'products' => [app_text('consultant_profile.block_products'), 50],
-        'materials' => [app_text('consultant_profile.block_materials'), 60],
-        'reviews' => [app_text('consultant_profile.block_reviews'), 70],
-        'contacts' => [app_text('consultant_profile.block_contacts'), 80],
+        'cashback' => ['Кэшбэк и подарки', 40],
+        'cooperation' => ['Возможность сотрудничества', 50],
+        'tests' => [app_text('consultant_profile.block_tests'), 60],
+        'materials' => [app_text('consultant_profile.block_materials'), 70],
+        'reviews' => [app_text('consultant_profile.block_reviews'), 80],
+        'contacts' => [app_text('consultant_profile.block_contacts'), 90],
+        'products' => [app_text('consultant_profile.block_products'), 100],
     ];
 }
 
@@ -184,7 +201,7 @@ function ensure_consultant_blocks(int $profileId): void
 {
     $stmt = db()->prepare(
         'INSERT INTO profile_blocks (profile_id, block_type, title, is_enabled, sort_order)
-         VALUES (:profile_id, :block_type, :title, 1, :sort_order)
+         VALUES (:profile_id, :block_type, :title, :is_enabled, :sort_order)
          ON DUPLICATE KEY UPDATE title = COALESCE(title, VALUES(title))'
     );
     foreach (default_consultant_blocks() as $blockType => [$title, $sortOrder]) {
@@ -192,6 +209,7 @@ function ensure_consultant_blocks(int $profileId): void
             'profile_id' => $profileId,
             'block_type' => $blockType,
             'title' => $title,
+            'is_enabled' => $blockType === 'products' ? 0 : 1,
             'sort_order' => $sortOrder,
         ]);
     }
@@ -322,7 +340,8 @@ function consultant_profile_payload(array $profile): array
     $tests->execute(['profile_id' => $profileId]);
 
     $materials = db()->prepare(
-        'SELECT c.id, c.title, c.short_text, c.full_text, c.image_path, c.video_url, c.attachment_path, c.content_type, pm.sort_order
+        'SELECT c.id, c.title, c.short_text, c.full_text, c.image_path, c.video_url, c.attachment_path,
+                c.content_type, c.section_type, c.button_text, c.button_url, pm.sort_order
          FROM profile_materials pm
          JOIN content_posts c ON c.id = pm.content_post_id
          WHERE pm.profile_id = :profile_id AND c.status = "published"

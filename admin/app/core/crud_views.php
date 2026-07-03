@@ -61,8 +61,15 @@ function crud_form_fields(string $moduleKey, array $fields): array
             'manager_id',
             'first_name',
             'last_name',
+            'gender',
+            'birth_date',
+            'age_years',
+            'city',
+            'timezone',
             'phone',
             'email',
+            'client_stage',
+            'notifications_enabled',
             'status',
         ]));
     }
@@ -105,11 +112,11 @@ function crud_display_columns(string $moduleKey): array
         'users' => [
             'id' => 'ID',
             'display_name' => app_text('auto.k_51aff1853949'),
-            'platform_accounts_summary' => app_text('auto.k_89009febe5c6'),
-            'reseller_name' => app_text('auto.k_86469fea3a4a'),
+            'client_profile' => 'Анкета',
+            'client_stage' => 'Этап',
+            'checkup_status' => 'Чек-ап',
             'manager_name' => app_text('auto.k_8d98911527e4'),
-            'status' => app_text('auto.k_f7f293b5c58c'),
-            'created_at' => app_text('auto.k_33415c6ac49e'),
+            'last_activity_at' => 'Последняя активность',
         ],
         'platform_accounts' => [
             'id' => 'ID',
@@ -159,6 +166,7 @@ function crud_display_columns(string $moduleKey): array
         'broadcasts' => [
             'id' => 'ID',
             'title' => app_text('auto.k_38090ead89f2'),
+            'audience_type' => 'Получатели',
             'platform' => app_text('auto.k_89009febe5c6'),
             'target_type' => app_text('auto.k_e9476ab1820b'),
             'scheduled_at' => app_text('auto.k_725347e42525'),
@@ -169,6 +177,7 @@ function crud_display_columns(string $moduleKey): array
             'image_preview' => app_text('auto.k_fb8ffc7377b8'),
             'title' => app_text('auto.k_19114f713f60'),
             'content_type' => app_text('auto.k_d25691ca401e'),
+            'section_type' => 'Раздел сайта',
             'category_title' => app_text('auto.k_19c85838e63f'),
             'media_summary' => app_text('auto.k_012475a7b6b0'),
             'status' => app_text('auto.k_f7f293b5c58c'),
@@ -181,6 +190,15 @@ function crud_display_columns(string $moduleKey): array
             'platform' => app_text('auto.k_89009febe5c6'),
             'external_id' => app_text('integrations.external_id'),
             'state' => app_text('auto.k_f7f293b5c58c'),
+        ],
+        'legal_documents' => [
+            'id' => 'ID',
+            'document_type' => 'Тип',
+            'title' => 'Название',
+            'version' => 'Версия',
+            'is_required' => 'Обязательный',
+            'is_active' => 'Активен',
+            'updated_at' => 'Обновлён',
         ],
     ][$moduleKey] ?? [];
 }
@@ -251,10 +269,35 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
         $where = $where
             ? $where . ' AND eu.merged_into_user_id IS NULL'
             : 'WHERE eu.merged_into_user_id IS NULL';
+
+        $stage = (string)($_GET['client_stage'] ?? '');
+        if ($stage !== '' && isset(client_stage_labels()[$stage])) {
+            $where .= ' AND eu.client_stage = :client_stage_filter';
+            $params['client_stage_filter'] = $stage;
+        }
+        $activity = (string)($_GET['activity'] ?? '');
+        if ($activity === 'active_7') {
+            $where .= ' AND eu.last_activity_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)';
+        } elseif ($activity === 'inactive_14') {
+            $where .= ' AND (eu.last_activity_at IS NULL OR eu.last_activity_at < DATE_SUB(NOW(), INTERVAL 14 DAY))';
+        }
+        $checkup = (string)($_GET['checkup'] ?? '');
+        if ($checkup === 'started') {
+            $where .= ' AND EXISTS (SELECT 1 FROM user_test_sessions utsf WHERE utsf.end_user_id = eu.id AND utsf.completed_at IS NULL)';
+        } elseif ($checkup === 'completed') {
+            $where .= ' AND EXISTS (SELECT 1 FROM user_test_sessions utsf WHERE utsf.end_user_id = eu.id AND utsf.completed_at IS NOT NULL)';
+        } elseif ($checkup === 'not_started') {
+            $where .= ' AND NOT EXISTS (SELECT 1 FROM user_test_sessions utsf WHERE utsf.end_user_id = eu.id)';
+        }
+
         return [
             "SELECT eu.id, CONCAT_WS(' ', NULLIF(eu.first_name, ''), NULLIF(eu.last_name, '')) AS full_name,
                     eu.username, eu.platform, eu.platform_user_id, eu.status, eu.created_at,
+                    eu.gender, eu.birth_date, eu.age_years, eu.city, eu.client_stage,
+                    eu.onboarding_completed_at, eu.last_activity_at,
                     r.name AS reseller_name, m.name AS manager_name,
+                    (SELECT COUNT(*) FROM user_test_sessions uts WHERE uts.end_user_id = eu.id AND uts.completed_at IS NULL) AS draft_tests_count,
+                    (SELECT COUNT(*) FROM user_test_sessions uts WHERE uts.end_user_id = eu.id AND uts.completed_at IS NOT NULL) AS completed_tests_count,
                     GROUP_CONCAT(CONCAT(pa.platform, ':', pa.platform_user_id) ORDER BY FIELD(pa.platform, 'telegram', 'VK', 'OK', 'MAX', 'web'), pa.id SEPARATOR '\n') AS platform_accounts_summary
              FROM end_users eu
              LEFT JOIN resellers r ON r.id = eu.reseller_id
@@ -400,9 +443,9 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     }
 
     if ($moduleKey === 'broadcasts') {
-        [$where, $params] = owner_scope_condition($admin);
+        [$where, $params] = scope_where_for_module($moduleKey, $admin);
         return [
-            "SELECT id, title, platform, target_type, scheduled_at, status FROM broadcasts $where ORDER BY id DESC LIMIT 100",
+            "SELECT id, title, audience_type, platform, target_type, scheduled_at, status FROM broadcasts $where ORDER BY id DESC LIMIT 100",
             $params,
         ];
     }
@@ -410,7 +453,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     if ($moduleKey === 'content') {
         [$where, $params] = owner_scope_condition($admin, 'cp');
         return [
-            "SELECT cp.id, cp.title, cp.content_type, c.title AS category_title, cp.image_path,
+            "SELECT cp.id, cp.title, cp.content_type, cp.section_type, c.title AS category_title, cp.image_path,
                     cp.attachment_path, cp.video_url, cp.button_url, cp.status, cp.publish_at
              FROM content_posts cp
              LEFT JOIN product_categories c ON c.id = cp.category_id
@@ -499,6 +542,26 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
 
     if ($column === 'test_type') {
         return ($row['scoring_type'] ?? 'single') === 'multiscale' ? 'Многошкальная матрица' : 'Обычный тест';
+    }
+
+    if ($moduleKey === 'users' && $column === 'client_profile') {
+        $gender = client_gender_labels()[(string)($row['gender'] ?? '')] ?? '—';
+        $age = $row['age_years'] ?: ($row['birth_date'] ? date_diff(date_create((string)$row['birth_date']), date_create('today'))->y : null);
+        return trim((string)($row['city'] ?? '')) . "\n" . $gender . ($age ? ', ' . $age . ' лет' : '');
+    }
+
+    if ($moduleKey === 'users' && $column === 'client_stage') {
+        return client_stage_labels()[(string)($row['client_stage'] ?? 'new')] ?? (string)($row['client_stage'] ?? '');
+    }
+
+    if ($moduleKey === 'users' && $column === 'checkup_status') {
+        if ((int)($row['draft_tests_count'] ?? 0) > 0) {
+            return 'Начат';
+        }
+        if ((int)($row['completed_tests_count'] ?? 0) > 0) {
+            return 'Завершён';
+        }
+        return 'Не начат';
     }
 
     return format_cell_value($row[$column] ?? null);
@@ -594,6 +657,15 @@ function render_cell(string $moduleKey, string $key, array $row): string
         $type = (string)($row['scoring_type'] ?? 'single');
         $class = $type === 'multiscale' ? 'badge badge-pending' : 'badge';
         return '<span class="' . h($class) . '">' . h(crud_cell_value($moduleKey, $key, $row)) . '</span>';
+    }
+
+    if ($moduleKey === 'users' && in_array($key, ['client_stage', 'checkup_status'], true)) {
+        $value = crud_cell_value($moduleKey, $key, $row);
+        return '<span class="' . h(status_badge_class($value)) . '">' . h($value) . '</span>';
+    }
+
+    if ($moduleKey === 'users' && $key === 'client_profile') {
+        return nl2br(h(crud_cell_value($moduleKey, $key, $row)));
     }
 
     return nl2br(h(crud_cell_value($moduleKey, $key, $row)));

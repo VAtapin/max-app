@@ -1,4 +1,9 @@
-from bot.core.referrals import increment_registration, normalize_referral_code, resolve_referral
+from bot.core.referrals import (
+    default_referral_code,
+    increment_registration,
+    normalize_referral_code,
+    resolve_referral,
+)
 from bot.db.mysql import cursor
 
 
@@ -79,6 +84,9 @@ async def get_or_create_user(
 ) -> dict:
     if await staff_platform_account_exists(platform, platform_user_id):
         raise StaffAccountError("staff account cannot be registered as an end user")
+
+    if not normalize_referral_code(referral_code):
+        referral_code = await default_referral_code(platform)
 
     async with cursor() as cur:
         await cur.execute(

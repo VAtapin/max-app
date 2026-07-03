@@ -18,7 +18,7 @@ httpdocs
 
 Enable PHP-FPM with PHP 8.3.
 
-Upload limits are controlled by PHP/Plesk. Example values for product images, PDFs and videos:
+Upload limits are controlled by PHP/Plesk. Example values for images, PDFs and videos:
 
 ```text
 upload_max_filesize = 300M
@@ -66,7 +66,14 @@ cp deploy/plesk/env.example deploy/plesk/live.env
 nano deploy/plesk/live.env
 ```
 
-Fill DB credentials, Telegram token and system user.
+Fill DB credentials, Telegram token, public URLs and system user.
+
+For Telegram OpenID Connect on ordinary desktop/mobile web:
+
+- set `TELEGRAM_OIDC_CLIENT_ID` and `TELEGRAM_OIDC_CLIENT_SECRET`;
+- register `https://swpro.ru/api/telegram_oidc_callback.php` as the redirect URL;
+- keep `SWPRO_PUBLIC_URL=https://swpro.ru`;
+- keep `SWPRO_MINI_APP_URL=https://swpro.ru/vk-mini-app/`.
 
 For VK:
 
@@ -106,6 +113,8 @@ Run this again after updates that add new private config values. Telegram Mini A
 bash deploy/plesk/import-db.sh deploy/plesk/live.env
 ```
 
+The clean import loads the current schema, demo data, the 47-question multiscale check-up and its media metadata.
+
 Default admin after seed:
 
 ```text
@@ -115,7 +124,7 @@ Password: admin123
 
 Change it after first login.
 
-For later schema updates without wiping data, run migrations instead of importing the full schema:
+For later schema updates without wiping data, run migrations instead of importing the full schema. Applied migrations are tracked and are not repeated:
 
 ```bash
 bash deploy/plesk/migrate-db.sh deploy/plesk/live.env
@@ -174,13 +183,24 @@ bash deploy/plesk/deploy.sh deploy/plesk/live.env
 
 The deploy script pulls code, applies migrations, checks syntax, updates bot dependencies and restarts the bot service when the service is installed.
 
-## 10. Smoke Test URLs
+## 10. Scheduled Tasks
+
+Create two Plesk scheduled tasks under the site system user:
+
+```cron
+*/5 * * * * cd /var/www/vhosts/swpro.ru/httpdocs && php admin/cron/run-broadcasts.php
+*/15 * * * * cd /var/www/vhosts/swpro.ru/httpdocs && php admin/cron/run-automations.php
+```
+
+The second task sends unfinished check-up reminders after 24 hours, 3 days and 7 days, and inactivity messages after 14 and 30 days. Delivery is limited to daytime in the client's timezone.
+
+## 11. Smoke Test URLs
 
 ```text
 https://swpro.ru/api/index.php
 https://swpro.ru/admin/public/login.php
-https://swpro.ru/mini-app/index.html
-https://swpro.ru/vk-mini-app/index.html
+https://swpro.ru/vk-mini-app/
+https://swpro.ru/legal.php?type=privacy_policy
 ```
 
 API check:

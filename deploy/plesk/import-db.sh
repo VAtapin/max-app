@@ -29,6 +29,7 @@ MYSQL_PWD="$DB_PASSWORD" "$MYSQL_BIN" \
   --host="$DB_HOST" \
   --port="$DB_PORT" \
   --user="$DB_USERNAME" \
+  --default-character-set=utf8mb4 \
   "$DB_DATABASE" < database/schema.sql
 
 echo "Importing seed data..."
@@ -36,6 +37,54 @@ MYSQL_PWD="$DB_PASSWORD" "$MYSQL_BIN" \
   --host="$DB_HOST" \
   --port="$DB_PORT" \
   --user="$DB_USERNAME" \
+  --default-character-set=utf8mb4 \
   "$DB_DATABASE" < database/seed.sql
+
+echo "Importing the multiscale check-up and its media metadata..."
+for migration in \
+  database/migrations/20260618_01_multiscale_health_test.sql \
+  database/migrations/20260618_02_admin_multiscale_tests.sql \
+  database/migrations/20260618_03_test_intro_progress_media.sql; do
+  MYSQL_PWD="$DB_PASSWORD" "$MYSQL_BIN" \
+    --host="$DB_HOST" \
+    --port="$DB_PORT" \
+    --user="$DB_USERNAME" \
+    --default-character-set=utf8mb4 \
+    "$DB_DATABASE" < "$migration"
+done
+
+MYSQL_PWD="$DB_PASSWORD" "$MYSQL_BIN" \
+  --host="$DB_HOST" \
+  --port="$DB_PORT" \
+  --user="$DB_USERNAME" \
+  --default-character-set=utf8mb4 \
+  "$DB_DATABASE" <<'SQL'
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  migration VARCHAR(255) NOT NULL PRIMARY KEY,
+  applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+UPDATE content_posts
+SET section_type = 'program'
+WHERE title = 'Персональная программа с консультантом';
+
+UPDATE test_questions
+SET gender_scope = 'female'
+WHERE question_text IN (
+  'Для женщин: проблемы с менструальным циклом',
+  'Для женщин: период менопаузы, «приливы»'
+);
+
+INSERT IGNORE INTO profile_tests (profile_id, test_id, sort_order)
+SELECT cp.id, t.id, 10
+FROM consultant_profiles cp
+INNER JOIN tests t ON t.title = 'Диагностика организма' AND t.is_active = 1;
+
+INSERT IGNORE INTO schema_migrations (migration) VALUES
+('20260618_01_multiscale_health_test.sql'),
+('20260618_02_admin_multiscale_tests.sql'),
+('20260618_03_test_intro_progress_media.sql'),
+('20260703_01_simplified_client_journey.sql');
+SQL
 
 echo "Database import complete."

@@ -365,15 +365,20 @@ function handle_test_builder_action(string $postAction, int $testId, array $admi
             if (!in_array($type, ['single_choice', 'multiple_choice', 'text'], true)) {
                 $type = 'single_choice';
             }
+            $genderScope = (string)($_POST['gender_scope'] ?? 'all');
+            if (!in_array($genderScope, ['all', 'female', 'male'], true)) {
+                $genderScope = 'all';
+            }
 
             $stmt = db()->prepare(
-                'INSERT INTO test_questions (test_id, question_text, question_type, is_required, sort_order)
-                 VALUES (:test_id, :question_text, :question_type, :is_required, :sort_order)'
+                'INSERT INTO test_questions (test_id, question_text, question_type, gender_scope, is_required, sort_order)
+                 VALUES (:test_id, :question_text, :question_type, :gender_scope, :is_required, :sort_order)'
             );
             $stmt->execute([
                 'test_id' => $testId,
                 'question_text' => $questionText,
                 'question_type' => $type,
+                'gender_scope' => $genderScope,
                 'is_required' => isset($_POST['is_required']) ? 1 : 0,
                 'sort_order' => (int)($_POST['sort_order'] ?? 100),
             ]);
@@ -401,11 +406,16 @@ function handle_test_builder_action(string $postAction, int $testId, array $admi
             if (!in_array($type, ['single_choice', 'multiple_choice', 'text'], true)) {
                 $type = 'single_choice';
             }
+            $genderScope = (string)($_POST['gender_scope'] ?? 'all');
+            if (!in_array($genderScope, ['all', 'female', 'male'], true)) {
+                $genderScope = 'all';
+            }
 
             $stmt = db()->prepare(
                 'UPDATE test_questions
                  SET question_text = :question_text,
                      question_type = :question_type,
+                     gender_scope = :gender_scope,
                      is_required = :is_required,
                      sort_order = :sort_order
                  WHERE id = :id AND test_id = :test_id'
@@ -413,6 +423,7 @@ function handle_test_builder_action(string $postAction, int $testId, array $admi
             $stmt->execute([
                 'question_text' => $questionText,
                 'question_type' => $type,
+                'gender_scope' => $genderScope,
                 'is_required' => isset($_POST['is_required']) ? 1 : 0,
                 'sort_order' => (int)($_POST['sort_order'] ?? 100),
                 'id' => $questionId,
@@ -843,6 +854,7 @@ function render_test_builder(int $testId): string
             <input type="hidden" name="id" value="<?= (int)$testId ?>">
             <label class="field wide-field"><span><?= h(app_text('test_builder.question_text')) ?></span><input name="question_text" required placeholder="<?= h(app_text('test_builder.question_placeholder')) ?>"></label>
             <label class="field"><span><?= h(app_text('test_builder.type')) ?></span><select name="question_type"><option value="single_choice"><?= h(test_builder_question_type_label('single_choice')) ?></option><option value="multiple_choice"><?= h(test_builder_question_type_label('multiple_choice')) ?></option><option value="text"><?= h(test_builder_question_type_label('text')) ?></option></select></label>
+            <label class="field"><span>Для кого</span><select name="gender_scope"><option value="all">Для всех</option><option value="female">Только для женщин</option><option value="male">Только для мужчин</option></select></label>
             <label class="field compact-field"><span><?= h(app_text('test_builder.sort')) ?></span><input type="number" name="sort_order" value="100"></label>
             <label class="field checkbox-field"><span><?= h(app_text('test_builder.required')) ?></span><input type="checkbox" name="is_required" value="1" checked></label>
             <div class="form-actions"><button type="submit"><?= h(app_text('test_builder.add_question')) ?></button></div>
@@ -856,7 +868,7 @@ function render_test_builder(int $testId): string
                 <div class="builder-card-head">
                     <div>
                         <strong>#<?= (int)$question['id'] ?> <?= h($question['question_text']) ?></strong>
-                        <span><?= h(test_builder_question_type_label($question['question_type'])) ?>, <?= h(app_text('test_builder.sort')) ?> <?= (int)$question['sort_order'] ?><?= (int)$question['is_required'] === 1 ? ', ' . h(app_text('test_builder.required')) : '' ?></span>
+                        <span><?= h(test_builder_question_type_label($question['question_type'])) ?>, <?= h(['all' => 'для всех', 'female' => 'для женщин', 'male' => 'для мужчин'][$question['gender_scope'] ?? 'all']) ?>, <?= h(app_text('test_builder.sort')) ?> <?= (int)$question['sort_order'] ?><?= (int)$question['is_required'] === 1 ? ', ' . h(app_text('test_builder.required')) : '' ?></span>
                     </div>
                     <form method="post" onsubmit="return confirm('<?= h(app_text('test_builder.delete_question_confirm')) ?>');">
                         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
@@ -876,6 +888,11 @@ function render_test_builder(int $testId): string
                     <label class="field"><span><?= h(app_text('test_builder.type')) ?></span><select name="question_type">
                         <?php foreach (['single_choice', 'multiple_choice', 'text'] as $type): ?>
                             <option value="<?= h($type) ?>" <?= $question['question_type'] === $type ? 'selected' : '' ?>><?= h(test_builder_question_type_label($type)) ?></option>
+                        <?php endforeach; ?>
+                    </select></label>
+                    <label class="field"><span>Для кого</span><select name="gender_scope">
+                        <?php foreach (['all' => 'Для всех', 'female' => 'Только для женщин', 'male' => 'Только для мужчин'] as $genderScope => $genderLabel): ?>
+                            <option value="<?= h($genderScope) ?>" <?= ($question['gender_scope'] ?? 'all') === $genderScope ? 'selected' : '' ?>><?= h($genderLabel) ?></option>
                         <?php endforeach; ?>
                     </select></label>
                     <label class="field compact-field"><span><?= h(app_text('test_builder.sort')) ?></span><input type="number" name="sort_order" value="<?= (int)$question['sort_order'] ?>"></label>

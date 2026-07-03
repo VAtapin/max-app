@@ -8,7 +8,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $data = input_json() ?: $_POST;
-$user = require_platform_user();
+$user = require_platform_user($data);
+if (!client_onboarding_status($user)['complete']) {
+    json_response(['error' => 'onboarding_required'], 403);
+}
 $leadId = create_lead_for_user($user, $data);
 
 json_response(['lead_id' => $leadId, 'status' => 'new']);

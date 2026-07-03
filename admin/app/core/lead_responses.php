@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/client_journey.php';
+
 function absolute_public_url(?string $path): ?string
 {
     if (!$path) {
@@ -528,6 +530,23 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
     if ($status === 'sent') {
         $stmt = db()->prepare('UPDATE leads SET status = "contacted" WHERE id = :id AND status = "new"');
         $stmt->execute(['id' => $leadId]);
+        $stageStmt = db()->prepare('SELECT client_stage FROM end_users WHERE id = :id LIMIT 1');
+        $stageStmt->execute(['id' => $lead['end_user_id']]);
+        $currentStage = (string)($stageStmt->fetchColumn() ?: 'new');
+        if (!in_array($currentStage, ['client', 'partner', 'unsubscribed'], true)) {
+            $source = match ((string)$admin['role']) {
+                'manager' => 'consultant',
+                'reseller' => 'leader',
+                default => 'admin',
+            };
+            update_client_stage(
+                (int)$lead['end_user_id'],
+                'in_progress',
+                $source,
+                (int)$admin['id'],
+                'Консультант отправил ответ на обращение'
+            );
+        }
     } elseif ($status === 'failed') {
         $errors[] = app_text('lead_response.response_saved_not_sent', ['error' => $error]);
     } elseif ($status === 'pending' && $error) {

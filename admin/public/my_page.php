@@ -70,8 +70,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $profileId = (int)$profile['id'];
     $currentPhotoPath = isset($_POST['remove_photo_path']) ? null : ($_POST['photo_path_current'] ?? ($profile['photo_path'] ?? null));
     $currentBannerPath = isset($_POST['remove_banner_path']) ? null : ($_POST['banner_path_current'] ?? ($profile['banner_path'] ?? null));
+    $currentWelcomePath = isset($_POST['remove_welcome_image_path']) ? null : ($_POST['welcome_image_path_current'] ?? ($profile['welcome_image_path'] ?? null));
+    $currentCashbackPath = isset($_POST['remove_cashback_image_path']) ? null : ($_POST['cashback_image_path_current'] ?? ($profile['cashback_image_path'] ?? null));
+    $currentCooperationPath = isset($_POST['remove_cooperation_image_path']) ? null : ($_POST['cooperation_image_path_current'] ?? ($profile['cooperation_image_path'] ?? null));
     $photoPath = consultant_profile_upload('photo_path', $currentPhotoPath, $errors);
     $bannerPath = consultant_profile_upload('banner_path', $currentBannerPath, $errors);
+    $welcomeImagePath = consultant_profile_upload('welcome_image_path', $currentWelcomePath, $errors);
+    $cashbackImagePath = consultant_profile_upload('cashback_image_path', $currentCashbackPath, $errors);
+    $cooperationImagePath = consultant_profile_upload('cooperation_image_path', $currentCooperationPath, $errors);
     $slug = consultant_unique_slug(consultant_slug((string)($_POST['slug'] ?? ''), $owner['owner_type'] . '-' . $owner['owner_id']), $profileId);
 
     if (!$errors) {
@@ -82,6 +88,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  title = :title,
                  subtitle = :subtitle,
                  short_description = :short_description,
+                 welcome_text = :welcome_text,
+                 welcome_image_path = :welcome_image_path,
+                 welcome_video_url = :welcome_video_url,
+                 cashback_title = :cashback_title,
+                 cashback_text = :cashback_text,
+                 cashback_image_path = :cashback_image_path,
+                 cashback_url = :cashback_url,
+                 cooperation_title = :cooperation_title,
+                 cooperation_text = :cooperation_text,
+                 cooperation_image_path = :cooperation_image_path,
+                 cooperation_video_url = :cooperation_video_url,
                  bio = :bio,
                  specialization = :specialization,
                  experience_text = :experience_text,
@@ -111,6 +128,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'title' => trim((string)($_POST['title'] ?? '')),
             'subtitle' => trim((string)($_POST['subtitle'] ?? '')),
             'short_description' => trim((string)($_POST['short_description'] ?? '')),
+            'welcome_text' => trim((string)($_POST['welcome_text'] ?? '')),
+            'welcome_image_path' => $welcomeImagePath,
+            'welcome_video_url' => trim((string)($_POST['welcome_video_url'] ?? '')),
+            'cashback_title' => trim((string)($_POST['cashback_title'] ?? '')),
+            'cashback_text' => trim((string)($_POST['cashback_text'] ?? '')),
+            'cashback_image_path' => $cashbackImagePath,
+            'cashback_url' => trim((string)($_POST['cashback_url'] ?? '')),
+            'cooperation_title' => trim((string)($_POST['cooperation_title'] ?? '')),
+            'cooperation_text' => trim((string)($_POST['cooperation_text'] ?? '')),
+            'cooperation_image_path' => $cooperationImagePath,
+            'cooperation_video_url' => trim((string)($_POST['cooperation_video_url'] ?? '')),
             'bio' => trim((string)($_POST['bio'] ?? '')),
             'specialization' => trim((string)($_POST['specialization'] ?? '')),
             'experience_text' => trim((string)($_POST['experience_text'] ?? '')),
@@ -159,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         replace_consultant_items($profileId, 'profile_products', 'product_id', $_POST['products'] ?? []);
-        replace_consultant_items($profileId, 'profile_tests', 'test_id', $_POST['tests'] ?? []);
+        ensure_consultant_primary_test($profileId);
         replace_consultant_items($profileId, 'profile_materials', 'content_post_id', $_POST['materials'] ?? []);
 
         log_activity('admin', (int)$admin['id'], 'update_consultant_profile', 'consultant_profiles', $profileId);
@@ -171,7 +199,6 @@ $profile = ensure_consultant_profile($owner['owner_type'], $owner['owner_id']);
 $blocks = consultant_blocks((int)$profile['id']);
 $aboutTitles = about_section_titles($blocks);
 $selectedProducts = consultant_selected_ids((int)$profile['id'], 'profile_products', 'product_id');
-$selectedTests = consultant_selected_ids((int)$profile['id'], 'profile_tests', 'test_id');
 $selectedMaterials = consultant_selected_ids((int)$profile['id'], 'profile_materials', 'content_post_id');
 $ownerOptions = consultant_options_for_admin($admin);
 
@@ -294,6 +321,30 @@ require __DIR__ . '/../app/views/layouts/header.php';
     </section>
 
     <section class="panel">
+        <h2>Приветствие в боте и Mini App</h2>
+        <p class="cell-muted">Этот блок пользователь видит при первом запуске от имени конкретного консультанта.</p>
+        <div class="profile-form-grid">
+            <label class="field wide">
+                <span>Текст приветствия</span>
+                <textarea name="welcome_text" rows="5"><?= h((string)$profile['welcome_text']) ?></textarea>
+            </label>
+            <label class="field">
+                <span>Приветственное изображение</span>
+                <input type="hidden" name="welcome_image_path_current" value="<?= h((string)$profile['welcome_image_path']) ?>">
+                <input type="file" name="welcome_image_path" accept="image/*">
+                <?php if (!empty($profile['welcome_image_path'])): ?>
+                    <a href="<?= h((string)$profile['welcome_image_path']) ?>" target="_blank" rel="noopener">Открыть изображение</a>
+                    <label class="checkbox-line"><input type="checkbox" name="remove_welcome_image_path" value="1"> Удалить изображение</label>
+                <?php endif; ?>
+            </label>
+            <label class="field">
+                <span>Ссылка на приветственное видео</span>
+                <input name="welcome_video_url" value="<?= h((string)$profile['welcome_video_url']) ?>" placeholder="https://...">
+            </label>
+        </div>
+    </section>
+
+    <section class="panel">
         <h2><?= h(app_text('consultant_profile.video_about')) ?></h2>
         <p class="cell-muted"><?= h(app_text('consultant_profile.video_about_hint')) ?></p>
         <div class="profile-form-grid">
@@ -330,6 +381,60 @@ require __DIR__ . '/../app/views/layouts/header.php';
     </section>
 
     <section class="panel">
+        <h2>Кэшбэк и подарки</h2>
+        <div class="profile-form-grid">
+            <label class="field">
+                <span>Заголовок</span>
+                <input name="cashback_title" value="<?= h((string)$profile['cashback_title']) ?>">
+            </label>
+            <label class="field">
+                <span>Персональная ссылка оформления карты</span>
+                <input type="url" name="cashback_url" value="<?= h((string)$profile['cashback_url']) ?>" placeholder="https://...">
+            </label>
+            <label class="field wide">
+                <span>Описание преимуществ</span>
+                <textarea name="cashback_text" rows="6"><?= h((string)$profile['cashback_text']) ?></textarea>
+            </label>
+            <label class="field">
+                <span>Изображение</span>
+                <input type="hidden" name="cashback_image_path_current" value="<?= h((string)$profile['cashback_image_path']) ?>">
+                <input type="file" name="cashback_image_path" accept="image/*">
+                <?php if (!empty($profile['cashback_image_path'])): ?>
+                    <a href="<?= h((string)$profile['cashback_image_path']) ?>" target="_blank" rel="noopener">Открыть изображение</a>
+                    <label class="checkbox-line"><input type="checkbox" name="remove_cashback_image_path" value="1"> Удалить изображение</label>
+                <?php endif; ?>
+            </label>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>Возможность сотрудничества</h2>
+        <div class="profile-form-grid">
+            <label class="field">
+                <span>Заголовок</span>
+                <input name="cooperation_title" value="<?= h((string)$profile['cooperation_title']) ?>">
+            </label>
+            <label class="field">
+                <span>Ссылка на видео</span>
+                <input name="cooperation_video_url" value="<?= h((string)$profile['cooperation_video_url']) ?>" placeholder="https://...">
+            </label>
+            <label class="field wide">
+                <span>Описание вариантов сотрудничества</span>
+                <textarea name="cooperation_text" rows="6"><?= h((string)$profile['cooperation_text']) ?></textarea>
+            </label>
+            <label class="field">
+                <span>Изображение</span>
+                <input type="hidden" name="cooperation_image_path_current" value="<?= h((string)$profile['cooperation_image_path']) ?>">
+                <input type="file" name="cooperation_image_path" accept="image/*">
+                <?php if (!empty($profile['cooperation_image_path'])): ?>
+                    <a href="<?= h((string)$profile['cooperation_image_path']) ?>" target="_blank" rel="noopener">Открыть изображение</a>
+                    <label class="checkbox-line"><input type="checkbox" name="remove_cooperation_image_path" value="1"> Удалить изображение</label>
+                <?php endif; ?>
+            </label>
+        </div>
+    </section>
+
+    <section class="panel">
         <h2><?= h(app_text('consultant_profile.contacts')) ?></h2>
         <p class="cell-muted"><?= h(app_text('consultant_profile.contacts_hint')) ?></p>
         <div class="profile-form-grid">
@@ -347,6 +452,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
         <p class="cell-muted"><?= h(app_text('consultant_profile.blocks_hint')) ?></p>
         <div class="block-settings">
             <?php foreach ($blocks as $block): ?>
+                <?php if (($block['block_type'] ?? '') === 'products') continue; ?>
                 <div class="block-row">
                     <label class="checkbox-line">
                         <input type="checkbox" name="block_enabled[<?= h($block['block_type']) ?>]" value="1" <?= (int)$block['is_enabled'] === 1 ? 'checked' : '' ?>>
@@ -365,8 +471,6 @@ require __DIR__ . '/../app/views/layouts/header.php';
         <div class="profile-form-grid">
             <?php
             $selectGroups = [
-                'products' => [app_text('consultant_profile.products'), profile_select_options('products'), $selectedProducts],
-                'tests' => [app_text('consultant_profile.tests'), profile_select_options('tests'), $selectedTests],
                 'materials' => [app_text('consultant_profile.materials'), profile_select_options('materials'), $selectedMaterials],
             ];
             ?>

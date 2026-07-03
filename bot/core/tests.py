@@ -1,6 +1,6 @@
 from bot.core.i18n import tr
 from bot.db.mysql import cursor
-from bot.core.recommendations import build_recommendations
+from bot.core.client_journey import set_client_stage
 
 
 async def list_tests() -> list[dict]:
@@ -16,17 +16,31 @@ async def list_tests() -> list[dict]:
         return await cur.fetchall()
 
 
-async def get_test(test_id: int) -> dict | None:
+async def get_test(test_id: int, gender: str | None = None) -> dict | None:
     async with cursor() as cur:
         await cur.execute("SELECT * FROM tests WHERE id = %s AND is_active = 1 LIMIT 1", (test_id,))
         test = await cur.fetchone()
         if not test:
             return None
 
-        await cur.execute(
-            "SELECT * FROM test_questions WHERE test_id = %s ORDER BY sort_order, id",
-            (test_id,),
-        )
+        if gender in {"female", "male"}:
+            await cur.execute(
+                """
+                SELECT * FROM test_questions
+                WHERE test_id = %s AND gender_scope IN ('all', %s)
+                ORDER BY sort_order, id
+                """,
+                (test_id, gender),
+            )
+        else:
+            await cur.execute(
+                """
+                SELECT * FROM test_questions
+                WHERE test_id = %s AND gender_scope = 'all'
+                ORDER BY sort_order, id
+                """,
+                (test_id,),
+            )
         questions = await cur.fetchall()
         for question in questions:
             await cur.execute(
@@ -156,7 +170,9 @@ async def get_or_create_test_session(end_user_id: int, test_id: int, reset: bool
             "INSERT INTO user_test_sessions (end_user_id, test_id) VALUES (%s, %s)",
             (end_user_id, test_id),
         )
-        return {"id": cur.lastrowid, "end_user_id": end_user_id, "test_id": test_id, "is_new": True}
+        session = {"id": cur.lastrowid, "end_user_id": end_user_id, "test_id": test_id, "is_new": True}
+    await set_client_stage(end_user_id, "test_started")
+    return session
 
 
 async def latest_draft_test_session(end_user_id: int, test_id: int) -> dict | None:
@@ -289,6 +305,10 @@ async def save_session_answer(
                     """,
                     (session_id, question_id, answer_id, None, score),
                 )
+            await cur.execute(
+                "UPDATE user_test_sessions SET last_answered_at = NOW() WHERE id = %s",
+                (session_id,),
+            )
             return
 
         await cur.execute(
@@ -297,6 +317,10 @@ async def save_session_answer(
             VALUES (%s, %s, %s, %s, %s)
             """,
             (session_id, question_id, None, text_answer, 0),
+        )
+        await cur.execute(
+            "UPDATE user_test_sessions SET last_answered_at = NOW() WHERE id = %s",
+            (session_id,),
         )
 
 
@@ -352,7 +376,7 @@ async def complete_test_session(end_user_id: int, test_id: int, session_id: int)
             (end_user_id, session_id),
         )
 
-    await build_recommendations(end_user_id, session_id)
+    await set_client_stage(end_user_id, "test_completed")
 
     return {
         "session_id": session_id,
@@ -431,7 +455,7 @@ async def save_test_result(end_user_id: int, test_id: int, answers: list[dict]) 
             (end_user_id, session_id),
         )
 
-    await build_recommendations(end_user_id, session_id)
+    await set_client_stage(end_user_id, "test_completed")
 
     return {
         "session_id": session_id,

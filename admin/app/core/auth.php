@@ -29,7 +29,48 @@ function require_auth(): array
         redirect('login.php');
     }
 
+    if ($user['role'] !== 'superadmin' && admin_subscription_restricted($user)) {
+        $current = basename((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH));
+        if (!in_array($current, ['subscription_expired.php', 'logout.php'], true)) {
+            redirect('subscription_expired.php');
+        }
+    }
+
     return $user;
+}
+
+function admin_subscription_restricted(array $user): bool
+{
+    $resellerId = (int)($user['reseller_id'] ?? 0);
+    if ($resellerId <= 0 && !empty($user['manager_id'])) {
+        $manager = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id LIMIT 1');
+        $manager->execute(['id' => $user['manager_id']]);
+        $resellerId = (int)$manager->fetchColumn();
+    }
+    if ($resellerId <= 0) {
+        return false;
+    }
+
+    try {
+        $any = db()->prepare('SELECT COUNT(*) FROM leader_subscriptions WHERE reseller_id = :reseller_id');
+        $any->execute(['reseller_id' => $resellerId]);
+        if ((int)$any->fetchColumn() === 0) {
+            return false;
+        }
+
+        $active = db()->prepare(
+            'SELECT COUNT(*)
+             FROM leader_subscriptions
+             WHERE reseller_id = :reseller_id
+               AND status = "active"
+               AND (starts_at IS NULL OR starts_at <= NOW())
+               AND (ends_at IS NULL OR ends_at >= NOW())'
+        );
+        $active->execute(['reseller_id' => $resellerId]);
+        return (int)$active->fetchColumn() === 0;
+    } catch (Throwable) {
+        return false;
+    }
 }
 
 function login_admin(string $email, string $password): bool

@@ -36,4 +36,4 @@ if (!$profile) {
     json_response(['error' => 'profile not found'], 404);
 }
 
-json_response(consultant_profile_payload($profile));
+json_response(['profile' => $profile]);

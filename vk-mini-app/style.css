@@ -285,9 +285,11 @@ body[data-theme="graphite"] {
     overflow: hidden;
 }
 
-.detail-video iframe {
+.detail-video iframe,
+.detail-video video {
     border: 0;
     height: 100%;
+    object-fit: contain;
     width: 100%;
 }
 
@@ -1331,6 +1333,16 @@ body {
     padding: 8px 2px 12px;
 }
 
+.home-link {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
 .app-header h1 {
     font-size: 30px;
     font-weight: 900;
@@ -1652,6 +1664,172 @@ button.secondary,
     }
 
     .home-metrics {
+        grid-template-columns: 1fr;
+    }
+}
+/* Simplified client journey */
+.legal-links {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin: 24px 0 8px;
+    font-size: 13px;
+}
+
+.legal-links a {
+    color: var(--accent);
+}
+
+.onboarding-panel {
+    max-width: 680px;
+    margin: 0 auto;
+}
+
+.onboarding-form,
+.legal-consents,
+.notification-list,
+.contact-list,
+.privacy-actions {
+    display: grid;
+    gap: 12px;
+}
+
+.danger-text {
+    color: #a23838;
+}
+
+.onboarding-form > label,
+.onboarding-age-grid label {
+    display: grid;
+    gap: 6px;
+    font-weight: 700;
+}
+
+.onboarding-form input,
+.onboarding-form select {
+    width: 100%;
+    min-height: 46px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text);
+    font: inherit;
+}
+
+.onboarding-age-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.consent-line {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    align-items: start;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    font-weight: 400;
+}
+
+.consent-line input {
+    width: 18px;
+    min-height: 18px;
+    margin-top: 2px;
+}
+
+.consent-line a,
+.legal-note a {
+    color: var(--accent);
+}
+
+.main-action-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.main-action-grid .action-card {
+    min-height: 138px;
+}
+
+.main-action-grid .action-card > span {
+    font-size: 28px;
+}
+
+.notification-card {
+    padding: 14px;
+    border-left: 4px solid var(--accent);
+    background: #fff;
+    box-shadow: var(--shadow-soft);
+}
+
+.notification-media {
+    display: block;
+    width: 100%;
+    max-height: 320px;
+    object-fit: cover;
+}
+
+.notification-card p {
+    margin: 8px 0;
+}
+
+.feature-page {
+    display: grid;
+    gap: 16px;
+}
+
+.feature-image {
+    width: 100%;
+    max-height: 360px;
+    object-fit: cover;
+    border-radius: 8px;
+}
+
+.button-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    text-decoration: none;
+}
+
+.button-link.primary {
+    padding: 10px 16px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    font-weight: 800;
+}
+
+.contact-list a {
+    display: grid;
+    gap: 2px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--text);
+    text-decoration: none;
+}
+
+.contact-list a span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.privacy-actions {
+    justify-items: center;
+    margin-top: 18px;
+}
+
+@media (max-width: 560px) {
+    .onboarding-age-grid,
+    .main-action-grid {
         grid-template-columns: 1fr;
     }
 }

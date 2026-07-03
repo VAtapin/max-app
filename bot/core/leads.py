@@ -1,4 +1,5 @@
 from bot.db.mysql import cursor
+from bot.core.client_journey import set_client_stage
 
 
 async def create_lead(user: dict, message: str, product_id: int | None = None) -> int:
@@ -25,4 +26,5 @@ async def create_lead(user: dict, message: str, product_id: int | None = None) -
             """,
             (user["id"], lead_id),
         )
-        return lead_id
+    await set_client_stage(int(user["id"]), "consultation_requested")
+    return lead_id

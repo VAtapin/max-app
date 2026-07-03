@@ -66,7 +66,12 @@ function appUrl() {
 }
 
 function hasTelegramContext() {
-    return Boolean(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
+    const params = query();
+    const hash = hashQuery();
+    return params.has('tgWebAppData')
+        || params.has('tgWebAppVersion')
+        || hash.has('tgWebAppData')
+        || hash.has('tgWebAppVersion');
 }
 
 function hasVkOkContext() {

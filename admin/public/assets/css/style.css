@@ -1724,3 +1724,69 @@ button {
         flex-wrap: wrap;
     }
 }
+.result-admin-list,
+.result-admin-scales {
+    display: grid;
+    gap: 16px;
+}
+
+.result-admin-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.result-admin-head > div:last-child {
+    display: grid;
+    justify-items: end;
+    gap: 10px;
+}
+
+.result-admin-summary {
+    margin: 18px 0;
+    line-height: 1.6;
+}
+
+.result-admin-scales {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.result-admin-scales > div {
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+
+.result-admin-scales strong,
+.result-admin-scales span {
+    display: block;
+}
+
+@media (max-width: 720px) {
+    .result-admin-head {
+        display: grid;
+    }
+
+    .result-admin-head > div:last-child {
+        justify-items: start;
+    }
+}
+.broadcast-preview {
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+}
+
+.broadcast-preview strong,
+.broadcast-preview p {
+    display: block;
+}
+
+.broadcast-preview img,
+.broadcast-preview video {
+    width: min(100%, 420px);
+    max-height: 320px;
+    object-fit: contain;
+}

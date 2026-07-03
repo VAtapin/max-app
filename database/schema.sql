@@ -3,10 +3,19 @@ CREATE DATABASE IF NOT EXISTS health_sales_system
   COLLATE utf8mb4_unicode_ci;
 
 USE health_sales_system;
+SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS schema_migrations;
 DROP TABLE IF EXISTS activity_logs;
+DROP TABLE IF EXISTS leader_subscriptions;
+DROP TABLE IF EXISTS consultant_notifications;
+DROP TABLE IF EXISTS automation_logs;
+DROP TABLE IF EXISTS user_notifications;
+DROP TABLE IF EXISTS client_stage_history;
+DROP TABLE IF EXISTS user_consents;
+DROP TABLE IF EXISTS legal_documents;
 DROP TABLE IF EXISTS broadcast_logs;
 DROP TABLE IF EXISTS broadcasts;
 DROP TABLE IF EXISTS lead_responses;
@@ -128,9 +137,18 @@ CREATE TABLE end_users (
   username VARCHAR(190) NULL,
   first_name VARCHAR(190) NULL,
   last_name VARCHAR(190) NULL,
+  gender ENUM('female', 'male', 'prefer_not_to_say') NULL,
+  birth_date DATE NULL,
+  age_years TINYINT UNSIGNED NULL,
+  city VARCHAR(190) NULL,
+  timezone VARCHAR(100) NOT NULL DEFAULT 'Europe/Moscow',
   phone VARCHAR(50) NULL,
   email VARCHAR(190) NULL,
   referral_code_used VARCHAR(64) NULL,
+  client_stage ENUM('new', 'profile_completed', 'test_started', 'test_completed', 'consultation_requested', 'in_progress', 'client', 'partner', 'inactive', 'unsubscribed') NOT NULL DEFAULT 'new',
+  stage_updated_at DATETIME NULL,
+  onboarding_completed_at DATETIME NULL,
+  notifications_enabled TINYINT(1) NOT NULL DEFAULT 1,
   status ENUM('active', 'blocked', 'unsubscribed') NOT NULL DEFAULT 'active',
   merged_into_user_id BIGINT UNSIGNED NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -142,6 +160,8 @@ CREATE TABLE end_users (
   INDEX idx_end_users_merged_into_user_id (merged_into_user_id),
   INDEX idx_end_users_referral_code (referral_code_used),
   INDEX idx_end_users_platform (platform),
+  INDEX idx_end_users_stage (client_stage),
+  INDEX idx_end_users_activity (last_activity_at),
   CONSTRAINT fk_end_users_reseller
     FOREIGN KEY (reseller_id) REFERENCES resellers(id)
     ON DELETE SET NULL ON UPDATE CASCADE,
@@ -162,6 +182,17 @@ CREATE TABLE consultant_profiles (
   title VARCHAR(190) NULL,
   subtitle VARCHAR(255) NULL,
   short_description TEXT NULL,
+  welcome_text TEXT NULL,
+  welcome_image_path VARCHAR(255) NULL,
+  welcome_video_url VARCHAR(255) NULL,
+  cashback_title VARCHAR(190) NULL,
+  cashback_text MEDIUMTEXT NULL,
+  cashback_image_path VARCHAR(255) NULL,
+  cashback_url VARCHAR(500) NULL,
+  cooperation_title VARCHAR(190) NULL,
+  cooperation_text MEDIUMTEXT NULL,
+  cooperation_image_path VARCHAR(255) NULL,
+  cooperation_video_url VARCHAR(255) NULL,
   bio MEDIUMTEXT NULL,
   specialization TEXT NULL,
   experience_text TEXT NULL,
@@ -188,7 +219,7 @@ CREATE TABLE consultant_profiles (
 CREATE TABLE profile_blocks (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   profile_id BIGINT UNSIGNED NOT NULL,
-  block_type ENUM('hero', 'video', 'about', 'tests', 'products', 'materials', 'reviews', 'contacts') NOT NULL,
+  block_type ENUM('hero', 'video', 'about', 'tests', 'products', 'materials', 'reviews', 'contacts', 'cashback', 'cooperation') NOT NULL,
   title VARCHAR(190) NULL,
   is_enabled TINYINT(1) NOT NULL DEFAULT 1,
   sort_order INT NOT NULL DEFAULT 100,
@@ -379,10 +410,12 @@ CREATE TABLE test_questions (
   test_id BIGINT UNSIGNED NOT NULL,
   question_text TEXT NOT NULL,
   question_type ENUM('single_choice', 'multiple_choice', 'scale', 'text') NOT NULL,
+  gender_scope ENUM('all', 'female', 'male') NOT NULL DEFAULT 'all',
   is_required TINYINT(1) NOT NULL DEFAULT 1,
   sort_order INT NOT NULL DEFAULT 100,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_test_questions_test_id (test_id),
+  INDEX idx_test_questions_gender_scope (gender_scope),
   CONSTRAINT fk_test_questions_test
     FOREIGN KEY (test_id) REFERENCES tests(id)
     ON DELETE CASCADE ON UPDATE CASCADE
@@ -498,11 +531,13 @@ CREATE TABLE user_test_sessions (
   end_user_id BIGINT UNSIGNED NOT NULL,
   test_id BIGINT UNSIGNED NOT NULL,
   started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_answered_at DATETIME NULL,
   completed_at DATETIME NULL,
   total_score INT NOT NULL DEFAULT 0,
   result_summary TEXT NULL,
   INDEX idx_user_test_sessions_end_user_id (end_user_id),
   INDEX idx_user_test_sessions_test_id (test_id),
+  INDEX idx_user_test_sessions_reminders (completed_at, last_answered_at),
   CONSTRAINT fk_user_test_sessions_user
     FOREIGN KEY (end_user_id) REFERENCES end_users(id)
     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -589,6 +624,7 @@ CREATE TABLE recommendations (
 CREATE TABLE content_posts (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   content_type ENUM('article', 'image', 'pdf', 'video', 'link') NOT NULL DEFAULT 'article',
+  section_type ENUM('general', 'story', 'result', 'promotion', 'giveaway', 'program', 'marathon') NOT NULL DEFAULT 'general',
   title VARCHAR(190) NOT NULL,
   short_text TEXT NULL,
   full_text MEDIUMTEXT NULL,
@@ -607,6 +643,7 @@ CREATE TABLE content_posts (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_content_category_id (category_id),
   INDEX idx_content_created_by (created_by),
+  INDEX idx_content_section_type (section_type),
   CONSTRAINT fk_content_category
     FOREIGN KEY (category_id) REFERENCES product_categories(id)
     ON DELETE SET NULL ON UPDATE CASCADE,
@@ -713,8 +750,10 @@ CREATE TABLE messaging_integrations (
 CREATE TABLE broadcasts (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   title VARCHAR(190) NOT NULL,
-  message_text TEXT NOT NULL,
+  message_text TEXT NULL,
+  audience_type ENUM('clients', 'consultants') NOT NULL DEFAULT 'clients',
   image_path VARCHAR(255) NULL,
+  video_path VARCHAR(255) NULL,
   button_text VARCHAR(100) NULL,
   button_url VARCHAR(255) NULL,
   target_type ENUM('all', 'reseller', 'manager', 'segment') NOT NULL DEFAULT 'all',
@@ -745,7 +784,8 @@ CREATE TABLE broadcasts (
 CREATE TABLE broadcast_logs (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   broadcast_id BIGINT UNSIGNED NOT NULL,
-  end_user_id BIGINT UNSIGNED NOT NULL,
+  end_user_id BIGINT UNSIGNED NULL,
+  manager_id BIGINT UNSIGNED NULL,
   platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
   status ENUM('pending', 'sent', 'failed') NOT NULL DEFAULT 'pending',
   error_message TEXT NULL,
@@ -753,13 +793,141 @@ CREATE TABLE broadcast_logs (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_broadcast_logs_broadcast_id (broadcast_id),
   INDEX idx_broadcast_logs_end_user_id (end_user_id),
+  INDEX idx_broadcast_logs_manager_id (manager_id),
   INDEX idx_broadcast_logs_platform (platform),
   CONSTRAINT fk_broadcast_logs_broadcast
     FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id)
     ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_broadcast_logs_user
     FOREIGN KEY (end_user_id) REFERENCES end_users(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_broadcast_logs_manager
+    FOREIGN KEY (manager_id) REFERENCES managers(id)
     ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE legal_documents (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  document_type ENUM('privacy_policy', 'personal_data_consent', 'health_data_consent', 'marketing_consent', 'user_agreement', 'leader_offer') NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  version VARCHAR(50) NOT NULL,
+  body MEDIUMTEXT NOT NULL,
+  is_required TINYINT(1) NOT NULL DEFAULT 1,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_legal_document_version (document_type, version),
+  INDEX idx_legal_document_active (document_type, is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE user_consents (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  end_user_id BIGINT UNSIGNED NOT NULL,
+  document_type ENUM('personal_data_consent', 'health_data_consent', 'marketing_consent', 'user_agreement') NOT NULL,
+  document_version VARCHAR(50) NOT NULL,
+  platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
+  granted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  revoked_at DATETIME NULL,
+  metadata_json JSON NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_user_consents_user_type (end_user_id, document_type, revoked_at),
+  CONSTRAINT fk_user_consents_user
+    FOREIGN KEY (end_user_id) REFERENCES end_users(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE client_stage_history (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  end_user_id BIGINT UNSIGNED NOT NULL,
+  previous_stage VARCHAR(50) NULL,
+  new_stage VARCHAR(50) NOT NULL,
+  source ENUM('system', 'client', 'consultant', 'leader', 'admin') NOT NULL DEFAULT 'system',
+  actor_id BIGINT UNSIGNED NULL,
+  note VARCHAR(500) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_stage_history_user (end_user_id, created_at),
+  CONSTRAINT fk_stage_history_user
+    FOREIGN KEY (end_user_id) REFERENCES end_users(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE user_notifications (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  end_user_id BIGINT UNSIGNED NOT NULL,
+  notification_type VARCHAR(50) NOT NULL,
+  title VARCHAR(190) NOT NULL,
+  message_text TEXT NOT NULL,
+  image_path VARCHAR(255) NULL,
+  video_path VARCHAR(255) NULL,
+  action_text VARCHAR(100) NULL,
+  action_url VARCHAR(500) NULL,
+  is_read TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  read_at DATETIME NULL,
+  INDEX idx_user_notifications_user (end_user_id, is_read, created_at),
+  CONSTRAINT fk_user_notifications_user
+    FOREIGN KEY (end_user_id) REFERENCES end_users(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE automation_logs (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  end_user_id BIGINT UNSIGNED NOT NULL,
+  automation_type VARCHAR(50) NOT NULL,
+  context_key VARCHAR(190) NOT NULL,
+  platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
+  status ENUM('sent', 'queued', 'skipped', 'failed') NOT NULL,
+  error_message TEXT NULL,
+  sent_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_automation_event (end_user_id, automation_type, context_key, platform),
+  INDEX idx_automation_logs_status (status, created_at),
+  CONSTRAINT fk_automation_logs_user
+    FOREIGN KEY (end_user_id) REFERENCES end_users(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE consultant_notifications (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  manager_id BIGINT UNSIGNED NOT NULL,
+  end_user_id BIGINT UNSIGNED NOT NULL,
+  notification_type VARCHAR(50) NOT NULL,
+  event_key VARCHAR(190) NOT NULL,
+  title VARCHAR(190) NOT NULL,
+  message_text TEXT NOT NULL,
+  is_read TINYINT(1) NOT NULL DEFAULT 0,
+  delivery_status ENUM('pending', 'sent', 'failed') NOT NULL DEFAULT 'pending',
+  delivery_error TEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  read_at DATETIME NULL,
+  UNIQUE KEY uq_consultant_notification_event (manager_id, event_key),
+  INDEX idx_consultant_notifications_manager (manager_id, is_read, created_at),
+  CONSTRAINT fk_consultant_notifications_manager
+    FOREIGN KEY (manager_id) REFERENCES managers(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_consultant_notifications_user
+    FOREIGN KEY (end_user_id) REFERENCES end_users(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE leader_subscriptions (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  reseller_id BIGINT UNSIGNED NOT NULL,
+  status ENUM('pending', 'active', 'expired', 'suspended') NOT NULL DEFAULT 'pending',
+  starts_at DATETIME NULL,
+  ends_at DATETIME NULL,
+  monthly_price DECIMAL(10,2) NULL,
+  payment_note VARCHAR(500) NULL,
+  activated_by BIGINT UNSIGNED NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_leader_subscriptions_reseller (reseller_id, status, ends_at),
+  CONSTRAINT fk_leader_subscriptions_reseller
+    FOREIGN KEY (reseller_id) REFERENCES resellers(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_leader_subscriptions_admin
+    FOREIGN KEY (activated_by) REFERENCES admin_users(id)
+    ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE help_faq_sections (
@@ -796,4 +964,9 @@ CREATE TABLE settings (
   setting_value TEXT NULL,
   description TEXT NULL,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE schema_migrations (
+  migration VARCHAR(255) NOT NULL PRIMARY KEY,
+  applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

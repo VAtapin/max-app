@@ -29,14 +29,50 @@ if [[ ! -d database/migrations ]]; then
   exit 0
 fi
 
+MYSQL_PWD="$DB_PASSWORD" "$MYSQL_BIN" \
+  --host="$DB_HOST" \
+  --port="$DB_PORT" \
+  --user="$DB_USERNAME" \
+  --default-character-set=utf8mb4 \
+  "$DB_DATABASE" <<'SQL'
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  migration VARCHAR(255) NOT NULL PRIMARY KEY,
+  applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL
+
 for migration in database/migrations/*.sql; do
   [[ -e "$migration" ]] || continue
+  migration_name="$(basename "$migration")"
+  applied="$(
+    MYSQL_PWD="$DB_PASSWORD" "$MYSQL_BIN" \
+      --batch --skip-column-names \
+      --host="$DB_HOST" \
+      --port="$DB_PORT" \
+      --user="$DB_USERNAME" \
+      --default-character-set=utf8mb4 \
+      "$DB_DATABASE" \
+      -e "SELECT COUNT(*) FROM schema_migrations WHERE migration = '$migration_name'"
+  )"
+  if [[ "$applied" == "1" ]]; then
+    echo "Skipping $migration_name (already applied)."
+    continue
+  fi
+
   echo "Applying $migration..."
   MYSQL_PWD="$DB_PASSWORD" "$MYSQL_BIN" \
     --host="$DB_HOST" \
     --port="$DB_PORT" \
     --user="$DB_USERNAME" \
+    --default-character-set=utf8mb4 \
     "$DB_DATABASE" < "$migration"
+  MYSQL_PWD="$DB_PASSWORD" "$MYSQL_BIN" \
+    --host="$DB_HOST" \
+    --port="$DB_PORT" \
+    --user="$DB_USERNAME" \
+    --default-character-set=utf8mb4 \
+    "$DB_DATABASE" \
+    -e "INSERT INTO schema_migrations (migration) VALUES ('$migration_name')"
 done
 
 echo "Migrations complete."

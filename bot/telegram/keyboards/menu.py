@@ -50,31 +50,19 @@ def main_menu_keyboard(referral_code: str | None = None, diagnosis_test_id: int 
     if diagnosis_test_id:
         rows.append([
             InlineKeyboardButton(
-                text="🌿 Диагностика организма",
-                web_app=WebAppInfo(url=mini_app_url(referral_code, page="tests", test_id=diagnosis_test_id)),
+                text="🌿 Чек-ап организма",
+                callback_data=f"test:start:{diagnosis_test_id}",
             )
         ])
     rows.extend([
         [
-            InlineKeyboardButton(
-                text="📊 Результаты тестов",
-                web_app=WebAppInfo(url=mini_app_url(referral_code, page="results")),
-            )
+            InlineKeyboardButton(text="🎁 Кэшбэк и подарки", callback_data="section:cashback")
         ],
         [
-            InlineKeyboardButton(text="📌 Связь с экспертом", callback_data="lead:contact"),
+            InlineKeyboardButton(text="📌 Связаться с консультантом", callback_data="lead:contact"),
         ],
         [
-            InlineKeyboardButton(
-                text="🎥 Материалы",
-                callback_data="materials:list",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="🛍 Продукты",
-                web_app=WebAppInfo(url=mini_app_url(referral_code, page="products")),
-            )
+            InlineKeyboardButton(text="🤝 Возможность сотрудничества", callback_data="section:cooperation")
         ],
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -83,21 +71,51 @@ def main_menu_keyboard(referral_code: str | None = None, diagnosis_test_id: int 
 def result_actions_keyboard(referral_code: str | None = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📌 Разобрать с экспертом", callback_data="lead:contact")],
-            [
-                InlineKeyboardButton(
-                    text="📊 Рекомендации",
-                    web_app=WebAppInfo(url=mini_app_url(referral_code, page="recommendations")),
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🛍 Продукты",
-                    web_app=WebAppInfo(url=mini_app_url(referral_code, page="products")),
-                )
-            ],
+            [InlineKeyboardButton(text="📌 Разобрать с консультантом", callback_data="lead:contact")],
+            [InlineKeyboardButton(text="📋 Главное меню", callback_data="menu:main")],
         ]
     )
+
+
+def consent_keyboard(public_url: str, step: str) -> InlineKeyboardMarkup:
+    if step == "personal":
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Политика данных", url=f"{public_url}/legal.php?type=privacy_policy")],
+            [InlineKeyboardButton(text="Согласие на обработку данных", url=f"{public_url}/legal.php?type=personal_data_consent")],
+            [InlineKeyboardButton(text="Пользовательское соглашение", url=f"{public_url}/legal.php?type=user_agreement")],
+            [InlineKeyboardButton(text="✅ Принимаю условия", callback_data="onboarding:accept:personal")],
+            [InlineKeyboardButton(text="Не согласен", callback_data="onboarding:decline")],
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Согласие на данные чек-апа", url=f"{public_url}/legal.php?type=health_data_consent")],
+        [InlineKeyboardButton(text="✅ Даю согласие", callback_data="onboarding:accept:health")],
+        [InlineKeyboardButton(text="Не согласен", callback_data="onboarding:decline")],
+    ])
+
+
+def use_profile_value_keyboard(value: str | None, action: str, *, allow_skip: bool = False) -> InlineKeyboardMarkup | None:
+    rows: list[list[InlineKeyboardButton]] = []
+    if value:
+        rows.append([InlineKeyboardButton(text=f"Оставить: {button_text(value, 36)}", callback_data=f"onboarding:use:{action}")])
+    if allow_skip:
+        rows.append([InlineKeyboardButton(text="Пропустить", callback_data=f"onboarding:skip:{action}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+
+
+def gender_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Женщина", callback_data="onboarding:gender:female")],
+        [InlineKeyboardButton(text="Мужчина", callback_data="onboarding:gender:male")],
+        [InlineKeyboardButton(text="Не хочу указывать", callback_data="onboarding:gender:prefer_not_to_say")],
+    ])
+
+
+def marketing_keyboard(public_url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Согласие на рассылку", url=f"{public_url}/legal.php?type=marketing_consent")],
+        [InlineKeyboardButton(text="Да, получать полезные сообщения", callback_data="onboarding:marketing:yes")],
+        [InlineKeyboardButton(text="Нет, только сервисные сообщения", callback_data="onboarding:marketing:no")],
+    ])
 
 
 def resume_test_keyboard(test_id: int) -> InlineKeyboardMarkup:

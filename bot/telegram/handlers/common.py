@@ -7,9 +7,20 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove, User
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, ReplyKeyboardRemove, User
 
 from bot.core.i18n import tr
+from bot.core.client_journey import (
+    complete_onboarding,
+    consultant_profile_for_user,
+    create_consultant_notification,
+    grant_consent,
+    manager_telegram_id,
+    mark_consultant_notification_delivery,
+    onboarding_status,
+    parse_age_or_birth_date,
+    revoke_consents,
+)
 from bot.core.leads import create_lead
 from bot.core.materials import get_material, list_materials
 from bot.core.messages import MEDICAL_DISCLAIMER
@@ -31,12 +42,16 @@ from bot.telegram.keyboards.menu import (
     app_button,
     answers_keyboard,
     completed_test_keyboard,
+    consent_keyboard,
+    gender_keyboard,
     main_menu_keyboard,
+    marketing_keyboard,
     materials_keyboard,
     mini_app_url,
     result_actions_keyboard,
     resume_test_keyboard,
     tests_keyboard,
+    use_profile_value_keyboard,
 )
 
 router = Router()
@@ -48,6 +63,14 @@ class TestFlow(StatesGroup):
 
 class LeadFlow(StatesGroup):
     waiting_message = State()
+
+
+class OnboardingFlow(StatesGroup):
+    waiting_first_name = State()
+    waiting_last_name = State()
+    waiting_age = State()
+    waiting_city = State()
+    waiting_marketing = State()
 
 
 async def resolve_user(message: Message, referral_code: str | None = None) -> dict:
@@ -83,6 +106,165 @@ def diagnosis_test_id(tests: list[dict]) -> int | None:
         if "диагност" in title:
             return int(item["id"])
     return int(tests[0]["id"]) if tests else None
+
+
+def public_base_url() -> str:
+    return os.getenv("SWPRO_PUBLIC_BASE_URL", "https://swpro.ru").rstrip("/")
+
+
+async def show_main_menu(message: Message, user: dict) -> None:
+    tests = await list_tests()
+    await message.answer(
+        "Выберите нужный раздел:",
+        reply_markup=main_menu_keyboard(user_referral_code(user), diagnosis_test_id(tests)),
+    )
+
+
+async def send_consultant_welcome(message: Message, user: dict) -> None:
+    profile = await consultant_profile_for_user(user)
+    consultant_name = (profile or {}).get("display_name") or "вашего консультанта"
+    welcome_text = (profile or {}).get("welcome_text") or (profile or {}).get("short_description")
+    text = (
+        f"Здравствуйте! Это бот консультанта <b>{html.escape(str(consultant_name))}</b>.\n\n"
+        f"{html.escape(str(welcome_text or 'Здесь вы сможете пройти бесплатный чек-ап организма, узнать о кэшбэке и связаться с консультантом.'))}"
+    )
+    image_url = public_url((profile or {}).get("welcome_image_path") or (profile or {}).get("photo_path"))
+    if image_url:
+        try:
+            await message.answer_photo(image_url, caption=text, parse_mode="HTML")
+        except Exception:
+            await message.answer(text, parse_mode="HTML")
+    else:
+        await message.answer(text, parse_mode="HTML")
+
+    video_url = str((profile or {}).get("welcome_video_url") or "").strip()
+    if video_url:
+        try:
+            if video_url.lower().split("?", 1)[0].endswith(".mp4"):
+                await message.answer_video(video_url)
+            else:
+                await message.answer(f"Приветственное видео:\n{video_url}")
+        except Exception:
+            await message.answer(f"Приветственное видео:\n{video_url}")
+
+
+async def start_profile_questionnaire(message: Message, state: FSMContext, user: dict) -> None:
+    await state.set_state(OnboardingFlow.waiting_first_name)
+    await state.update_data(
+        onboarding_user_id=int(user["id"]),
+        onboarding_user=user,
+        profile_first_name=str(user.get("first_name") or ""),
+        profile_last_name=str(user.get("last_name") or ""),
+    )
+    await message.answer(
+        "Как вас зовут? Напишите имя или подтвердите имя из Telegram.",
+        reply_markup=use_profile_value_keyboard(str(user.get("first_name") or ""), "first_name"),
+    )
+
+
+async def continue_onboarding(message: Message, state: FSMContext, user: dict) -> bool:
+    status = await onboarding_status(user)
+    missing = set(status["missing_consents"])
+    if "personal_data_consent" in missing or "user_agreement" in missing:
+        await message.answer(
+            "Перед началом ознакомьтесь с документами и подтвердите согласие на обработку персональных данных.",
+            reply_markup=consent_keyboard(public_base_url(), "personal"),
+        )
+        return False
+    if "health_data_consent" in missing:
+        await message.answer(
+            "Чек-ап содержит вопросы о самочувствии. Для его проведения нужно отдельное согласие.",
+            reply_markup=consent_keyboard(public_base_url(), "health"),
+        )
+        return False
+    if not status["complete"]:
+        await start_profile_questionnaire(message, state, user)
+        return False
+    return True
+
+
+async def notify_manager_event(
+    bot,
+    user: dict,
+    *,
+    notification_type: str,
+    event_key: str,
+    title: str,
+    message_text: str,
+) -> None:
+    created = await create_consultant_notification(
+        user,
+        notification_type,
+        event_key,
+        title,
+        message_text,
+    )
+    manager_id = int(user.get("manager_id") or 0)
+    if not created or manager_id <= 0:
+        return
+
+    chat_id = await manager_telegram_id(user)
+    if not chat_id:
+        await mark_consultant_notification_delivery(manager_id, event_key, False, "Telegram ID не указан")
+        return
+    try:
+        await bot.send_message(chat_id, message_text)
+        await mark_consultant_notification_delivery(manager_id, event_key, True)
+    except Exception as exc:
+        await mark_consultant_notification_delivery(manager_id, event_key, False, str(exc)[:500])
+
+
+def consultant_contacts_text(profile: dict | None) -> str:
+    if not profile:
+        return "Контакты консультанта пока не заполнены."
+    lines = ["<b>Контакты консультанта</b>"]
+    for label, field in (
+        ("Телефон", "phone"),
+        ("Email", "email"),
+        ("Telegram", "telegram_url"),
+        ("WhatsApp", "whatsapp_url"),
+        ("VK", "vk_url"),
+        ("OK", "ok_url"),
+    ):
+        value = str(profile.get(field) or "").strip()
+        if value:
+            lines.append(f"{label}: {html.escape(value)}")
+    return "\n".join(lines)
+
+
+async def send_profile_section(message: Message, user: dict, section: str) -> None:
+    profile = await consultant_profile_for_user(user)
+    if section == "cashback":
+        title = (profile or {}).get("cashback_title") or "Кэшбэк и подарки"
+        text = (profile or {}).get("cashback_text") or "Консультант расскажет, как оформить карту клиента и получать доступные преимущества."
+        image_path = (profile or {}).get("cashback_image_path")
+        link = (profile or {}).get("cashback_url")
+    else:
+        title = (profile or {}).get("cooperation_title") or "Возможность сотрудничества"
+        text = (profile or {}).get("cooperation_text") or "Узнайте о вариантах сотрудничества и задайте вопросы консультанту."
+        image_path = (profile or {}).get("cooperation_image_path")
+        link = None
+    video_url = str((profile or {}).get("cooperation_video_url") or "").strip() if section == "cooperation" else ""
+
+    body = f"<b>{html.escape(str(title))}</b>\n\n{html.escape(str(text))}"
+    if link:
+        body += f"\n\nОформить карту клиента: {html.escape(str(link))}"
+    image_url = public_url(image_path)
+    if image_url:
+        try:
+            await message.answer_photo(image_url, caption=body, parse_mode="HTML")
+        except Exception:
+            await message.answer(body, parse_mode="HTML")
+    else:
+        await message.answer(body, parse_mode="HTML")
+    if video_url:
+        try:
+            if video_url.lower().split("?", 1)[0].endswith(".mp4"):
+                await message.answer_video(video_url)
+            else:
+                await message.answer(f"Видео о сотрудничестве:\n{video_url}")
+        except Exception:
+            await message.answer(f"Видео о сотрудничестве:\n{video_url}")
 
 
 def progress_bar(index: int, total: int, width: int = 10) -> str:
@@ -188,10 +370,20 @@ async def send_test_result_message(
     replace_current: bool = False,
 ) -> None:
     score_line = "" if result.get("scale_results") else f"\n\nБаллы: {result['total_score']}"
+    scale_lines = []
+    for item in result.get("scale_results") or []:
+        scale_result = item.get("result") or {}
+        result_title = scale_result.get("title") or "результат не задан"
+        scale_lines.append(
+            f"• {html.escape(str(item.get('title') or 'Шкала'))}: "
+            f"<b>{html.escape(str(result_title))}</b> ({int(item.get('score') or 0)})"
+        )
+    scale_text = "\n\n<b>Карта по направлениям</b>\n" + "\n".join(scale_lines) if scale_lines else ""
     text = (
         f"<b>{html.escape(str(result['title']))}</b>"
         f"{score_line}\n\n"
-        f"{html.escape(str(result['summary']))}\n\n"
+        f"{html.escape(str(result['summary']))}"
+        f"{scale_text}\n\n"
         f"{html.escape(MEDICAL_DISCLAIMER)}"
     )
     if replace_current:
@@ -214,14 +406,6 @@ async def send_test_result_message(
             parse_mode="HTML",
         )
 
-    materials = await list_materials(user)
-    if materials:
-        await message.answer(
-            "Материалы по результату:",
-            reply_markup=materials_keyboard(materials[:5]),
-        )
-
-
 async def send_test_question(message: Message, state: FSMContext, *, replace_current: bool = False) -> None:
     data = await state.get_data()
     questions = data["questions"]
@@ -232,8 +416,38 @@ async def send_test_question(message: Message, state: FSMContext, *, replace_cur
             result = await complete_test_session(data["end_user_id"], data["test_id"], int(data["session_id"]))
         else:
             result = await save_test_result(data["end_user_id"], data["test_id"], data["answers"])
+        user = data.get("user", {})
+        client_name = " ".join(
+            part for part in [str(user.get("first_name") or "").strip(), str(user.get("last_name") or "").strip()]
+            if part
+        )
+        if not client_name:
+            client_name = f"Клиент #{data['end_user_id']}"
+        manager_scale_lines = []
+        for item in result.get("scale_results") or []:
+            scale_result = item.get("result") or {}
+            manager_scale_lines.append(
+                f"• {item.get('title') or 'Шкала'}: "
+                f"{scale_result.get('title') or 'результат не задан'} "
+                f"({int(item.get('score') or 0)})"
+            )
+        manager_parts = [
+            f"{client_name} завершил чек-ап.",
+            str(result.get("summary") or "").strip(),
+        ]
+        if manager_scale_lines:
+            manager_parts.append("Карта по направлениям:\n" + "\n".join(manager_scale_lines))
+        manager_parts.append("Полный результат доступен в кабинете SWPro.")
+        await notify_manager_event(
+            message.bot,
+            user,
+            notification_type="test_completed",
+            event_key=f"test_completed:{result['session_id']}",
+            title="Клиент завершил чек-ап",
+            message_text="\n\n".join(part for part in manager_parts if part)[:3900],
+        )
         await state.clear()
-        await send_test_result_message(message, data.get("user", {}), result, replace_current=replace_current)
+        await send_test_result_message(message, user, result, replace_current=replace_current)
         return
 
     question = questions[index]
@@ -274,7 +488,7 @@ async def start_test(
     reset: bool = False,
     force_resume: bool = False,
 ) -> None:
-    test = await get_test(test_id)
+    test = await get_test(test_id, user.get("gender"))
     if not test or not test.get("questions"):
         await message.answer(tr("tests.no_questions"))
         return
@@ -335,23 +549,190 @@ async def start_test(
 
 
 @router.message(Command("start"))
-async def start(message: Message) -> None:
+async def start(message: Message, state: FSMContext) -> None:
+    await state.clear()
     try:
         user = await resolve_user(message, referral_from_start(message.text))
     except StaffAccountError:
         await message.answer(tr("staff.client_registration_blocked"), reply_markup=ReplyKeyboardRemove())
         return
 
-    first_name = message.from_user.first_name if message.from_user else ""
-    tests = await list_tests()
+    await send_consultant_welcome(message, user)
+    if await continue_onboarding(message, state, user):
+        await show_main_menu(message, user)
+
+
+@router.callback_query(F.data == "onboarding:accept:personal")
+async def onboarding_accept_personal(callback: CallbackQuery, state: FSMContext) -> None:
+    user = await resolve_telegram_user(callback.from_user)
+    await grant_consent(int(user["id"]), "personal_data_consent", "telegram")
+    await grant_consent(int(user["id"]), "user_agreement", "telegram")
+    if callback.message:
+        await callback.message.answer(
+            "Спасибо. Теперь подтвердите отдельное согласие на обработку ответов чек-апа.",
+            reply_markup=consent_keyboard(public_base_url(), "health"),
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "onboarding:accept:health")
+async def onboarding_accept_health(callback: CallbackQuery, state: FSMContext) -> None:
+    user = await resolve_telegram_user(callback.from_user)
+    await grant_consent(int(user["id"]), "health_data_consent", "telegram")
+    if callback.message:
+        await start_profile_questionnaire(callback.message, state, user)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "onboarding:decline")
+async def onboarding_decline(callback: CallbackQuery, state: FSMContext) -> None:
+    user = await resolve_telegram_user(callback.from_user)
+    await revoke_consents(int(user["id"]))
+    await state.clear()
+    if callback.message:
+        await callback.message.answer(
+            "Без согласия на обработку данных анкета и чек-ап недоступны. Вернуться к оформлению можно командой /start."
+        )
+    await callback.answer()
+
+
+async def ask_last_name(message: Message, state: FSMContext, value: str | None = None) -> None:
+    await state.set_state(OnboardingFlow.waiting_last_name)
     await message.answer(
-        tr("welcome.short", name=first_name, disclaimer=MEDICAL_DISCLAIMER),
-        reply_markup=ReplyKeyboardRemove(),
+        "Укажите фамилию. Если не хотите указывать её сейчас, нажмите «Пропустить».",
+        reply_markup=use_profile_value_keyboard(value, "last_name", allow_skip=True),
     )
+
+
+async def ask_gender(message: Message, state: FSMContext) -> None:
+    await message.answer("Укажите пол:", reply_markup=gender_keyboard())
+
+
+@router.callback_query(F.data == "onboarding:use:first_name")
+async def onboarding_use_first_name(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    value = str(data.get("profile_first_name") or callback.from_user.first_name or "").strip()
+    if not value:
+        await callback.answer("Напишите имя сообщением", show_alert=True)
+        return
+    await state.update_data(profile_first_name=value)
+    if callback.message:
+        await ask_last_name(callback.message, state, str(data.get("profile_last_name") or ""))
+    await callback.answer()
+
+
+@router.message(OnboardingFlow.waiting_first_name)
+async def onboarding_first_name(message: Message, state: FSMContext) -> None:
+    value = (message.text or "").strip()
+    if len(value) < 2:
+        await message.answer("Напишите имя полностью.")
+        return
+    await state.update_data(profile_first_name=value)
+    data = await state.get_data()
+    await ask_last_name(message, state, str(data.get("profile_last_name") or ""))
+
+
+@router.callback_query(F.data == "onboarding:use:last_name")
+async def onboarding_use_last_name(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    await state.update_data(profile_last_name=str(data.get("profile_last_name") or "").strip())
+    if callback.message:
+        await ask_gender(callback.message, state)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "onboarding:skip:last_name")
+async def onboarding_skip_last_name(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(profile_last_name="")
+    if callback.message:
+        await ask_gender(callback.message, state)
+    await callback.answer()
+
+
+@router.message(OnboardingFlow.waiting_last_name)
+async def onboarding_last_name(message: Message, state: FSMContext) -> None:
+    value = (message.text or "").strip()
+    if len(value) < 2:
+        await message.answer("Напишите фамилию полностью или нажмите «Пропустить».")
+        return
+    await state.update_data(profile_last_name=value)
+    await ask_gender(message, state)
+
+
+@router.callback_query(F.data.startswith("onboarding:gender:"))
+async def onboarding_gender(callback: CallbackQuery, state: FSMContext) -> None:
+    gender = (callback.data or "").split(":")[-1]
+    if gender not in {"female", "male", "prefer_not_to_say"}:
+        await callback.answer("Неизвестный вариант", show_alert=True)
+        return
+    await state.update_data(profile_gender=gender)
+    await state.set_state(OnboardingFlow.waiting_age)
+    if callback.message:
+        await callback.message.answer(
+            "Укажите ваш возраст числом или дату рождения в формате ДД.ММ.ГГГГ."
+        )
+    await callback.answer()
+
+
+@router.message(OnboardingFlow.waiting_age)
+async def onboarding_age(message: Message, state: FSMContext) -> None:
+    try:
+        birth_date, age_years = parse_age_or_birth_date(message.text or "")
+    except ValueError:
+        await message.answer("Укажите возраст от 14 до 100 лет или дату в формате ДД.ММ.ГГГГ.")
+        return
+    await state.update_data(
+        profile_birth_date=birth_date.isoformat() if birth_date else None,
+        profile_age_years=age_years,
+    )
+    await state.set_state(OnboardingFlow.waiting_city)
+    await message.answer("В каком городе вы живёте?")
+
+
+@router.message(OnboardingFlow.waiting_city)
+async def onboarding_city(message: Message, state: FSMContext) -> None:
+    city = (message.text or "").strip()
+    if len(city) < 2:
+        await message.answer("Напишите название города.")
+        return
+    await state.update_data(profile_city=city)
+    await state.set_state(OnboardingFlow.waiting_marketing)
     await message.answer(
-        "Выберите, с чего начнем:",
-        reply_markup=main_menu_keyboard(user_referral_code(user), diagnosis_test_id(tests)),
+        "Хотите получать полезные материалы, новости об акциях, подарках и программах? Это необязательно.",
+        reply_markup=marketing_keyboard(public_base_url()),
     )
+
+
+@router.callback_query(F.data.startswith("onboarding:marketing:"))
+async def onboarding_marketing(callback: CallbackQuery, state: FSMContext) -> None:
+    choice = (callback.data or "").split(":")[-1]
+    data = await state.get_data()
+    user = await resolve_telegram_user(callback.from_user)
+    if choice == "yes":
+        await grant_consent(int(user["id"]), "marketing_consent", "telegram")
+    elif choice == "no":
+        await revoke_consents(int(user["id"]), marketing_only=True)
+    else:
+        await callback.answer("Неизвестный вариант", show_alert=True)
+        return
+
+    birth_date = None
+    if data.get("profile_birth_date"):
+        birth_date, _ = parse_age_or_birth_date(str(data["profile_birth_date"]))
+    updated = await complete_onboarding(
+        int(user["id"]),
+        first_name=str(data.get("profile_first_name") or user.get("first_name") or ""),
+        last_name=str(data.get("profile_last_name") or "") or None,
+        gender=str(data.get("profile_gender") or "prefer_not_to_say"),
+        birth_date=birth_date,
+        age_years=int(data["profile_age_years"]) if data.get("profile_age_years") else None,
+        city=str(data.get("profile_city") or ""),
+    )
+    await state.clear()
+    if callback.message:
+        await callback.message.answer("Спасибо! Анкета заполнена.")
+        await show_main_menu(callback.message, updated)
+    await callback.answer()
 
 
 @router.message(Command("app"))
@@ -364,13 +745,19 @@ async def app_command(message: Message) -> None:
 
 
 @router.message(Command("menu"))
-async def menu(message: Message) -> None:
+async def menu(message: Message, state: FSMContext) -> None:
     user = await resolve_user(message)
-    tests = await list_tests()
-    await message.answer(
-        "Выберите нужный раздел:",
-        reply_markup=main_menu_keyboard(user_referral_code(user), diagnosis_test_id(tests)),
-    )
+    if await continue_onboarding(message, state, user):
+        await show_main_menu(message, user)
+
+
+@router.callback_query(F.data == "menu:main")
+async def menu_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    user = await resolve_telegram_user(callback.from_user)
+    await state.clear()
+    if callback.message and await continue_onboarding(callback.message, state, user):
+        await show_main_menu(callback.message, user)
+    await callback.answer()
 
 
 @router.message(Command("help"))
@@ -379,13 +766,17 @@ async def help_command(message: Message) -> None:
 
 
 @router.message(Command("tests"))
-async def tests_command(message: Message) -> None:
-    await resolve_user(message)
+async def tests_command(message: Message, state: FSMContext) -> None:
+    user = await resolve_user(message)
+    if not await continue_onboarding(message, state, user):
+        return
     tests = await list_tests()
     if not tests:
         await message.answer(tr("tests.empty"))
         return
-    await message.answer(tr("tests.choose"), reply_markup=tests_keyboard(tests))
+    primary_id = diagnosis_test_id(tests)
+    primary = [item for item in tests if int(item["id"]) == int(primary_id or 0)]
+    await message.answer("Откройте основной чек-ап организма:", reply_markup=tests_keyboard(primary or tests[:1]))
 
 
 @router.message(Command("products"))
@@ -456,17 +847,26 @@ async def profile_command(message: Message) -> None:
 @router.message(Command("manager"))
 @router.message(Command("contact_manager"))
 async def contact_manager_command(message: Message, state: FSMContext) -> None:
-    await resolve_user(message)
+    user = await resolve_user(message)
+    if not await continue_onboarding(message, state, user):
+        return
+    profile = await consultant_profile_for_user(user)
+    await message.answer(consultant_contacts_text(profile), parse_mode="HTML")
     await state.set_state(LeadFlow.waiting_message)
-    await message.answer(tr("lead.ask_message"), reply_markup=ReplyKeyboardRemove())
+    await message.answer("Напишите сообщение консультанту одним сообщением.", reply_markup=ReplyKeyboardRemove())
 
 
 @router.callback_query(F.data == "lead:contact")
 async def contact_manager_callback(callback: CallbackQuery, state: FSMContext) -> None:
-    await resolve_telegram_user(callback.from_user)
+    user = await resolve_telegram_user(callback.from_user)
+    if callback.message and not await continue_onboarding(callback.message, state, user):
+        await callback.answer()
+        return
+    profile = await consultant_profile_for_user(user)
     await state.set_state(LeadFlow.waiting_message)
     if callback.message:
-        await callback.message.answer(tr("lead.ask_message"), reply_markup=ReplyKeyboardRemove())
+        await callback.message.answer(consultant_contacts_text(profile), parse_mode="HTML")
+        await callback.message.answer("Напишите сообщение консультанту одним сообщением.", reply_markup=ReplyKeyboardRemove())
     await callback.answer()
 
 
@@ -478,13 +878,90 @@ async def lead_message(message: Message, state: FSMContext) -> None:
         await message.answer(tr("lead.empty_message"))
         return
     lead_id = await create_lead(user, text)
+    client_name = " ".join(
+        part for part in [str(user.get("first_name") or "").strip(), str(user.get("last_name") or "").strip()]
+        if part
+    ) or f"Клиент #{user['id']}"
+    await notify_manager_event(
+        message.bot,
+        user,
+        notification_type="consultation_requested",
+        event_key=f"consultation_requested:{lead_id}",
+        title="Запрос на консультацию",
+        message_text=(
+            f"{client_name} запросил связь.\n\n"
+            f"Сообщение:\n{text}\n\n"
+            f"Обращение #{lead_id} доступно в кабинете SWPro."
+        )[:3900],
+    )
     await state.clear()
-    await message.answer(tr("lead.created_manager", id=lead_id))
+    await message.answer("Сообщение отправлено. Консультант свяжется с вами.")
+
+
+@router.callback_query(F.data.in_({"section:cashback", "section:cooperation"}))
+async def profile_section_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    user = await resolve_telegram_user(callback.from_user)
+    if callback.message and not await continue_onboarding(callback.message, state, user):
+        await callback.answer()
+        return
+    section = (callback.data or "").split(":")[-1]
+    if callback.message:
+        await send_profile_section(callback.message, user, section)
+        if section == "cooperation":
+            await callback.message.answer(
+                "Чтобы узнать подробности, напишите консультанту.",
+                reply_markup=result_actions_keyboard(user_referral_code(user)),
+            )
+    await callback.answer()
+
+
+@router.message(Command("privacy"))
+async def privacy_command(message: Message) -> None:
+    await message.answer(
+        "Документы SWPro:\n"
+        f"{public_base_url()}/legal.php?type=privacy_policy\n"
+        f"{public_base_url()}/legal.php?type=personal_data_consent\n"
+        f"{public_base_url()}/legal.php?type=health_data_consent"
+    )
+
+
+@router.message(Command("unsubscribe"))
+async def unsubscribe_command(message: Message, state: FSMContext) -> None:
+    user = await resolve_user(message)
+    await revoke_consents(int(user["id"]), marketing_only=True)
+    await state.clear()
+    await message.answer("Информационные и рекламные сообщения отключены. Сервисные сообщения чек-апа остаются доступны.")
+
+
+@router.message(Command("revoke"))
+async def revoke_command(message: Message) -> None:
+    await message.answer(
+        "Отозвать все согласия и прекратить использование SWPro? После этого анкета и чек-ап станут недоступны.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Да, отозвать согласия", callback_data="onboarding:revoke_all")],
+            [InlineKeyboardButton(text="Отмена", callback_data="menu:main")],
+        ]),
+    )
+
+
+@router.callback_query(F.data == "onboarding:revoke_all")
+async def revoke_all_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    user = await resolve_telegram_user(callback.from_user)
+    await revoke_consents(int(user["id"]))
+    await state.clear()
+    if callback.message:
+        await callback.message.answer(
+            "Согласия отозваны, сообщения отключены. Для удаления сохранённых данных направьте запрос оператору через контакты в политике."
+        )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("test:start:"))
 async def test_start_callback(callback: CallbackQuery, state: FSMContext) -> None:
     user = await resolve_telegram_user(callback.from_user)
+    if callback.message and not await continue_onboarding(callback.message, state, user):
+        await callback.answer()
+        return
     test_id = int((callback.data or "").split(":")[-1])
     if callback.message:
         await start_test(callback.message, state, user, test_id)
@@ -494,6 +971,9 @@ async def test_start_callback(callback: CallbackQuery, state: FSMContext) -> Non
 @router.callback_query(F.data.startswith("test:resume:"))
 async def test_resume_callback(callback: CallbackQuery, state: FSMContext) -> None:
     user = await resolve_telegram_user(callback.from_user)
+    if callback.message and not await continue_onboarding(callback.message, state, user):
+        await callback.answer()
+        return
     test_id = int((callback.data or "").split(":")[-1])
     if callback.message:
         await delete_message_silently(callback.message)
@@ -516,6 +996,9 @@ async def test_result_callback(callback: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("test:restart:"))
 async def test_restart_callback(callback: CallbackQuery, state: FSMContext) -> None:
     user = await resolve_telegram_user(callback.from_user)
+    if callback.message and not await continue_onboarding(callback.message, state, user):
+        await callback.answer()
+        return
     test_id = int((callback.data or "").split(":")[-1])
     if callback.message:
         await delete_message_silently(callback.message)

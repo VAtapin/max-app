@@ -387,18 +387,47 @@ function link_existing_user_to_target(int $targetUserId, int $sourceUserId): ?ar
             return null;
         }
 
+        $dedupeAutomation = $pdo->prepare(
+            'DELETE source_log
+             FROM automation_logs source_log
+             INNER JOIN automation_logs target_log
+               ON target_log.end_user_id = :target_id
+              AND target_log.automation_type = source_log.automation_type
+              AND target_log.context_key = source_log.context_key
+              AND target_log.platform = source_log.platform
+             WHERE source_log.end_user_id = :source_id'
+        );
+        $dedupeAutomation->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
+
         foreach ([
             'platform_accounts' => 'end_user_id',
             'leads' => 'end_user_id',
             'user_test_sessions' => 'end_user_id',
             'recommendations' => 'end_user_id',
             'broadcast_logs' => 'end_user_id',
+            'user_consents' => 'end_user_id',
+            'client_stage_history' => 'end_user_id',
+            'user_notifications' => 'end_user_id',
+            'automation_logs' => 'end_user_id',
+            'consultant_notifications' => 'end_user_id',
         ] as $table => $column) {
             $stmt = $pdo->prepare("UPDATE $table SET $column = :target_id WHERE $column = :source_id");
             $stmt->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
         }
 
-        $mergeFields = ['username', 'first_name', 'last_name', 'phone', 'email', 'referral_code_used'];
+        $mergeFields = [
+            'username',
+            'first_name',
+            'last_name',
+            'gender',
+            'birth_date',
+            'age_years',
+            'city',
+            'phone',
+            'email',
+            'referral_code_used',
+            'onboarding_completed_at',
+        ];
         $assignments = [];
         $params = ['target_id' => $targetUserId, 'source_id' => $sourceUserId];
         foreach ($mergeFields as $field) {
@@ -408,6 +437,13 @@ function link_existing_user_to_target(int $targetUserId, int $sourceUserId): ?ar
                     $params[$field] = $source[$field];
                 }
             }
+        }
+        if (empty($target['reseller_id']) && empty($target['manager_id'])
+            && (!empty($source['reseller_id']) || !empty($source['manager_id']))) {
+            $assignments[] = 'reseller_id = :reseller_id';
+            $assignments[] = 'manager_id = :manager_id';
+            $params['reseller_id'] = $source['reseller_id'];
+            $params['manager_id'] = $source['manager_id'];
         }
         if ($assignments) {
             $update = $pdo->prepare('UPDATE end_users SET ' . implode(', ', $assignments) . ' WHERE id = :target_id');

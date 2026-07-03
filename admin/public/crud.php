@@ -6,6 +6,7 @@ require_once __DIR__ . '/../app/core/crud_views.php';
 require_once __DIR__ . '/../app/core/lead_responses.php';
 require_once __DIR__ . '/../app/core/test_admin.php';
 require_once __DIR__ . '/../app/core/broadcast_runner.php';
+require_once __DIR__ . '/../app/core/client_journey.php';
 
 $admin = require_auth();
 
@@ -39,7 +40,7 @@ $modules = [
         ],
     ],
     'users' => [
-        'title' => app_text('auto.k_0f0b8f55edcc'),
+        'title' => 'Клиенты',
         'table' => 'end_users',
         'columns' => ['id', 'platform', 'platform_user_id', 'username', 'reseller_id', 'manager_id', 'status'],
         'fields' => [
@@ -50,9 +51,16 @@ $modules = [
             'username' => ['label' => 'Username'],
             'first_name' => ['label' => app_text('auto.k_aee78fe86022')],
             'last_name' => ['label' => app_text('auto.k_5aa7f892d573')],
+            'gender' => ['label' => 'Пол', 'type' => 'select', 'options' => ['female', 'male', 'prefer_not_to_say'], 'nullable' => true],
+            'birth_date' => ['label' => 'Дата рождения', 'type' => 'date', 'nullable' => true],
+            'age_years' => ['label' => 'Возраст', 'type' => 'number', 'nullable' => true],
+            'city' => ['label' => 'Город'],
+            'timezone' => ['label' => 'Часовой пояс'],
             'phone' => ['label' => app_text('auto.k_87ec4b495b56')],
             'email' => ['label' => 'Email', 'type' => 'email'],
             'referral_code_used' => ['label' => app_text('auto.k_23f8d055a5d6')],
+            'client_stage' => ['label' => 'Этап клиента', 'type' => 'select', 'options' => array_keys(client_stage_labels()), 'required' => true],
+            'notifications_enabled' => ['label' => 'Разрешены сообщения', 'type' => 'checkbox', 'default' => 1],
             'status' => ['label' => app_text('auto.k_f7f293b5c58c'), 'type' => 'select', 'options' => ['active', 'blocked', 'unsubscribed'], 'required' => true],
         ],
     ],
@@ -139,8 +147,10 @@ $modules = [
         'columns' => ['id', 'title', 'platform', 'target_type', 'scheduled_at', 'status'],
         'fields' => [
             'title' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
-            'message_text' => ['label' => app_text('auto.k_1ba376a71bcf'), 'type' => 'textarea', 'required' => true],
+            'message_text' => ['label' => app_text('auto.k_1ba376a71bcf'), 'type' => 'textarea'],
+            'audience_type' => ['label' => 'Получатели', 'type' => 'select', 'options' => ['clients', 'consultants'], 'required' => true],
             'image_path' => ['label' => app_text('auto.k_56a1fd52891d'), 'type' => 'file', 'accept' => 'image/*'],
+            'video_path' => ['label' => 'Видео MP4', 'type' => 'file', 'accept' => 'video/mp4'],
             'button_text' => ['label' => app_text('auto.k_f9fd27363780')],
             'button_url' => ['label' => app_text('auto.k_668acad1ed4c')],
             'target_type' => ['label' => app_text('auto.k_e9476ab1820b'), 'type' => 'select', 'options' => ['all', 'reseller', 'manager', 'segment'], 'required' => true],
@@ -158,6 +168,7 @@ $modules = [
         'columns' => ['id', 'title', 'status', 'publish_at', 'created_by'],
         'fields' => [
             'content_type' => ['label' => app_text('auto.k_ef19578bced0'), 'type' => 'select', 'options' => ['article', 'image', 'pdf', 'video', 'link'], 'required' => true],
+            'section_type' => ['label' => 'Раздел мини-сайта', 'type' => 'select', 'options' => ['general', 'story', 'result', 'promotion', 'giveaway', 'program', 'marathon'], 'required' => true],
             'title' => ['label' => app_text('auto.k_a8504d513adf'), 'required' => true],
             'short_text' => ['label' => app_text('auto.k_45cab8e7b9f1'), 'type' => 'textarea'],
             'full_text' => ['label' => app_text('auto.k_88a3ec931c4d'), 'type' => 'textarea'],
@@ -183,6 +194,24 @@ $modules = [
             'external_id' => ['label' => app_text('integrations.external_id')],
             'access_token' => ['label' => app_text('integrations.access_token'), 'type' => 'textarea'],
             'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
+        ],
+    ],
+    'legal_documents' => [
+        'title' => 'Юридические документы',
+        'table' => 'legal_documents',
+        'columns' => ['id', 'document_type', 'title', 'version', 'is_required', 'is_active', 'updated_at'],
+        'fields' => [
+            'document_type' => [
+                'label' => 'Тип документа',
+                'type' => 'select',
+                'options' => ['privacy_policy', 'personal_data_consent', 'health_data_consent', 'marketing_consent', 'user_agreement', 'leader_offer'],
+                'required' => true,
+            ],
+            'title' => ['label' => 'Название', 'required' => true],
+            'version' => ['label' => 'Версия', 'required' => true],
+            'body' => ['label' => 'Текст документа', 'type' => 'textarea', 'required' => true],
+            'is_required' => ['label' => 'Обязательный', 'type' => 'checkbox', 'default' => 1],
+            'is_active' => ['label' => 'Активен', 'type' => 'checkbox', 'default' => 1],
         ],
     ],
 ];
@@ -221,6 +250,28 @@ function scope_where_for_module(string $moduleKey, array $admin): array
         return ['WHERE reseller_id = :scope_reseller_id', ['scope_reseller_id' => $admin['reseller_id']]];
     }
 
+    if ($moduleKey === 'broadcasts') {
+        if ($admin['role'] === 'superadmin') {
+            return ['', []];
+        }
+        if ($admin['role'] === 'reseller') {
+            return [
+                'WHERE (target_reseller_id = :scope_reseller_id
+                    OR target_manager_id IN (
+                        SELECT id FROM managers WHERE reseller_id = :scope_reseller_team_id
+                    ))',
+                [
+                    'scope_reseller_id' => $admin['reseller_id'],
+                    'scope_reseller_team_id' => $admin['reseller_id'],
+                ],
+            ];
+        }
+        return [
+            'WHERE target_manager_id = :scope_manager_id',
+            ['scope_manager_id' => $admin['manager_id']],
+        ];
+    }
+
     if (in_array($moduleKey, owned_modules(), true)) {
         return owner_scope_condition($admin);
     }
@@ -248,7 +299,7 @@ function scoped_row_exists(string $moduleKey, array $module, int $id, array $adm
 
 function owned_modules(): array
 {
-    return ['categories', 'products', 'tests', 'content', 'broadcasts'];
+    return ['categories', 'products', 'tests', 'content'];
 }
 
 function owner_scope_condition(array $admin, string $alias = ''): array
@@ -371,7 +422,19 @@ function merge_end_users(int $targetUserId, int $sourceUserId, array $admin): vo
             throw new RuntimeException('Один из пользователей уже объединён.');
         }
 
-        $mergeFields = ['username', 'first_name', 'last_name', 'phone', 'email', 'referral_code_used'];
+        $mergeFields = [
+            'username',
+            'first_name',
+            'last_name',
+            'gender',
+            'birth_date',
+            'age_years',
+            'city',
+            'phone',
+            'email',
+            'referral_code_used',
+            'onboarding_completed_at',
+        ];
         $assignments = [];
         $mergeParams = ['target_id' => $targetUserId, 'source_id' => $sourceUserId];
         foreach ($mergeFields as $field) {
@@ -382,10 +445,29 @@ function merge_end_users(int $targetUserId, int $sourceUserId, array $admin): vo
                 }
             }
         }
+        if (empty($target['reseller_id']) && empty($target['manager_id'])
+            && (!empty($source['reseller_id']) || !empty($source['manager_id']))) {
+            $assignments[] = 'reseller_id = :reseller_id';
+            $assignments[] = 'manager_id = :manager_id';
+            $mergeParams['reseller_id'] = $source['reseller_id'];
+            $mergeParams['manager_id'] = $source['manager_id'];
+        }
         if ($assignments) {
             $mergeData = $pdo->prepare('UPDATE end_users SET ' . implode(', ', $assignments) . ' WHERE id = :target_id');
             $mergeData->execute($mergeParams);
         }
+
+        $dedupeAutomation = $pdo->prepare(
+            'DELETE source_log
+             FROM automation_logs source_log
+             INNER JOIN automation_logs target_log
+               ON target_log.end_user_id = :target_id
+              AND target_log.automation_type = source_log.automation_type
+              AND target_log.context_key = source_log.context_key
+              AND target_log.platform = source_log.platform
+             WHERE source_log.end_user_id = :source_id'
+        );
+        $dedupeAutomation->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
 
         $updates = [
             'platform_accounts' => 'end_user_id',
@@ -393,6 +475,11 @@ function merge_end_users(int $targetUserId, int $sourceUserId, array $admin): vo
             'user_test_sessions' => 'end_user_id',
             'recommendations' => 'end_user_id',
             'broadcast_logs' => 'end_user_id',
+            'user_consents' => 'end_user_id',
+            'client_stage_history' => 'end_user_id',
+            'user_notifications' => 'end_user_id',
+            'automation_logs' => 'end_user_id',
+            'consultant_notifications' => 'end_user_id',
         ];
         foreach ($updates as $table => $column) {
             $stmt = $pdo->prepare("UPDATE $table SET $column = :target_id WHERE $column = :source_id");
@@ -485,6 +572,30 @@ function form_option_label(string $fieldName, string $option): string
 
     if ($fieldName === 'scoring_type') {
         return $option === 'multiscale' ? 'Многошкальная матрица' : 'Обычный тест';
+    }
+
+    if ($fieldName === 'client_stage') {
+        return client_stage_labels()[$option] ?? $option;
+    }
+
+    if ($fieldName === 'gender') {
+        return client_gender_labels()[$option] ?? $option;
+    }
+
+    if ($fieldName === 'audience_type') {
+        return $option === 'consultants' ? 'Консультанты команды' : 'Клиенты';
+    }
+
+    if ($fieldName === 'section_type') {
+        return [
+            'general' => 'Общее',
+            'story' => 'История',
+            'result' => 'Результаты',
+            'promotion' => 'Акция',
+            'giveaway' => 'Розыгрыш',
+            'program' => 'Программа',
+            'marathon' => 'Марафон',
+        ][$option] ?? $option;
     }
 
     return $option;
@@ -736,6 +847,13 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin)
         }
     }
 
+    if ($moduleKey === 'broadcasts'
+        && trim((string)($payload['message_text'] ?? '')) === ''
+        && empty($payload['image_path'])
+        && empty($payload['video_path'])) {
+        $errors[] = 'Добавьте текст, фотографию или видео.';
+    }
+
     return $errors;
 }
 
@@ -771,6 +889,16 @@ function apply_role_defaults(string $moduleKey, array $payload, array $admin): a
     }
     if ($moduleKey === 'broadcasts') {
         $payload['created_by'] = $admin['id'];
+        if ($admin['role'] === 'manager') {
+            $payload['audience_type'] = 'clients';
+            $payload['target_type'] = 'manager';
+            $payload['target_manager_id'] = $admin['manager_id'];
+            $payload['target_reseller_id'] = $admin['reseller_id'];
+        } elseif ($admin['role'] === 'reseller') {
+            $payload['target_type'] = 'reseller';
+            $payload['target_reseller_id'] = $admin['reseller_id'];
+            $payload['target_manager_id'] = null;
+        }
     }
     if ($moduleKey === 'content') {
         $payload['created_by'] = $admin['id'];
@@ -1065,7 +1193,7 @@ function save_record(string $moduleKey, array $module, array $payload, ?int $id,
     if ($id) {
         $before = null;
         if ($moduleKey === 'users') {
-            $beforeStmt = db()->prepare('SELECT reseller_id, manager_id FROM end_users WHERE id = :id LIMIT 1');
+            $beforeStmt = db()->prepare('SELECT reseller_id, manager_id, client_stage FROM end_users WHERE id = :id LIMIT 1');
             $beforeStmt->execute(['id' => $id]);
             $before = $beforeStmt->fetch();
         }
@@ -1087,6 +1215,26 @@ function save_record(string $moduleKey, array $module, array $payload, ?int $id,
                     'old_manager_id' => $oldManagerId,
                     'new_reseller_id' => $newResellerId,
                     'new_manager_id' => $newManagerId,
+                ]);
+            }
+            $oldStage = (string)($before['client_stage'] ?? 'new');
+            $newStage = (string)($payload['client_stage'] ?? $oldStage);
+            if ($oldStage !== $newStage) {
+                $touchStage = db()->prepare('UPDATE end_users SET stage_updated_at = NOW() WHERE id = :id');
+                $touchStage->execute(['id' => $id]);
+                $history = db()->prepare(
+                    'INSERT INTO client_stage_history (
+                        end_user_id, previous_stage, new_stage, source, actor_id
+                     ) VALUES (
+                        :end_user_id, :previous_stage, :new_stage, :source, :actor_id
+                     )'
+                );
+                $history->execute([
+                    'end_user_id' => $id,
+                    'previous_stage' => $oldStage,
+                    'new_stage' => $newStage,
+                    'source' => $admin['role'] === 'manager' ? 'consultant' : ($admin['role'] === 'reseller' ? 'leader' : 'admin'),
+                    'actor_id' => $admin['id'],
                 ]);
             }
         }
@@ -1396,6 +1544,39 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <?php endif; ?>
                 </label>
             <?php endforeach; ?>
+            <?php if ($moduleKey === 'broadcasts'): ?>
+                <section class="field wide broadcast-preview" id="broadcast-preview">
+                    <span>Предварительный просмотр</span>
+                    <strong id="broadcast-preview-title"><?= h((string)($editRow['title'] ?? 'Заголовок рассылки')) ?></strong>
+                    <p id="broadcast-preview-text"><?= nl2br(h((string)($editRow['message_text'] ?? 'Текст сообщения'))) ?></p>
+                    <div id="broadcast-preview-media"></div>
+                </section>
+                <script>
+                    document.addEventListener('DOMContentLoaded', () => {
+                        const form = document.querySelector('.crud-form');
+                        const title = document.querySelector('#broadcast-preview-title');
+                        const text = document.querySelector('#broadcast-preview-text');
+                        const media = document.querySelector('#broadcast-preview-media');
+                        if (!form || !title || !text || !media) return;
+                        const update = () => {
+                            title.textContent = form.elements.title?.value || 'Заголовок рассылки';
+                            text.textContent = form.elements.message_text?.value || 'Текст сообщения';
+                        };
+                        form.elements.title?.addEventListener('input', update);
+                        form.elements.message_text?.addEventListener('input', update);
+                        ['image_path', 'video_path'].forEach((name) => {
+                            form.elements[name]?.addEventListener('change', (event) => {
+                                const file = event.target.files?.[0];
+                                if (!file) return;
+                                const url = URL.createObjectURL(file);
+                                media.innerHTML = name === 'video_path'
+                                    ? `<video controls src="${url}"></video>`
+                                    : `<img src="${url}" alt="">`;
+                            });
+                        });
+                    });
+                </script>
+            <?php endif; ?>
             <?php if (in_array($moduleKey, ['managers', 'resellers'], true) && $admin['role'] === 'superadmin'): ?>
                 <fieldset class="field admin-access-group">
                     <legend><?= h(app_text('admin_access.title')) ?></legend>
@@ -1442,6 +1623,16 @@ require __DIR__ . '/../app/views/layouts/header.php';
         <?= render_test_builder((int)$editRow['id']) ?>
     <?php endif; ?>
     <?php if ($moduleKey === 'users' && $action === 'edit' && $editRow): ?>
+        <?php $consentStatus = client_onboarding_status($editRow); ?>
+        <section class="panel form-panel">
+            <h2>Анкета и согласия</h2>
+            <p><strong>Этап:</strong> <?= h(client_stage_labels()[(string)($editRow['client_stage'] ?? 'new')] ?? (string)$editRow['client_stage']) ?></p>
+            <p><strong>Анкета:</strong> <?= $consentStatus['profile_complete'] ? 'заполнена' : 'не завершена' ?></p>
+            <p><strong>Обязательные согласия:</strong> <?= $consentStatus['missing_consents'] ? 'не подтверждены полностью' : 'подтверждены' ?></p>
+            <p><strong>Информационные рассылки:</strong> <?= $consentStatus['marketing_consent'] ? 'разрешены' : 'не разрешены' ?></p>
+            <a class="button secondary-button" href="results.php?user_id=<?= (int)$editRow['id'] ?>">Результаты чек-апов</a>
+        </section>
+
         <section class="panel form-panel">
             <h2><?= h(app_text('user_platforms.title')) ?></h2>
             <?php $accounts = user_platform_accounts((int)$editRow['id']); ?>
@@ -1618,6 +1809,41 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php endif; ?>
 <?php $showList = !($moduleKey === 'users' && $action === 'edit'); ?>
 <?php if ($showList): ?>
+    <?php if ($moduleKey === 'users'): ?>
+        <section class="panel">
+            <form method="get" class="filters">
+                <input type="hidden" name="module" value="users">
+                <label>
+                    <span>Этап</span>
+                    <select name="client_stage">
+                        <option value="">Все этапы</option>
+                        <?php foreach (client_stage_labels() as $value => $label): ?>
+                            <option value="<?= h($value) ?>" <?= ($_GET['client_stage'] ?? '') === $value ? 'selected' : '' ?>><?= h($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+                <label>
+                    <span>Чек-ап</span>
+                    <select name="checkup">
+                        <option value="">Любой</option>
+                        <option value="not_started" <?= ($_GET['checkup'] ?? '') === 'not_started' ? 'selected' : '' ?>>Не начат</option>
+                        <option value="started" <?= ($_GET['checkup'] ?? '') === 'started' ? 'selected' : '' ?>>Начат</option>
+                        <option value="completed" <?= ($_GET['checkup'] ?? '') === 'completed' ? 'selected' : '' ?>>Завершён</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Активность</span>
+                    <select name="activity">
+                        <option value="">Любая</option>
+                        <option value="active_7" <?= ($_GET['activity'] ?? '') === 'active_7' ? 'selected' : '' ?>>Был активен за 7 дней</option>
+                        <option value="inactive_14" <?= ($_GET['activity'] ?? '') === 'inactive_14' ? 'selected' : '' ?>>Неактивен 14 дней</option>
+                    </select>
+                </label>
+                <button type="submit">Применить</button>
+                <a class="button secondary-button" href="crud.php?module=users">Сбросить</a>
+            </form>
+        </section>
+    <?php endif; ?>
     <section class="panel">
         <?= $listHtml ?>
     </section>

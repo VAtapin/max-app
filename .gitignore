@@ -3,6 +3,10 @@
 /bot/.env
 /admin/uploads/*
 !/admin/uploads/.gitkeep
+!/admin/uploads/content/
+!/admin/uploads/content/*.png
+!/admin/uploads/tests/
+!/admin/uploads/tests/*.png
 *.log
 *.tmp
 __pycache__/

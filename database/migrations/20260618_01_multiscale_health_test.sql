@@ -1,3 +1,5 @@
+SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS test_scales (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   test_id BIGINT UNSIGNED NOT NULL,
@@ -88,7 +90,7 @@ CREATE TEMPORARY TABLE IF NOT EXISTS tmp_health_scales (
   slug VARCHAR(100) NOT NULL,
   title VARCHAR(190) NOT NULL,
   sort_order INT NOT NULL
-) ENGINE=Memory;
+) ENGINE=Memory DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 DELETE FROM tmp_health_scales;
 INSERT INTO tmp_health_scales (source_col, slug, title, sort_order) VALUES
@@ -115,7 +117,7 @@ CREATE TEMPORARY TABLE IF NOT EXISTS tmp_health_questions (
   sort_order INT NOT NULL PRIMARY KEY,
   question_text VARCHAR(500) NOT NULL,
   scale_cols VARCHAR(60) NOT NULL
-) ENGINE=Memory;
+) ENGINE=Memory DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 DELETE FROM tmp_health_questions;
 INSERT INTO tmp_health_questions (sort_order, question_text, scale_cols) VALUES
@@ -209,7 +211,7 @@ CREATE TEMPORARY TABLE IF NOT EXISTS tmp_health_scale_results (
   max_score INT NOT NULL,
   severity VARCHAR(20) NOT NULL,
   sort_order INT NOT NULL
-) ENGINE=Memory;
+) ENGINE=Memory DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 DELETE FROM tmp_health_scale_results;
 INSERT INTO tmp_health_scale_results (source_col, title, min_score, max_score, severity, sort_order) VALUES

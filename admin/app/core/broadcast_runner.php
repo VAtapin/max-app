@@ -4,7 +4,51 @@ require_once __DIR__ . '/lead_responses.php';
 
 function broadcast_recipients(array $broadcast): array
 {
+    if (($broadcast['audience_type'] ?? 'clients') === 'consultants') {
+        $where = ['m.is_active = 1', 'm.telegram_id IS NOT NULL', 'm.telegram_id <> ""'];
+        $params = [];
+        if (!empty($broadcast['target_reseller_id'])) {
+            $where[] = 'm.reseller_id = :reseller_id';
+            $params['reseller_id'] = (int)$broadcast['target_reseller_id'];
+        }
+        if (!empty($broadcast['target_manager_id'])) {
+            $where[] = 'm.id = :manager_id';
+            $params['manager_id'] = (int)$broadcast['target_manager_id'];
+        }
+        $stmt = db()->prepare(
+            'SELECT m.id AS manager_id, "telegram" AS platform, m.telegram_id AS platform_user_id
+             FROM managers m
+             WHERE ' . implode(' AND ', $where) . '
+             ORDER BY m.id'
+        );
+        $stmt->execute($params);
+        return array_map(static fn(array $row): array => [
+            'end_user_id' => null,
+            'manager_id' => (int)$row['manager_id'],
+            'platform' => 'telegram',
+            'platform_user_id' => (string)$row['platform_user_id'],
+        ], $stmt->fetchAll());
+    }
+
     $where = ['eu.merged_into_user_id IS NULL', 'eu.status = "active"'];
+    $where[] = 'eu.notifications_enabled = 1';
+    $where[] = 'EXISTS (
+        SELECT 1
+        FROM user_consents uc
+        WHERE uc.id = (
+            SELECT MAX(uc2.id)
+            FROM user_consents uc2
+            WHERE uc2.end_user_id = eu.id AND uc2.document_type = "marketing_consent"
+        )
+          AND uc.revoked_at IS NULL
+          AND uc.document_version = (
+              SELECT ld.version
+              FROM legal_documents ld
+              WHERE ld.document_type = "marketing_consent" AND ld.is_active = 1
+              ORDER BY ld.id DESC
+              LIMIT 1
+          )
+    )';
     $params = [];
 
     if (($broadcast['target_type'] ?? '') === 'reseller' && !empty($broadcast['target_reseller_id'])) {
@@ -19,8 +63,9 @@ function broadcast_recipients(array $broadcast): array
 
     $platformFilter = normalize_platform((string)($broadcast['platform'] ?? 'all'));
     if ($platformFilter !== 'all') {
-        $where[] = '(pa.platform = :platform OR (pa.id IS NULL AND eu.platform = :platform))';
-        $params['platform'] = $platformFilter;
+        $where[] = '(pa.platform = :account_platform OR (pa.id IS NULL AND eu.platform = :legacy_platform))';
+        $params['account_platform'] = $platformFilter;
+        $params['legacy_platform'] = $platformFilter;
     }
 
     $sql = 'SELECT eu.id AS end_user_id,
@@ -39,6 +84,7 @@ function broadcast_recipients(array $broadcast): array
         $key = (int)$row['end_user_id'] . '|' . normalize_platform((string)$row['platform']) . '|' . (string)$row['platform_user_id'];
         $unique[$key] = [
             'end_user_id' => (int)$row['end_user_id'],
+            'manager_id' => null,
             'platform' => normalize_platform((string)$row['platform']),
             'platform_user_id' => (string)$row['platform_user_id'],
         ];
@@ -62,13 +108,60 @@ function send_broadcast_to_recipient(array $broadcast, array $recipient): array
     $platform = normalize_platform((string)$recipient['platform']);
 
     if ($platform === 'telegram') {
-        return send_telegram_text((string)$recipient['platform_user_id'], broadcast_message_text($broadcast));
+        $buttons = [];
+        if (!empty($broadcast['button_url'])) {
+            $buttons[] = [[
+                'text' => trim((string)($broadcast['button_text'] ?? 'Открыть')) ?: 'Открыть',
+                'url' => (string)$broadcast['button_url'],
+            ]];
+        }
+        $errors = [];
+        $messageText = trim((string)$broadcast['message_text']);
+        if ($messageText !== '' || $buttons) {
+            $textResult = send_telegram_text(
+                (string)$recipient['platform_user_id'],
+                $messageText !== '' ? $messageText : (string)$broadcast['title'],
+                $buttons
+            );
+            if (!$textResult['ok']) {
+                $errors[] = $textResult['error'];
+            }
+        }
+        foreach (['image_path', 'video_path'] as $field) {
+            $mediaResult = send_telegram_media(
+                (string)$recipient['platform_user_id'],
+                $broadcast[$field] ?? null,
+                (string)$broadcast['title']
+            );
+            if (!$mediaResult['ok']) {
+                $errors[] = $mediaResult['error'];
+            }
+        }
+        return ['ok' => !$errors, 'error' => $errors ? implode('; ', $errors) : null];
     }
 
-    return [
-        'ok' => true,
-        'error' => null,
-    ];
+    if (!empty($recipient['end_user_id'])) {
+        $stmt = db()->prepare(
+            'INSERT INTO user_notifications (
+                end_user_id, notification_type, title, message_text,
+                image_path, video_path, action_text, action_url
+             ) VALUES (
+                :end_user_id, "broadcast", :title, :message_text,
+                :image_path, :video_path, :action_text, :action_url
+             )'
+        );
+        $stmt->execute([
+            'end_user_id' => $recipient['end_user_id'],
+            'title' => $broadcast['title'],
+            'message_text' => trim((string)$broadcast['message_text']) ?: (string)$broadcast['title'],
+            'image_path' => $broadcast['image_path'] ?: null,
+            'video_path' => $broadcast['video_path'] ?: null,
+            'action_text' => $broadcast['button_text'] ?: null,
+            'action_url' => $broadcast['button_url'] ?: null,
+        ]);
+    }
+
+    return ['ok' => true, 'error' => null];
 }
 
 function next_broadcast_time(array $broadcast): ?string
@@ -98,8 +191,8 @@ function run_broadcast(int $broadcastId): array
 
     $recipients = broadcast_recipients($broadcast);
     $insertLog = db()->prepare(
-        'INSERT INTO broadcast_logs (broadcast_id, end_user_id, platform, status, error_message, sent_at)
-         VALUES (:broadcast_id, :end_user_id, :platform, :status, :error_message, :sent_at)'
+        'INSERT INTO broadcast_logs (broadcast_id, end_user_id, manager_id, platform, status, error_message, sent_at)
+         VALUES (:broadcast_id, :end_user_id, :manager_id, :platform, :status, :error_message, :sent_at)'
     );
 
     $sent = 0;
@@ -110,6 +203,7 @@ function run_broadcast(int $broadcastId): array
         $insertLog->execute([
             'broadcast_id' => $broadcastId,
             'end_user_id' => $recipient['end_user_id'],
+            'manager_id' => $recipient['manager_id'],
             'platform' => $recipient['platform'],
             'status' => $ok ? 'sent' : 'failed',
             'error_message' => $ok ? null : (string)($result['error'] ?? 'Delivery failed'),

@@ -14,10 +14,14 @@ const state = {
     defaultManager: null,
     consultantProfile: null,
     consultantProfilePromise: null,
+    onboarding: null,
+    notifications: [],
+    answerPending: false,
 };
 
 const page = document.querySelector('#page');
 const tabs = document.querySelectorAll('.tabs button');
+const homeLink = document.querySelector('#home-link');
 
 function getReferralCode() {
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
@@ -34,7 +38,7 @@ function applyInitialRoute() {
     const search = new URLSearchParams(window.location.search);
     const pageName = search.get('page');
     const testId = Number(search.get('test_id') || 0);
-    if (['home', 'profile', 'tests', 'products', 'recommendations', 'leads', 'results'].includes(pageName || '')) {
+    if (['home', 'tests', 'cashback', 'contact', 'cooperation'].includes(pageName || '')) {
         state.page = pageName;
     }
     if (testId > 0) {
@@ -45,7 +49,7 @@ function applyInitialRoute() {
 
 async function loadI18n() {
     try {
-        const response = await fetch('i18n/ru.json?v=20260629-1', {cache: 'force-cache'});
+        const response = await fetch('i18n/ru.json?v=20260703-1', {cache: 'force-cache'});
         state.i18n = response.ok ? await response.json() : {};
         applyStaticI18n();
     } catch (_) {
@@ -210,6 +214,23 @@ function hasVkLaunchParams() {
     return params.has('vk_app_id') || params.has('vk_user_id') || params.has('vk_ok_user_id');
 }
 
+function loadVkBridge() {
+    if (window.vkBridge) {
+        return Promise.resolve(window.vkBridge);
+    }
+    if (!hasVkLaunchParams()) {
+        return Promise.resolve(null);
+    }
+    return new Promise((resolve) => {
+        const script = document.createElement('script');
+        script.src = 'vendor/vk-bridge.min.js?v=3.0.2';
+        script.async = true;
+        script.onload = () => resolve(window.vkBridge || null);
+        script.onerror = () => resolve(null);
+        document.head.appendChild(script);
+    });
+}
+
 function withTimeout(promise, timeoutMs) {
     return Promise.race([
         promise,
@@ -224,6 +245,7 @@ async function initVk() {
         return null;
     }
 
+    await withTimeout(loadVkBridge(), 1200);
     if (window.vkBridge) {
         try {
             await withTimeout(vkBridge.send('VKWebAppInit'), 1000);
@@ -283,6 +305,34 @@ async function initWebUser() {
     return result.user;
 }
 
+async function consumeTelegramOidc() {
+    const search = new URLSearchParams(window.location.search);
+    if (search.get('oidc') !== '1') {
+        return null;
+    }
+    const result = await api('telegram_oidc_session.php');
+    state.auth = result.auth;
+    state.platform = result.auth.platform;
+    state.platformUserId = result.auth.platform_user_id;
+    state.user = result.user;
+    state.defaultManager = result.default_manager || null;
+    search.delete('oidc');
+    const nextUrl = `${window.location.pathname}${search.toString() ? `?${search}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, '', nextUrl);
+    return result.user;
+}
+
+function telegramOidcStartUrl() {
+    const params = new URLSearchParams();
+    const referralCode = getReferralCode();
+    const linkToken = getLinkToken();
+    if (referralCode) params.set('ref', referralCode);
+    if (linkToken) params.set('link_token', linkToken);
+    if (state.page && state.page !== 'home') params.set('return_page', state.page);
+    if (state.initialTestId) params.set('test_id', String(state.initialTestId));
+    return `${API_BASE}/telegram_oidc_start.php${params.toString() ? `?${params}` : ''}`;
+}
+
 function buildVkOkIdentity(vkUser) {
     const params = vkLaunchParams();
     const vkClient = params.get('vk_client') || '';
@@ -300,9 +350,13 @@ async function authorize() {
         return state.user;
     }
 
+    if (await consumeTelegramOidc()) {
+        return state.user;
+    }
+
     state.vkUser = await initVk();
     if (!state.vkUser) {
-        return await initWebUser();
+        return null;
     }
 
     const identity = buildVkOkIdentity(state.vkUser);
@@ -491,7 +545,7 @@ async function loadConsultantProfile() {
 }
 
 function pageNeedsConsultantProfile(pageName = state.page) {
-    return pageName === 'home' || pageName === 'profile';
+    return ['home', 'cashback', 'contact', 'cooperation'].includes(pageName);
 }
 
 function runWhenIdle(callback) {
@@ -549,6 +603,14 @@ function renderVideoBlock(url, title) {
         `;
     }
 
+    if (String(url).split('?', 1)[0].toLowerCase().endsWith('.mp4')) {
+        return `
+            <div class="detail-video">
+                <video controls preload="none" src="${escapeHtml(url)}" aria-label="${escapeHtml(title)}"></video>
+            </div>
+        `;
+    }
+
     return `<a class="soft-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(ui('products.video'))}</a>`;
 }
 
@@ -589,6 +651,137 @@ function setPage(nextPage) {
     render();
 }
 
+async function loadOnboarding() {
+    const result = await api(`onboarding.php?${userQuery()}`);
+    state.user = result.user;
+    state.onboarding = result.onboarding;
+    return result.onboarding;
+}
+
+async function loadNotifications() {
+    if (!state.onboarding?.complete) {
+        state.notifications = [];
+        return [];
+    }
+    try {
+        const result = await api(`notifications.php?${userQuery()}`);
+        state.notifications = result.notifications || [];
+    } catch (_) {
+        state.notifications = [];
+    }
+    return state.notifications;
+}
+
+function onboardingDocuments() {
+    const documents = state.onboarding?.documents || {};
+    return Array.isArray(documents) ? documents : Object.values(documents);
+}
+
+function legalDocumentLink(type, fallback) {
+    const document = onboardingDocuments().find((item) => item.type === type);
+    return `<a href="${escapeHtml(document?.url || `/legal.php?type=${type}`)}" target="_blank" rel="noopener">${escapeHtml(document?.title || fallback)}</a>`;
+}
+
+function notificationAction(item) {
+    if (!item.action_url) {
+        return '';
+    }
+    try {
+        const url = new URL(item.action_url, window.location.href);
+        const targetPage = url.searchParams.get('page');
+        const actionPath = url.pathname.replace(/index\.html$/, '').replace(/\/+$/, '');
+        const currentPath = window.location.pathname.replace(/index\.html$/, '').replace(/\/+$/, '');
+        if (
+            url.origin === window.location.origin
+            && actionPath === currentPath
+            && ['home', 'tests', 'cashback', 'contact', 'cooperation'].includes(targetPage || '')
+        ) {
+            return `<button class="secondary compact" data-page-target="${escapeHtml(targetPage)}">${escapeHtml(item.action_text || 'Открыть')}</button>`;
+        }
+    } catch (_) {
+        // Fall back to an external link.
+    }
+    return `<a class="soft-link" href="${escapeHtml(item.action_url)}" target="_blank" rel="noopener">${escapeHtml(item.action_text || 'Открыть')}</a>`;
+}
+
+function renderOnboardingGate() {
+    document.body.classList.add('auth-required');
+    tabs.forEach((tab) => {
+        tab.disabled = true;
+        tab.classList.remove('active');
+    });
+    const user = state.user || {};
+    const profile = state.consultantProfile?.profile || {};
+    const missing = new Set(state.onboarding?.missing_consents || []);
+    page.innerHTML = `
+        <section class="panel onboarding-panel">
+            <div class="consultant-strip onboarding-consultant">
+                ${profile.photo_path ? `<img class="consultant-photo" src="${escapeHtml(profile.photo_path)}" alt="">` : ''}
+                <div class="consultant-meta">
+                    <span class="eyebrow">Бот вашего консультанта</span>
+                    <strong>${escapeHtml(profile.display_name || 'SWPro')}</strong>
+                    <p>${escapeHtml(profile.welcome_text || profile.short_description || '')}</p>
+                </div>
+            </div>
+            ${profile.welcome_video_url ? renderVideoBlock(profile.welcome_video_url, 'Приветствие консультанта') : ''}
+            <h2>Расскажите немного о себе</h2>
+            <p class="muted">Данные увидит только закреплённый консультант и руководство его команды.</p>
+
+            <form id="onboarding-form" class="onboarding-form">
+                <div class="legal-consents">
+                    <label class="consent-line">
+                        <input type="checkbox" name="personal_consent" ${!missing.has('personal_data_consent') && !missing.has('user_agreement') ? 'checked' : ''} required>
+                        <span>Принимаю ${legalDocumentLink('personal_data_consent', 'согласие на обработку данных')} и ${legalDocumentLink('user_agreement', 'пользовательское соглашение')}</span>
+                    </label>
+                    <label class="consent-line">
+                        <input type="checkbox" name="health_consent" ${!missing.has('health_data_consent') ? 'checked' : ''} required>
+                        <span>Принимаю ${legalDocumentLink('health_data_consent', 'согласие на обработку ответов чек-апа')}</span>
+                    </label>
+                    <label class="consent-line optional">
+                        <input type="checkbox" name="marketing_consent" ${state.onboarding?.marketing_consent ? 'checked' : ''}>
+                        <span>Хочу получать полезные материалы, акции и новости. ${legalDocumentLink('marketing_consent', 'Подробнее')}</span>
+                    </label>
+                </div>
+
+                <label>
+                    <span>Имя *</span>
+                    <input name="first_name" required maxlength="190" value="${escapeHtml(user.first_name || '')}">
+                </label>
+                <label>
+                    <span>Фамилия</span>
+                    <input name="last_name" maxlength="190" value="${escapeHtml(user.last_name || '')}">
+                </label>
+                <label>
+                    <span>Пол *</span>
+                    <select name="gender" required>
+                        <option value="">Выберите</option>
+                        <option value="female" ${user.gender === 'female' ? 'selected' : ''}>Женщина</option>
+                        <option value="male" ${user.gender === 'male' ? 'selected' : ''}>Мужчина</option>
+                        <option value="prefer_not_to_say" ${user.gender === 'prefer_not_to_say' ? 'selected' : ''}>Не хочу указывать</option>
+                    </select>
+                </label>
+                <div class="onboarding-age-grid">
+                    <label>
+                        <span>Возраст</span>
+                        <input type="number" name="age_years" min="14" max="100" value="${escapeHtml(user.age_years || '')}">
+                    </label>
+                    <label>
+                        <span>или дата рождения</span>
+                        <input type="date" name="birth_date" value="${escapeHtml(user.birth_date || '')}">
+                    </label>
+                </div>
+                <label>
+                    <span>Город *</span>
+                    <input name="city" required maxlength="190" value="${escapeHtml(user.city || '')}">
+                </label>
+                <button class="primary" type="submit">Сохранить и продолжить</button>
+                <div class="form-error" id="onboarding-error"></div>
+            </form>
+            <p class="muted legal-note">Перед отправкой можно прочитать ${legalDocumentLink('privacy_policy', 'политику обработки персональных данных')}.</p>
+        </section>
+    `;
+}
+
 function renderAuthGate() {
     document.body.classList.add('auth-required');
     document.body.classList.remove('referral-required');
@@ -604,8 +797,8 @@ function renderAuthGate() {
                 <span>Telegram</span>
                 <span>VK</span>
                 <span>OK</span>
-                <span>MAX</span>
             </div>
+            <a class="primary button-link" href="${escapeHtml(telegramOidcStartUrl())}">Войти через Telegram</a>
         </section>
     `;
 }
@@ -666,6 +859,72 @@ function renderReferralGate() {
 }
 
 function renderHome() {
+    const profile = state.consultantProfile?.profile || {};
+    const initials = String(profile.display_name || 'SW').slice(0, 2).toUpperCase();
+    const unreadNotifications = (state.notifications || []).filter((item) => Number(item.is_read) === 0);
+    const welcomeText = profile.welcome_text || profile.short_description || 'Пройдите бесплатный чек-ап организма и обсудите результат со своим консультантом.';
+
+    page.innerHTML = `
+        <section class="home-hero">
+            ${profile.banner_path ? `<img class="home-banner" src="${escapeHtml(profile.banner_path)}" alt="" ${lazyImageAttrs()}>` : ''}
+            <div class="consultant-strip">
+                ${profile.photo_path ? `<img class="consultant-photo" src="${escapeHtml(profile.photo_path)}" alt="" ${lazyImageAttrs()}>` : `<div class="consultant-photo placeholder">${escapeHtml(initials)}</div>`}
+                <div class="consultant-meta">
+                    <span class="eyebrow">${escapeHtml(profile.title || 'Ваш консультант')}</span>
+                    <h2>${escapeHtml(profile.display_name || 'SWPro')}</h2>
+                    <p>${escapeHtml(profile.subtitle || '')}</p>
+                </div>
+            </div>
+            <div class="consultant-note">${renderTextBlocks(welcomeText)}</div>
+            ${profile.welcome_video_url ? renderVideoBlock(profile.welcome_video_url, 'Приветствие консультанта') : ''}
+        </section>
+
+        ${unreadNotifications.length ? `
+            <section class="notification-list">
+                ${unreadNotifications.slice(0, 3).map((item) => `
+                    <article class="notification-card">
+                        <strong>${escapeHtml(item.title)}</strong>
+                        <p>${escapeHtml(item.message_text)}</p>
+                        ${item.image_path ? `<img class="notification-media" src="${escapeHtml(item.image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
+                        ${item.video_path ? renderVideoBlock(item.video_path, item.title) : ''}
+                        ${notificationAction(item)}
+                        <button class="text-button" data-action="mark-notification" data-notification-id="${item.id}">Прочитано</button>
+                    </article>
+                `).join('')}
+            </section>
+        ` : ''}
+
+        <section class="main-action-grid">
+            <button class="action-card" data-page-target="tests">
+                <span>🌿</span>
+                <strong>Чек-ап организма</strong>
+                <small>Пройти или посмотреть результат</small>
+            </button>
+            <button class="action-card" data-page-target="cashback">
+                <span>🎁</span>
+                <strong>Кэшбэк и подарки</strong>
+                <small>Преимущества карты клиента</small>
+            </button>
+            <button class="action-card" data-page-target="contact">
+                <span>📌</span>
+                <strong>Связаться</strong>
+                <small>Задать вопрос консультанту</small>
+            </button>
+            <button class="action-card" data-page-target="cooperation">
+                <span>🤝</span>
+                <strong>Сотрудничество</strong>
+                <small>Узнать о возможностях</small>
+            </button>
+        </section>
+
+        <div class="privacy-actions">
+            <button class="text-button" data-action="disable-marketing">Отключить информационные рассылки</button>
+            <button class="text-button danger-text" data-action="revoke-all">Отозвать все согласия</button>
+        </div>
+    `;
+}
+
+function renderLegacyHome() {
     const data = state.consultantProfile || {};
     const profileReady = Boolean(state.consultantProfile);
     const profile = data.profile || {};
@@ -807,6 +1066,72 @@ function renderHome() {
                 </div>` : `<div class="empty-card">${escapeHtml(ui('home.no_materials'))}</div>`}
             </section>
         ` : ''}
+    `;
+}
+
+function renderCashback() {
+    const profile = state.consultantProfile?.profile || {};
+    const title = profile.cashback_title || 'Кэшбэк и подарки';
+    const text = profile.cashback_text || 'Оформите карту клиента, чтобы пользоваться доступными преимуществами. Консультант поможет с регистрацией и ответит на вопросы.';
+    page.innerHTML = `
+        <section class="panel feature-page">
+            ${profile.cashback_image_path ? `<img class="feature-image" src="${escapeHtml(profile.cashback_image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
+            <span class="eyebrow">Карта клиента</span>
+            <h2>${escapeHtml(title)}</h2>
+            <div class="rich-text">${renderTextBlocks(text)}</div>
+            <div class="detail-actions">
+                ${profile.cashback_url ? `<a class="primary button-link" href="${escapeHtml(profile.cashback_url)}" target="_blank" rel="noopener">Оформить карту клиента</a>` : ''}
+                <button class="secondary" data-action="contact">Задать вопрос консультанту</button>
+            </div>
+        </section>
+    `;
+}
+
+function renderCooperation() {
+    const profile = state.consultantProfile?.profile || {};
+    const title = profile.cooperation_title || 'Возможность сотрудничества';
+    const text = profile.cooperation_text || 'Узнайте о вариантах сотрудничества, обучении и поддержке команды. Подробности можно обсудить с консультантом.';
+    page.innerHTML = `
+        <section class="panel feature-page">
+            ${profile.cooperation_image_path ? `<img class="feature-image" src="${escapeHtml(profile.cooperation_image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
+            <span class="eyebrow">Команда</span>
+            <h2>${escapeHtml(title)}</h2>
+            <div class="rich-text">${renderTextBlocks(text)}</div>
+            ${profile.cooperation_video_url ? renderVideoBlock(profile.cooperation_video_url, title) : ''}
+            <div class="detail-actions">
+                <button class="primary" data-action="contact-cooperation">Обсудить сотрудничество</button>
+            </div>
+        </section>
+    `;
+}
+
+function renderContactPage() {
+    const profile = state.consultantProfile?.profile || {};
+    const contacts = [
+        ['Телефон', profile.phone],
+        ['Email', profile.email ? `mailto:${profile.email}` : ''],
+        ['Telegram', profile.telegram_url],
+        ['WhatsApp', profile.whatsapp_url],
+        ['VK', profile.vk_url],
+        ['OK', profile.ok_url],
+    ].filter(([, value]) => value);
+    page.innerHTML = `
+        <section class="panel feature-page">
+            <span class="eyebrow">Ваш консультант</span>
+            <h2>${escapeHtml(profile.display_name || 'Связаться с консультантом')}</h2>
+            <p class="muted">Напишите сообщение здесь или выберите удобный способ связи.</p>
+            ${contacts.length ? `
+                <div class="contact-list">
+                    ${contacts.map(([label, value]) => `
+                        <a href="${escapeHtml(value)}" target="_blank" rel="noopener">
+                            <span>${escapeHtml(label)}</span>
+                            <strong>${escapeHtml(String(value).replace(/^mailto:/, ''))}</strong>
+                        </a>
+                    `).join('')}
+                </div>
+            ` : ''}
+            <button class="primary" data-action="contact">Написать консультанту</button>
+        </section>
     `;
 }
 
@@ -1186,15 +1511,18 @@ async function createLeadFromMessage(productId = null, message = '') {
     page.insertAdjacentHTML('afterbegin', `
         <div class="panel">
             ${escapeHtml(formatUi('lead.created', {id: result.lead_id}))}
-            <button class="secondary compact" data-page-target="leads">${escapeHtml(ui('lead.my_leads'))}</button>
         </div>
     `);
 }
 
 async function renderTests() {
     const testsResponse = await api(`tests.php?${userQuery()}`);
-    page.innerHTML = testsResponse.tests.length
-        ? testsResponse.tests.map((test) => {
+    const primaryTest = testsResponse.tests.find((test) => String(test.title || '').toLowerCase().includes('диагност'))
+        || testsResponse.tests.find((test) => test.scoring_type === 'multiscale')
+        || testsResponse.tests[0];
+    const tests = primaryTest ? [primaryTest] : [];
+    page.innerHTML = tests.length
+        ? tests.map((test) => {
             const status = test.status || 'new';
             const actionText = status === 'completed'
                 ? ui('tests.show_result', 'Посмотреть результат')
@@ -1414,24 +1742,35 @@ function renderTestQuestion(result) {
 }
 
 async function answerCurrentQuestion(answerId = null, answerIds = [], textAnswer = '') {
-    const question = state.activeTest.question;
-    const result = await api('tests.php?action=answer', {
-        method: 'POST',
-        body: JSON.stringify({
-            ...userPayload(),
-            session_id: state.activeTest.session.id,
-            question_id: question.id,
-            answer_id: answerId,
-            answer_ids: answerIds,
-            text_answer: textAnswer,
-        }),
-    });
-
-    if (result.done && result.session_id) {
-        renderTestResult(result);
+    if (state.answerPending) {
         return;
     }
-    renderTestQuestion(result);
+    state.answerPending = true;
+    page.querySelectorAll('.answer-button, #test-question-form button').forEach((button) => {
+        button.disabled = true;
+    });
+    const question = state.activeTest.question;
+    try {
+        const result = await api('tests.php?action=answer', {
+            method: 'POST',
+            body: JSON.stringify({
+                ...userPayload(),
+                session_id: state.activeTest.session.id,
+                question_id: question.id,
+                answer_id: answerId,
+                answer_ids: answerIds,
+                text_answer: textAnswer,
+            }),
+        });
+
+        if (result.done && result.session_id) {
+            renderTestResult(result);
+            return;
+        }
+        renderTestQuestion(result);
+    } finally {
+        state.answerPending = false;
+    }
 }
 
 async function submitCurrentTextAnswer(form) {
@@ -1530,11 +1869,9 @@ function renderTestResult(result) {
                 <div class="result-summary">${renderTextBlocks(result.summary)}</div>
             </div>
             ${renderScaleResults(result.scale_results || [])}
-            ${renderResultMaterials(result.materials || [])}
             <div class="result-actions">
                 <button class="primary" data-action="contact-result">${escapeHtml(ui('result.contact_manager', 'Разобрать с консультантом'))}</button>
-                <button class="secondary" data-page-target="recommendations">${escapeHtml(ui('result.show_recommendations'))}</button>
-                <button class="secondary" data-page-target="products">${escapeHtml(ui('products.title', 'Продукты'))}</button>
+                <button class="secondary" data-page-target="tests">Вернуться к чек-апу</button>
             </div>
         </section>
     `;
@@ -1547,6 +1884,10 @@ async function render() {
     }
     if (!hasTeamAccess()) {
         renderReferralGate();
+        return;
+    }
+    if (!state.onboarding?.complete) {
+        renderOnboardingGate();
         return;
     }
     document.body.classList.remove('auth-required', 'referral-required');
@@ -1570,11 +1911,13 @@ async function render() {
             }
             renderHome();
         }
-        if (state.page === 'profile') {
+        if (['cashback', 'contact', 'cooperation'].includes(state.page)) {
             if (!state.consultantProfile) {
                 await loadConsultantProfile();
             }
-            await renderProfile();
+            if (state.page === 'cashback') renderCashback();
+            if (state.page === 'contact') renderContactPage();
+            if (state.page === 'cooperation') renderCooperation();
         }
         if (state.page === 'tests') {
             if (state.initialTestId) {
@@ -1585,10 +1928,6 @@ async function render() {
                 await renderTests();
             }
         }
-        if (state.page === 'products') await renderProducts();
-        if (state.page === 'recommendations') await renderRecommendations();
-        if (state.page === 'results') await renderTestResultsList();
-        if (state.page === 'leads') await renderLeads();
         if (!pageNeedsConsultantProfile()) {
             prefetchConsultantProfile();
         }
@@ -1600,6 +1939,7 @@ async function render() {
 tabs.forEach((tab) => {
     tab.addEventListener('click', () => setPage(tab.dataset.page));
 });
+homeLink?.addEventListener('click', () => setPage('home'));
 
 document.addEventListener('click', (event) => {
     const clicked = event.target;
@@ -1627,11 +1967,59 @@ page.addEventListener('click', async (event) => {
             ui('result.contact_manager', 'Разобрать с консультантом')
         );
     }
+    if (target.dataset.action === 'contact-cooperation') {
+        openContactModal(
+            null,
+            'Здравствуйте! Хочу узнать подробнее о возможности сотрудничества.',
+            'Обсудить сотрудничество'
+        );
+    }
+    if (target.dataset.action === 'disable-marketing') {
+        await api('onboarding.php', {
+            method: 'POST',
+            body: JSON.stringify({...userPayload(), action: 'revoke_marketing'}),
+        });
+        state.onboarding.marketing_consent = false;
+        target.textContent = 'Рассылки отключены';
+        target.setAttribute('disabled', 'disabled');
+    }
+    if (target.dataset.action === 'revoke-all') {
+        if (!window.confirm('Отозвать все согласия и прекратить использование SWPro?')) {
+            return;
+        }
+        await api('onboarding.php', {
+            method: 'POST',
+            body: JSON.stringify({...userPayload(), action: 'revoke_all'}),
+        });
+        state.onboarding.complete = false;
+        state.onboarding.missing_consents = ['personal_data_consent', 'health_data_consent', 'user_agreement'];
+        renderOnboardingGate();
+    }
+    if (target.dataset.action === 'mark-notification') {
+        const notificationId = Number(target.dataset.notificationId || 0);
+        await api('notifications.php?action=mark_read', {
+            method: 'POST',
+            body: JSON.stringify({...userPayload(), id: notificationId}),
+        });
+        state.notifications = state.notifications.map((item) => (
+            Number(item.id) === notificationId ? {...item, is_read: 1} : item
+        ));
+        renderHome();
+    }
     if (target.dataset.action === 'start-test') await startTestSession(false);
     if (target.dataset.action === 'resume-test') renderTestQuestion(state.activeTest);
     if (target.dataset.action === 'restart-test') await startTestSession(true);
     if (target.dataset.action === 'show-test-result') await showCompletedTestResult();
-    if (target.dataset.action === 'answer-test') await answerCurrentQuestion(Number(target.dataset.answerId || 0));
+    if (target.dataset.action === 'answer-test') {
+        try {
+            await answerCurrentQuestion(Number(target.dataset.answerId || 0));
+        } catch (error) {
+            page.insertAdjacentHTML('afterbegin', `<div class="form-error">${escapeHtml(friendlyError(error))}</div>`);
+            page.querySelectorAll('.answer-button').forEach((button) => {
+                button.disabled = false;
+            });
+        }
+    }
     if (target.dataset.action === 'close-modal') closeModal();
     if (target.dataset.action === 'create-link-token') await renderAccountLinkPanel();
     if (target.dataset.pageTarget) setPage(target.dataset.pageTarget);
@@ -1653,6 +2041,69 @@ document.addEventListener('click', (event) => {
 
 page.addEventListener('submit', async (event) => {
     const target = event.target;
+    if (target instanceof HTMLFormElement && target.id === 'onboarding-form') {
+        event.preventDefault();
+        const formData = new FormData(target);
+        const error = target.querySelector('#onboarding-error');
+        const button = target.querySelector('button[type="submit"]');
+        const ageYears = Number(formData.get('age_years') || 0);
+        const birthDate = String(formData.get('birth_date') || '');
+        if (!ageYears && !birthDate) {
+            if (error) error.textContent = 'Укажите возраст или дату рождения.';
+            return;
+        }
+        if (button) button.disabled = true;
+        if (error) error.textContent = '';
+        try {
+            const documentTypes = [
+                'personal_data_consent',
+                'user_agreement',
+                'health_data_consent',
+            ];
+            const marketingConsent = formData.get('marketing_consent') === 'on';
+            if (marketingConsent) {
+                documentTypes.push('marketing_consent');
+            }
+            await api('onboarding.php', {
+                method: 'POST',
+                body: JSON.stringify({
+                    ...userPayload(),
+                    action: 'consent',
+                    document_types: documentTypes,
+                }),
+            });
+            if (!marketingConsent && state.onboarding?.marketing_consent) {
+                await api('onboarding.php', {
+                    method: 'POST',
+                    body: JSON.stringify({...userPayload(), action: 'revoke_marketing'}),
+                });
+            }
+            const result = await api('onboarding.php', {
+                method: 'POST',
+                body: JSON.stringify({
+                    ...userPayload(),
+                    action: 'profile',
+                    first_name: String(formData.get('first_name') || '').trim(),
+                    last_name: String(formData.get('last_name') || '').trim(),
+                    gender: String(formData.get('gender') || ''),
+                    age_years: ageYears || null,
+                    birth_date: birthDate || null,
+                    city: String(formData.get('city') || '').trim(),
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Moscow',
+                }),
+            });
+            state.user = result.user;
+            state.onboarding = result.onboarding;
+            state.page = 'home';
+            await Promise.all([loadConsultantProfile(), loadNotifications()]);
+            await render();
+        } catch (exception) {
+            if (error) error.textContent = exception instanceof Error ? exception.message : 'Не удалось сохранить анкету.';
+        } finally {
+            if (button) button.disabled = false;
+        }
+        return;
+    }
     if (target instanceof HTMLFormElement && target.id === 'referral-form') {
         event.preventDefault();
         const error = target.querySelector('#referral-error');
@@ -1667,6 +2118,8 @@ page.addEventListener('submit', async (event) => {
             if (!hasTeamAccess()) {
                 throw new Error(ui('referral.invalid_code'));
             }
+            await loadOnboarding();
+            await loadConsultantProfile();
             state.page = 'home';
             await render();
         } catch (exception) {
@@ -1721,12 +2174,26 @@ document.addEventListener('submit', async (event) => {
 applyInitialRoute();
 
 Promise.all([loadI18n(), authorize()])
-    .then(() => {
+    .then(async () => {
         if (!state.user) {
             renderAuthGate();
             return;
         }
-        render();
+        await loadOnboarding();
+        await render();
+
+        const deferred = [loadNotifications()];
+        if (hasTeamAccess()) {
+            deferred.push(loadConsultantProfile());
+        }
+        Promise.all(deferred)
+            .then(() => {
+                if (state.page === 'home' || !state.onboarding?.complete) {
+                    return render();
+                }
+                return null;
+            })
+            .catch(() => {});
     })
     .catch((error) => {
         if (error instanceof AppApiError && error.code === 'staff_client_registration_blocked') {

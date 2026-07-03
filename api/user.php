@@ -1,6 +1,7 @@
 <?php
 
 require __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/../admin/app/core/client_journey.php';
 
 $user = require_platform_user();
 $stmt = db()->prepare(
@@ -14,5 +15,6 @@ $stmt->execute(['end_user_id' => $user['id']]);
 json_response([
     'user' => $user,
     'platform_accounts' => $stmt->fetchAll(),
+    'onboarding' => client_onboarding_status($user),
     'disclaimer' => medical_disclaimer(),
 ]);

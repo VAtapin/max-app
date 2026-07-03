@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
+require_once __DIR__ . '/../app/core/client_journey.php';
 
 $admin = require_auth();
 $title = app_text('auto.dashboard');
@@ -90,6 +91,7 @@ function count_table(string $sql, array $params = []): int
 
 [$userWhere, $userParams] = scope_where_for_users($admin);
 [$leadWhere, $leadParams] = scope_where_for_leads($admin);
+$userAliasWhere = str_replace(['WHERE reseller_id', 'WHERE manager_id'], ['WHERE eu.reseller_id', 'WHERE eu.manager_id'], $userWhere);
 
 $stats = [
     'users' => count_table("SELECT COUNT(*) FROM end_users $userWhere", $userParams),
@@ -100,9 +102,38 @@ $stats = [
         $admin['role'] === 'superadmin' ? [] : ['reseller_id' => $admin['reseller_id']]
     ),
     'resellers' => $admin['role'] === 'superadmin' ? count_table('SELECT COUNT(*) FROM resellers') : 0,
-    'tests' => count_table('SELECT COUNT(*) FROM user_test_sessions WHERE completed_at IS NOT NULL'),
+    'tests' => count_table(
+        "SELECT COUNT(*) FROM user_test_sessions uts INNER JOIN end_users eu ON eu.id = uts.end_user_id $userAliasWhere "
+        . ($userAliasWhere ? 'AND' : 'WHERE') . ' uts.completed_at IS NOT NULL',
+        $userParams
+    ),
     'leads' => count_table("SELECT COUNT(*) FROM leads $leadWhere", $leadParams),
 ];
+
+$stageStmt = db()->prepare(
+    "SELECT client_stage, COUNT(*) AS total
+     FROM end_users
+     $userWhere
+     GROUP BY client_stage"
+);
+$stageStmt->execute($userParams);
+$stageStats = [];
+foreach ($stageStmt->fetchAll() as $row) {
+    $stageStats[(string)$row['client_stage']] = (int)$row['total'];
+}
+
+$subscription = null;
+$subscriptionResellerId = (int)($admin['reseller_id'] ?? 0);
+if ($subscriptionResellerId > 0) {
+    $subscriptionStmt = db()->prepare(
+        'SELECT * FROM leader_subscriptions
+         WHERE reseller_id = :reseller_id
+         ORDER BY id DESC
+         LIMIT 1'
+    );
+    $subscriptionStmt->execute(['reseller_id' => $subscriptionResellerId]);
+    $subscription = $subscriptionStmt->fetch() ?: null;
+}
 
 $recentStmt = db()->prepare("SELECT id, platform, username, first_name, created_at FROM end_users $userWhere ORDER BY id DESC LIMIT 8");
 $recentStmt->execute($userParams);
@@ -166,13 +197,23 @@ require __DIR__ . '/../app/views/layouts/header.php';
     </script>
 <?php endif; ?>
 
+<?php if ($subscription): ?>
+    <section class="panel">
+        <h2>Доступ лидера</h2>
+        <p>Статус: <strong><?= h((string)$subscription['status']) ?></strong></p>
+        <p class="cell-muted">Действует до: <?= h((string)($subscription['ends_at'] ?: 'без ограничения')) ?></p>
+    </section>
+<?php endif; ?>
+
 <div class="grid stats-grid">
-    <a class="stat" href="crud.php?module=users"><span><?= h(app_text('auto.k_0f0b8f55edcc')) ?></span><strong><?= $stats['users'] ?></strong></a>
-    <a class="stat" href="crud.php?module=users"><span><?= h(app_text('auto.k_735d9fb6be56')) ?></span><strong><?= $stats['new_today'] ?></strong></a>
-    <a class="stat" href="crud.php?module=managers"><span><?= h(app_text('auto.k_6756aa53b5b5')) ?></span><strong><?= $stats['managers'] ?></strong></a>
-    <a class="stat" href="crud.php?module=resellers"><span><?= h(app_text('auto.k_32cea47742bf')) ?></span><strong><?= $stats['resellers'] ?></strong></a>
-    <a class="stat" href="crud.php?module=tests"><span><?= h(app_text('auto.k_953522b53414')) ?></span><strong><?= $stats['tests'] ?></strong></a>
-    <a class="stat" href="crud.php?module=leads"><span><?= h(app_text('auto.k_be11d71726a6')) ?></span><strong><?= $stats['leads'] ?></strong></a>
+    <a class="stat" href="crud.php?module=users"><span>Клиенты</span><strong><?= $stats['users'] ?></strong></a>
+    <a class="stat" href="crud.php?module=users&client_stage=new"><span>Новые сегодня</span><strong><?= $stats['new_today'] ?></strong></a>
+    <?php if (can_manage('managers', $admin)): ?><a class="stat" href="crud.php?module=managers"><span>Консультанты</span><strong><?= $stats['managers'] ?></strong></a><?php endif; ?>
+    <?php if (can_manage('resellers', $admin)): ?><a class="stat" href="crud.php?module=resellers"><span>Лидеры</span><strong><?= $stats['resellers'] ?></strong></a><?php endif; ?>
+    <a class="stat" href="results.php"><span>Завершили чек-ап</span><strong><?= $stats['tests'] ?></strong></a>
+    <a class="stat" href="crud.php?module=leads"><span>Обращения</span><strong><?= $stats['leads'] ?></strong></a>
+    <a class="stat" href="crud.php?module=users&client_stage=test_started"><span>Чек-ап начат</span><strong><?= $stageStats['test_started'] ?? 0 ?></strong></a>
+    <a class="stat" href="crud.php?module=users&client_stage=consultation_requested"><span>Ждут связи</span><strong><?= $stageStats['consultation_requested'] ?? 0 ?></strong></a>
 </div>
 
 <div class="two-columns">

@@ -1,7 +1,21 @@
 <?php
 
 require __DIR__ . '/bootstrap.php';
-require __DIR__ . '/recommendation_engine.php';
+require_once __DIR__ . '/../admin/app/core/client_journey.php';
+
+function require_test_onboarding(array $user): void
+{
+    $status = client_onboarding_status($user);
+    if (!$status['complete']) {
+        json_response(['error' => 'onboarding_required', 'onboarding' => $status], 403);
+    }
+}
+
+function test_gender(array $user): ?string
+{
+    $gender = (string)($user['gender'] ?? '');
+    return in_array($gender, ['female', 'male'], true) ? $gender : null;
+}
 
 function test_result_for_score(int $testId, int $totalScore): ?array
 {
@@ -262,10 +276,18 @@ function public_test_payload(array $test): array
     ];
 }
 
-function test_question_count(int $testId): int
+function test_question_count(int $testId, ?string $gender = null): int
 {
-    $stmt = db()->prepare('SELECT COUNT(*) FROM test_questions WHERE test_id = :test_id');
-    $stmt->execute(['test_id' => $testId]);
+    $sql = 'SELECT COUNT(*) FROM test_questions WHERE test_id = :test_id';
+    $params = ['test_id' => $testId];
+    if ($gender) {
+        $sql .= ' AND gender_scope IN ("all", :gender)';
+        $params['gender'] = $gender;
+    } else {
+        $sql .= ' AND gender_scope = "all"';
+    }
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
     return (int)$stmt->fetchColumn();
 }
 
@@ -331,16 +353,22 @@ function latest_completed_session(int $endUserId, int $testId): ?array
     return $session ?: null;
 }
 
-function draft_progress(int $sessionId, int $testId): array
+function draft_progress(int $sessionId, int $testId, ?string $gender = null): array
 {
-    $total = test_question_count($testId);
+    $total = test_question_count($testId, $gender);
     $answeredStmt = db()->prepare(
         'SELECT COUNT(DISTINCT uta.question_id)
          FROM user_test_answers uta
          INNER JOIN test_questions tq ON tq.id = uta.question_id
-         WHERE uta.session_id = :session_id AND tq.test_id = :test_id'
+         WHERE uta.session_id = :session_id
+           AND tq.test_id = :test_id
+           AND ' . ($gender ? 'tq.gender_scope IN ("all", :gender)' : 'tq.gender_scope = "all"')
     );
-    $answeredStmt->execute(['session_id' => $sessionId, 'test_id' => $testId]);
+    $params = ['session_id' => $sessionId, 'test_id' => $testId];
+    if ($gender) {
+        $params['gender'] = $gender;
+    }
+    $answeredStmt->execute($params);
     $answered = (int)$answeredStmt->fetchColumn();
 
     return [
@@ -350,18 +378,23 @@ function draft_progress(int $sessionId, int $testId): array
     ];
 }
 
-function next_question_for_session(int $sessionId, int $testId): ?array
+function next_question_for_session(int $sessionId, int $testId, ?string $gender = null): ?array
 {
     $stmt = db()->prepare(
         'SELECT q.*
          FROM test_questions q
          LEFT JOIN user_test_answers uta ON uta.question_id = q.id AND uta.session_id = :session_id
          WHERE q.test_id = :test_id
+           AND ' . ($gender ? 'q.gender_scope IN ("all", :gender)' : 'q.gender_scope = "all"') . '
            AND uta.id IS NULL
          ORDER BY q.sort_order, q.id
          LIMIT 1'
     );
-    $stmt->execute(['session_id' => $sessionId, 'test_id' => $testId]);
+    $params = ['session_id' => $sessionId, 'test_id' => $testId];
+    if ($gender) {
+        $params['gender'] = $gender;
+    }
+    $stmt->execute($params);
     $question = $stmt->fetch();
     return $question ? test_question_payload($question) : null;
 }
@@ -426,7 +459,7 @@ function completed_result_response(array $user, int $testId, ?array $session = n
             'advice_text' => $resultRule['advice_text'],
         ] : null,
         'scale_results' => completed_scale_results((int)$session['id']),
-        'materials' => test_result_materials(),
+        'materials' => [],
         'recommendations' => [],
     ];
 }
@@ -437,7 +470,7 @@ function test_status_payload(array $user, int $testId): array
     if ($draft) {
         return [
             'status' => 'draft',
-            'progress' => draft_progress((int)$draft['id'], $testId),
+            'progress' => draft_progress((int)$draft['id'], $testId, test_gender($user)),
             'completed_at' => null,
         ];
     }
@@ -470,8 +503,7 @@ function complete_test_session(array $user, int $testId, int $sessionId): array
 
     $done = db()->prepare('UPDATE user_test_sessions SET completed_at = NOW(), total_score = :total, result_summary = :summary WHERE id = :id');
     $done->execute(['total' => $total, 'summary' => $summary, 'id' => $sessionId]);
-    $recommendations = build_recommendations((int)$user['id'], $sessionId);
-    add_result_recommendation((int)$user['id'], $sessionId, $resultRule);
+    $recommendations = [];
 
     $log = db()->prepare(
         'INSERT INTO activity_logs (actor_type, actor_id, action, entity_type, entity_id, details)
@@ -494,15 +526,24 @@ function complete_test_session(array $user, int $testId, int $sessionId): array
             'advice_text' => $resultRule['advice_text'],
         ] : null,
         'scale_results' => $scaleResults,
-        'materials' => test_result_materials(),
+        'materials' => [],
         'recommendations' => $recommendations,
     ];
 }
 
-function session_response(array $test, array $session): array
+function finalize_test_journey(array $user, int $testId, int $sessionId): void
 {
-    $progress = draft_progress((int)$session['id'], (int)$test['id']);
-    $question = next_question_for_session((int)$session['id'], (int)$test['id']);
+    update_client_stage((int)$user['id'], 'test_completed');
+    $titleStmt = db()->prepare('SELECT title FROM tests WHERE id = :id LIMIT 1');
+    $titleStmt->execute(['id' => $testId]);
+    notify_consultant_about_test($user, $sessionId, (string)($titleStmt->fetchColumn() ?: 'Чек-ап организма'));
+}
+
+function session_response(array $test, array $session, array $user): array
+{
+    $gender = test_gender($user);
+    $progress = draft_progress((int)$session['id'], (int)$test['id'], $gender);
+    $question = next_question_for_session((int)$session['id'], (int)$test['id'], $gender);
 
     return [
         'session' => [
@@ -518,6 +559,7 @@ function session_response(array $test, array $session): array
 
 if (($_GET['action'] ?? '') === 'resume') {
     $user = require_platform_user();
+    require_test_onboarding($user);
     $testId = (int)($_GET['test_id'] ?? 0);
     $test = $testId ? load_client_test($testId, $user) : null;
     if (!$test) {
@@ -527,14 +569,15 @@ if (($_GET['action'] ?? '') === 'resume') {
     $session = latest_draft_session((int)$user['id'], $testId);
     json_response([
         'test' => public_test_payload($test),
-        'session' => $session ? session_response($test, $session)['session'] : null,
-        'progress' => $session ? draft_progress((int)$session['id'], $testId) : null,
-        'question' => $session ? next_question_for_session((int)$session['id'], $testId) : null,
+        'session' => $session ? session_response($test, $session, $user)['session'] : null,
+        'progress' => $session ? draft_progress((int)$session['id'], $testId, test_gender($user)) : null,
+        'question' => $session ? next_question_for_session((int)$session['id'], $testId, test_gender($user)) : null,
     ]);
 }
 
 if (($_GET['action'] ?? '') === 'result') {
     $user = require_platform_user();
+    require_test_onboarding($user);
     $testId = (int)($_GET['test_id'] ?? 0);
     $test = $testId ? load_client_test($testId, $user) : null;
     if (!$test) {
@@ -552,6 +595,7 @@ if (($_GET['action'] ?? '') === 'result') {
 if (($_GET['action'] ?? '') === 'start' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = input_json() ?: $_POST;
     $user = require_platform_user($data);
+    require_test_onboarding($user);
     $testId = (int)($data['test_id'] ?? 0);
     $reset = !empty($data['reset']);
     $test = $testId ? load_client_test($testId, $user) : null;
@@ -577,14 +621,16 @@ if (($_GET['action'] ?? '') === 'start' && $_SERVER['REQUEST_METHOD'] === 'POST'
             'id' => (int)db()->lastInsertId(),
             'started_at' => date('Y-m-d H:i:s'),
         ];
+        update_client_stage((int)$user['id'], 'test_started');
     }
 
-    json_response(session_response($test, $session));
+    json_response(session_response($test, $session, $user));
 }
 
 if (($_GET['action'] ?? '') === 'reset' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = input_json() ?: $_POST;
     $user = require_platform_user($data);
+    require_test_onboarding($user);
     $testId = (int)($data['test_id'] ?? 0);
     $delete = db()->prepare(
         'DELETE FROM user_test_sessions
@@ -599,6 +645,7 @@ if (($_GET['action'] ?? '') === 'reset' && $_SERVER['REQUEST_METHOD'] === 'POST'
 if (($_GET['action'] ?? '') === 'answer' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = input_json() ?: $_POST;
     $user = require_platform_user($data);
+    require_test_onboarding($user);
     $sessionId = (int)($data['session_id'] ?? 0);
     $questionId = (int)($data['question_id'] ?? 0);
     $answerIds = $data['answer_ids'] ?? [];
@@ -628,8 +675,20 @@ if (($_GET['action'] ?? '') === 'answer' && $_SERVER['REQUEST_METHOD'] === 'POST
         json_response(['error' => 'test not found'], 404);
     }
 
-    $questionStmt = db()->prepare('SELECT * FROM test_questions WHERE id = :id AND test_id = :test_id LIMIT 1');
-    $questionStmt->execute(['id' => $questionId, 'test_id' => $testId]);
+    $gender = test_gender($user);
+    $questionStmt = db()->prepare(
+        'SELECT *
+         FROM test_questions
+         WHERE id = :id
+           AND test_id = :test_id
+           AND ' . ($gender ? 'gender_scope IN ("all", :gender)' : 'gender_scope = "all"') . '
+         LIMIT 1'
+    );
+    $questionParams = ['id' => $questionId, 'test_id' => $testId];
+    if ($gender) {
+        $questionParams['gender'] = $gender;
+    }
+    $questionStmt->execute($questionParams);
     $question = $questionStmt->fetch();
     if (!$question) {
         json_response(['error' => 'question not found'], 404);
@@ -685,15 +744,19 @@ if (($_GET['action'] ?? '') === 'answer' && $_SERVER['REQUEST_METHOD'] === 'POST
             ]);
         }
 
-        $next = next_question_for_session($sessionId, $testId);
+        $touch = db()->prepare('UPDATE user_test_sessions SET last_answered_at = NOW() WHERE id = :id');
+        $touch->execute(['id' => $sessionId]);
+
+        $next = next_question_for_session($sessionId, $testId, test_gender($user));
         if (!$next) {
             $payload = complete_test_session($user, $testId, $sessionId);
             db()->commit();
+            finalize_test_journey($user, $testId, $sessionId);
             json_response($payload);
         }
 
         db()->commit();
-        json_response(session_response($test, $session));
+        json_response(session_response($test, $session, $user));
     } catch (Throwable $e) {
         if (db()->inTransaction()) {
             db()->rollBack();
@@ -706,6 +769,7 @@ if (($_GET['action'] ?? '') === 'answer' && $_SERVER['REQUEST_METHOD'] === 'POST
 if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = input_json() ?: $_POST;
     $user = require_platform_user($data);
+    require_test_onboarding($user);
     $testId = (int)($data['test_id'] ?? 0);
     $answers = $data['answers'] ?? [];
 
@@ -720,8 +784,18 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
         json_response(['error' => 'test not found'], 404);
     }
 
-    $questionStmt = db()->prepare('SELECT id, question_type, is_required FROM test_questions WHERE test_id = :test_id');
-    $questionStmt->execute(['test_id' => $testId]);
+    $gender = test_gender($user);
+    $questionStmt = db()->prepare(
+        'SELECT id, question_type, is_required
+         FROM test_questions
+         WHERE test_id = :test_id
+           AND ' . ($gender ? 'gender_scope IN ("all", :gender)' : 'gender_scope = "all"')
+    );
+    $questionParams = ['test_id' => $testId];
+    if ($gender) {
+        $questionParams['gender'] = $gender;
+    }
+    $questionStmt->execute($questionParams);
     $questions = [];
     foreach ($questionStmt->fetchAll() as $question) {
         $questions[(int)$question['id']] = $question;
@@ -815,9 +889,9 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
         $summary = $scaleResults ? build_scale_result_summary($scaleResults) : build_result_summary($resultRule);
         $done = db()->prepare('UPDATE user_test_sessions SET completed_at = NOW(), total_score = :total, result_summary = :summary WHERE id = :id');
         $done->execute(['total' => $total, 'summary' => $summary, 'id' => $sessionId]);
-        $recommendations = build_recommendations((int)$user['id'], $sessionId);
-        add_result_recommendation((int)$user['id'], $sessionId, $resultRule);
+        $recommendations = [];
         db()->commit();
+        finalize_test_journey($user, $testId, $sessionId);
     } catch (Throwable $e) {
         if (db()->inTransaction()) {
             db()->rollBack();
@@ -845,7 +919,7 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
             'advice_text' => $resultRule['advice_text'],
         ] : null,
         'scale_results' => $scaleResults ?? [],
-        'materials' => test_result_materials(),
+        'materials' => [],
         'recommendations' => $recommendations,
     ]);
 }
@@ -856,6 +930,7 @@ if (isset($_GET['id'])) {
     $ownerParams = [];
     if (isset($_GET['platform'], $_GET['platform_user_id'])) {
         $user = require_platform_user();
+        require_test_onboarding($user);
         [$ownerWhere, $ownerParams] = client_owner_scope($user, 't');
     }
     $stmt = db()->prepare("SELECT t.* FROM tests t WHERE t.id = :id AND t.is_active = 1 AND $ownerWhere");
@@ -865,8 +940,19 @@ if (isset($_GET['id'])) {
         json_response(['error' => 'not found'], 404);
     }
 
-    $questions = db()->prepare('SELECT * FROM test_questions WHERE test_id = :test_id ORDER BY sort_order, id');
-    $questions->execute(['test_id' => $test['id']]);
+    $gender = $user ? test_gender($user) : null;
+    $questions = db()->prepare(
+        'SELECT *
+         FROM test_questions
+         WHERE test_id = :test_id
+           AND ' . ($gender ? 'gender_scope IN ("all", :gender)' : 'gender_scope = "all"') . '
+         ORDER BY sort_order, id'
+    );
+    $questionParams = ['test_id' => $test['id']];
+    if ($gender) {
+        $questionParams['gender'] = $gender;
+    }
+    $questions->execute($questionParams);
     $items = $questions->fetchAll();
 
     foreach ($items as &$question) {
@@ -891,7 +977,7 @@ if (isset($_GET['id'])) {
         'completed_result' => $completed,
     ];
     if ($draft) {
-        $sessionPayload = session_response($test, $draft);
+        $sessionPayload = session_response($test, $draft, $user);
         $payload['session'] = $sessionPayload['session'];
         $payload['progress'] = $sessionPayload['progress'];
         $payload['question'] = $sessionPayload['question'];
@@ -906,6 +992,7 @@ $ownerWhere = 't.owner_type IS NULL';
 $ownerParams = [];
 if (isset($_GET['platform'], $_GET['platform_user_id'])) {
     $user = require_platform_user();
+    require_test_onboarding($user);
     [$ownerWhere, $ownerParams] = client_owner_scope($user, 't');
 }
 $stmt = db()->prepare(
@@ -924,6 +1011,7 @@ $stmt->execute($ownerParams);
 $tests = $stmt->fetchAll();
 if ($user) {
     foreach ($tests as &$test) {
+        $test['questions_count'] = test_question_count((int)$test['id'], test_gender($user));
         $test += test_status_payload($user, (int)$test['id']);
     }
     unset($test);

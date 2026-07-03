@@ -129,6 +129,19 @@ function public_about_sections(array $profile, array $blocks): array
     return $sections;
 }
 
+function public_material_section_label(?string $sectionType): string
+{
+    return [
+        'general' => 'Материал',
+        'story' => 'История',
+        'result' => 'Результат',
+        'promotion' => 'Акция',
+        'giveaway' => 'Розыгрыш',
+        'program' => 'Программа',
+        'marathon' => 'Марафон',
+    ][$sectionType ?: 'general'] ?? 'Материал';
+}
+
 function public_youtube_embed_url(?string $url): ?string
 {
     $url = trim((string)$url);
@@ -191,7 +204,7 @@ function public_base_url(): string
 function public_mini_app_url(?string $referralCode = null, string $page = ''): string
 {
     $baseUrl = rtrim(public_base_url(), '/');
-    $miniAppUrl = $baseUrl !== '' ? $baseUrl . '/mini-app/index.html' : '/mini-app/index.html';
+    $miniAppUrl = $baseUrl !== '' ? $baseUrl . '/vk-mini-app/' : '/vk-mini-app/';
 
     $params = [];
     if ($referralCode) {
@@ -226,8 +239,8 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
         <section class="landing-hero">
             <div class="landing-copy">
                 <span class="eyebrow">SWPro Assistant</span>
-                <h1>Персональная страница консультанта для клиентов</h1>
-                <p>Откройте страницу своего консультанта, пройдите рекомендованные тесты, получите материалы и задайте вопрос без интернет-магазина, корзины и оплаты.</p>
+                <h1>Персональная страница вашего консультанта</h1>
+                <p>Пройдите бесплатный чек-ап организма, узнайте о кэшбэке и подарках и задайте вопрос своему консультанту.</p>
                 <form method="get" class="find-form" id="start">
                     <input name="ref" placeholder="Код консультанта" required>
                     <button type="submit">Открыть страницу</button>
@@ -242,21 +255,21 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
                 <strong>Как это работает</strong>
                 <ol>
                     <li>Консультант дает клиенту персональный код или ссылку.</li>
-                    <li>Клиент открывает страницу и видит рекомендации своего консультанта.</li>
-                    <li>Вопросы и заявки попадают менеджеру в SWPro.</li>
+                    <li>Клиент проходит чек-ап и сразу видит информационный результат.</li>
+                    <li>Результат и запрос на связь получает закреплённый консультант.</li>
                 </ol>
             </div>
         </section>
         <section class="landing-grid" id="roles">
             <article class="public-card">
                 <span class="card-kicker">Для клиента</span>
-                <strong>Все вокруг своего консультанта</strong>
-                <p>Тесты, продукты, материалы и ответы собраны в одном месте и привязаны к персональному менеджеру.</p>
+                <strong>Четыре понятных действия</strong>
+                <p>Чек-ап, кэшбэк и подарки, связь с консультантом и информация о сотрудничестве.</p>
             </article>
             <article class="public-card">
-                <span class="card-kicker">Для менеджера</span>
-                <strong>Личная витрина вместо каталога</strong>
-                <p>Можно вести клиентов через свою страницу, рекомендации, материалы и заявки.</p>
+                <span class="card-kicker">Для консультанта</span>
+                <strong>Своя база клиентов</strong>
+                <p>Анкеты, результаты чек-апа, этапы клиентов, обращения и рассылки доступны в личном кабинете.</p>
             </article>
             <article class="public-card">
                 <span class="card-kicker">MVP</span>
@@ -267,9 +280,9 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
         <section class="landing-band">
             <div>
                 <span class="eyebrow">Главная идея</span>
-                <h2>SWPro показывает сначала человека, а потом продукты</h2>
+                <h2>SWPro помогает начать разговор с консультантом</h2>
             </div>
-            <p>Клиент приходит не в каталог. Он открывает страницу своего консультанта, видит объяснение, материалы, тесты и может задать вопрос в удобном канале.</p>
+            <p>Чек-ап не подбирает продукцию автоматически. Он показывает направления для внимания и помогает подготовить персональный разбор.</p>
         </section>
     </main>
 <?php else: ?>
@@ -281,7 +294,8 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
             <a class="brand-link" href="/">SWPro</a>
             <nav>
                 <?php if (public_block_enabled($blocks, 'about') && public_about_sections($profileData, $blocks)): ?><a href="#about">О консультанте</a><?php endif; ?>
-                <?php if (public_block_enabled($blocks, 'products') && !empty($payload['products'])): ?><a href="#products">Рекомендации</a><?php endif; ?>
+                <?php if (public_block_enabled($blocks, 'cashback') && !empty($profileData['cashback_text'])): ?><a href="#cashback">Кэшбэк</a><?php endif; ?>
+                <?php if (public_block_enabled($blocks, 'cooperation') && !empty($profileData['cooperation_text'])): ?><a href="#cooperation">Сотрудничество</a><?php endif; ?>
                 <?php if (public_block_enabled($blocks, 'tests') && !empty($payload['tests'])): ?><a href="#tests">Тесты</a><?php endif; ?>
                 <?php if (public_block_enabled($blocks, 'materials') && !empty($payload['materials'])): ?><a href="#materials">Материалы</a><?php endif; ?>
                 <a href="#contacts">Контакты</a>
@@ -311,7 +325,6 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
                 <?php if ($profileReferralCode): ?><p class="referral-note">Код консультанта: <strong><?= h($profileReferralCode) ?></strong></p><?php endif; ?>
                 <div class="hero-metrics">
                     <?php if (!empty($payload['tests'])): ?><span><strong><?= count($payload['tests']) ?></strong> тестов</span><?php endif; ?>
-                    <?php if (!empty($payload['products'])): ?><span><strong><?= count($payload['products']) ?></strong> рекомендаций</span><?php endif; ?>
                     <?php if (!empty($payload['materials'])): ?><span><strong><?= count($payload['materials']) ?></strong> материалов</span><?php endif; ?>
                 </div>
             </div>
@@ -353,50 +366,40 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
             </section>
         <?php endif; ?>
 
-        <?php if (public_block_enabled($blocks, 'products') && !empty($payload['products'])): ?>
-            <section class="section" id="products">
+        <?php if (public_block_enabled($blocks, 'cashback') && (!empty($profileData['cashback_text']) || !empty($profileData['cashback_url']))): ?>
+            <section class="section" id="cashback">
                 <div class="section-head">
-                    <h2><?= h(public_block_title($blocks, 'products', 'Что я рекомендую')) ?></h2>
-                    <p>Подборка продуктов и материалов, которые консультант считает полезными для своей аудитории.</p>
+                    <span class="eyebrow">Карта клиента</span>
+                    <h2><?= h((string)($profileData['cashback_title'] ?: 'Кэшбэк и подарки')) ?></h2>
                 </div>
-                <div class="horizontal-cards">
-                    <?php foreach ($payload['products'] as $product): ?>
-                        <article class="public-card product-card">
-                            <?php if (!empty($product['image_path'])): ?>
-                                <img src="<?= h((string)$product['image_path']) ?>" alt="">
-                            <?php else: ?>
-                                <div class="card-image-placeholder">SWPro</div>
-                            <?php endif; ?>
-                            <div class="card-body">
-                                <span class="card-kicker">Рекомендация</span>
-                                <strong><?= h((string)$product['title']) ?></strong>
-                                <?php if (!empty($product['short_description'])): ?>
-                                    <p><?= h((string)$product['short_description']) ?></p>
-                                <?php endif; ?>
-                                <?php if (!empty($product['full_description'])): ?>
-                                    <details class="card-details">
-                                        <summary>Подробнее</summary>
-                                        <p><?= nl2br(h((string)$product['full_description'])) ?></p>
-                                    </details>
-                                <?php endif; ?>
-                                <div class="material-links">
-                                    <?php if (!empty($product['document_path'])): ?><a href="<?= h((string)$product['document_path']) ?>" target="_blank" rel="noopener">Файл</a><?php endif; ?>
-                                    <?php if (!empty($product['video_url'])): ?><a href="<?= h((string)$product['video_url']) ?>" target="_blank" rel="noopener">Видео</a><?php endif; ?>
-                                    <?php if (!empty($product['purchase_url'])): ?><a href="<?= h((string)$product['purchase_url']) ?>" target="_blank" rel="noopener">Подробнее</a><?php endif; ?>
-                                    <a href="<?= h(public_mini_app_url($profileReferralCode, 'products')) ?>">Задать вопрос</a>
-                                </div>
-                            </div>
-                        </article>
-                    <?php endforeach; ?>
+                <article class="public-card about-card about-card-main">
+                    <?php if (!empty($profileData['cashback_image_path'])): ?><img src="<?= h((string)$profileData['cashback_image_path']) ?>" alt=""><?php endif; ?>
+                    <p><?= nl2br(h((string)$profileData['cashback_text'])) ?></p>
+                    <?php if (!empty($profileData['cashback_url'])): ?><a class="card-action-link" href="<?= h((string)$profileData['cashback_url']) ?>" target="_blank" rel="noopener">Оформить карту клиента</a><?php endif; ?>
+                </article>
+            </section>
+        <?php endif; ?>
+
+        <?php if (public_block_enabled($blocks, 'cooperation') && !empty($profileData['cooperation_text'])): ?>
+            <section class="section" id="cooperation">
+                <div class="section-head">
+                    <span class="eyebrow">Команда</span>
+                    <h2><?= h((string)($profileData['cooperation_title'] ?: 'Возможность сотрудничества')) ?></h2>
                 </div>
+                <article class="public-card about-card about-card-main">
+                    <?php if (!empty($profileData['cooperation_image_path'])): ?><img src="<?= h((string)$profileData['cooperation_image_path']) ?>" alt=""><?php endif; ?>
+                    <p><?= nl2br(h((string)$profileData['cooperation_text'])) ?></p>
+                    <?php if (!empty($profileData['cooperation_video_url'])): ?><a class="card-action-link" href="<?= h((string)$profileData['cooperation_video_url']) ?>" target="_blank" rel="noopener">Смотреть видео</a><?php endif; ?>
+                    <a class="card-action-link" href="<?= h(public_mini_app_url($profileReferralCode, 'contact')) ?>">Обсудить сотрудничество</a>
+                </article>
             </section>
         <?php endif; ?>
 
         <?php if (public_block_enabled($blocks, 'tests') && !empty($payload['tests'])): ?>
             <section class="section" id="tests">
                 <div class="section-head">
-                    <h2><?= h(public_block_title($blocks, 'tests', 'Рекомендуемые тесты')) ?></h2>
-                    <p>Короткие диагностики помогают понять запрос клиента и подготовить персональные рекомендации.</p>
+                    <h2><?= h(public_block_title($blocks, 'tests', 'Чек-ап организма')) ?></h2>
+                    <p>Ответы помогают увидеть направления для внимания и подготовиться к разговору с консультантом.</p>
                 </div>
                 <div class="grid-cards">
                     <?php foreach ($payload['tests'] as $test): ?>
@@ -424,7 +427,7 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
                                 <img src="<?= h((string)$material['image_path']) ?>" alt="">
                             <?php endif; ?>
                             <div class="card-body">
-                                <span class="card-kicker"><?= h((string)$material['content_type']) ?></span>
+                                <span class="card-kicker"><?= h(public_material_section_label($material['section_type'] ?? null)) ?></span>
                                 <strong><?= h((string)$material['title']) ?></strong>
                                 <?php if (!empty($material['short_text'])): ?>
                                     <p><?= h((string)$material['short_text']) ?></p>
