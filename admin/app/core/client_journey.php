@@ -376,7 +376,130 @@ function create_user_notification(
     ]);
 }
 
-function send_client_journey_telegram_message(string $chatId, string $text): array
+function lead_request_type_label(?string $requestType): string
+{
+    return [
+        'consultation' => 'Связь с консультантом',
+        'product' => 'Вопрос о продукте',
+        'test_result' => 'Разбор результатов чек-апа',
+        'cashback' => 'Кэшбэк и регистрация',
+        'cooperation' => 'Сотрудничество',
+        'other' => 'Другое обращение',
+    ][$requestType ?: 'consultation'] ?? 'Связь с консультантом';
+}
+
+function consultant_telegram_recipient(array $user): ?array
+{
+    $managerId = (int)($user['manager_id'] ?? 0);
+    if ($managerId > 0) {
+        $stmt = db()->prepare(
+            'SELECT COALESCE(
+                NULLIF(m.telegram_id, ""),
+                (
+                    SELECT NULLIF(au.telegram_id, "")
+                    FROM admin_users au
+                    WHERE au.manager_id = m.id
+                      AND au.role = "manager"
+                      AND au.is_active = 1
+                    ORDER BY au.id
+                    LIMIT 1
+                )
+             ) AS telegram_id
+             FROM managers m
+             WHERE m.id = :id AND m.is_active = 1
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $managerId]);
+        return [
+            'manager_id' => $managerId,
+            'reseller_id' => null,
+            'telegram_id' => trim((string)($stmt->fetchColumn() ?: '')),
+        ];
+    }
+
+    $resellerId = (int)($user['reseller_id'] ?? 0);
+    if ($resellerId <= 0) {
+        return null;
+    }
+
+    $stmt = db()->prepare(
+        'SELECT telegram_id
+         FROM admin_users
+         WHERE reseller_id = :id
+           AND role = "reseller"
+           AND is_active = 1
+           AND telegram_id IS NOT NULL
+           AND telegram_id <> ""
+         ORDER BY id
+         LIMIT 1'
+    );
+    $stmt->execute(['id' => $resellerId]);
+    return [
+        'manager_id' => null,
+        'reseller_id' => $resellerId,
+        'telegram_id' => trim((string)($stmt->fetchColumn() ?: '')),
+    ];
+}
+
+function create_consultant_notification_record(
+    array $user,
+    string $notificationType,
+    string $eventKey,
+    string $title,
+    string $message,
+    ?int $leadId,
+    ?string $sourcePlatform
+): ?array {
+    $recipient = consultant_telegram_recipient($user);
+    if (!$recipient) {
+        return null;
+    }
+
+    $insert = db()->prepare(
+        'INSERT IGNORE INTO consultant_notifications (
+            manager_id, reseller_id, end_user_id, lead_id, notification_type,
+            source_platform, event_key, title, message_text
+         ) VALUES (
+            :manager_id, :reseller_id, :end_user_id, :lead_id, :notification_type,
+            :source_platform, :event_key, :title, :message_text
+         )'
+    );
+    $insert->execute([
+        'manager_id' => $recipient['manager_id'],
+        'reseller_id' => $recipient['reseller_id'],
+        'end_user_id' => $user['id'],
+        'lead_id' => $leadId,
+        'notification_type' => $notificationType,
+        'source_platform' => $sourcePlatform,
+        'event_key' => $eventKey,
+        'title' => $title,
+        'message_text' => $message,
+    ]);
+    if ($insert->rowCount() === 0) {
+        return null;
+    }
+
+    return $recipient + ['notification_id' => (int)db()->lastInsertId()];
+}
+
+function consultant_notification_action_url(?int $leadId = null): ?string
+{
+    $config = app_config();
+    $baseUrl = rtrim((string)($config['app']['public_url'] ?? getenv('SWPRO_PUBLIC_URL') ?: ''), '/');
+    if ($baseUrl === '') {
+        return null;
+    }
+
+    return $leadId
+        ? $baseUrl . '/admin/crud.php?module=leads&action=edit&id=' . $leadId
+        : $baseUrl . '/admin/results.php';
+}
+
+function send_client_journey_telegram_message(
+    string $chatId,
+    string $text,
+    ?string $actionUrl = null
+): array
 {
     $config = app_config();
     $token = (string)($config['integrations']['telegram_bot_token'] ?? '');
@@ -384,11 +507,19 @@ function send_client_journey_telegram_message(string $chatId, string $text): arr
         return ['ok' => false, 'error' => 'Telegram is not configured'];
     }
 
-    $payload = json_encode([
+    $payloadData = [
         'chat_id' => $chatId,
         'text' => $text,
         'disable_web_page_preview' => true,
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    ];
+    if ($actionUrl) {
+        $payloadData['reply_markup'] = [
+            'inline_keyboard' => [[
+                ['text' => 'Открыть в админке', 'url' => $actionUrl],
+            ]],
+        ];
+    }
+    $payload = json_encode($payloadData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     $context = stream_context_create([
         'http' => [
             'method' => 'POST',
@@ -403,13 +534,33 @@ function send_client_journey_telegram_message(string $chatId, string $text): arr
     return [
         'ok' => (bool)($result['ok'] ?? false),
         'error' => (string)($result['description'] ?? ($raw === false ? 'Telegram request failed' : '')),
+        'chat_id' => isset($result['result']['chat']['id']) ? (string)$result['result']['chat']['id'] : $chatId,
+        'message_id' => isset($result['result']['message_id']) ? (int)$result['result']['message_id'] : null,
     ];
+}
+
+function mark_consultant_notification_delivery_result(int $notificationId, array $delivery): void
+{
+    $stmt = db()->prepare(
+        'UPDATE consultant_notifications
+         SET delivery_status = :status,
+             delivery_error = :error,
+             telegram_chat_id = :telegram_chat_id,
+             telegram_message_id = :telegram_message_id
+         WHERE id = :id'
+    );
+    $stmt->execute([
+        'status' => $delivery['ok'] ? 'sent' : 'failed',
+        'error' => $delivery['ok'] ? null : $delivery['error'],
+        'telegram_chat_id' => $delivery['chat_id'] ?? null,
+        'telegram_message_id' => $delivery['message_id'] ?? null,
+        'id' => $notificationId,
+    ]);
 }
 
 function notify_consultant_about_test(array $user, int $sessionId, string $testTitle): void
 {
-    $managerId = (int)($user['manager_id'] ?? 0);
-    if ($managerId <= 0) {
+    if (empty($user['manager_id']) && empty($user['reseller_id'])) {
         return;
     }
 
@@ -417,6 +568,7 @@ function notify_consultant_about_test(array $user, int $sessionId, string $testT
     $name = $name !== '' ? $name : 'Клиент #' . (int)$user['id'];
     $eventKey = 'test_completed:' . $sessionId;
     $title = 'Клиент завершил чек-ап';
+    $sourcePlatform = normalize_platform((string)($user['current_platform'] ?? $user['platform'] ?? 'web'));
     $sessionStmt = db()->prepare('SELECT result_summary FROM user_test_sessions WHERE id = :id LIMIT 1');
     $sessionStmt->execute(['id' => $sessionId]);
     $summary = trim((string)($sessionStmt->fetchColumn() ?: ''));
@@ -435,104 +587,99 @@ function notify_consultant_about_test(array $user, int $sessionId, string $testT
             . ($scale['result_title'] ?: 'результат не задан')
             . ' (' . (int)$scale['score'] . ')';
     }
-    $parts = [$name . ' завершил «' . $testTitle . '».'];
+    $parts = [
+        "Завершён чек-ап\n",
+        'Источник: ' . platform_label($sourcePlatform),
+        'Клиент: ' . $name,
+        'Тест: ' . $testTitle,
+    ];
     if ($summary !== '') {
         $parts[] = $summary;
     }
     if ($scaleLines) {
         $parts[] = "Карта по направлениям:\n" . implode("\n", $scaleLines);
     }
-    $parts[] = 'Полный результат доступен в кабинете SWPro.';
+    $parts[] = "Полный результат доступен в кабинете SWPro.\n\nОтветьте на это сообщение, чтобы написать клиенту.";
     $message = mb_substr(implode("\n\n", $parts), 0, 3900);
 
-    $insert = db()->prepare(
-        'INSERT IGNORE INTO consultant_notifications (
-            manager_id, end_user_id, notification_type, event_key, title, message_text
-         ) VALUES (
-            :manager_id, :end_user_id, "test_completed", :event_key, :title, :message_text
-         )'
+    $notification = create_consultant_notification_record(
+        $user,
+        'test_completed',
+        $eventKey,
+        $title,
+        $message,
+        null,
+        $sourcePlatform
     );
-    $insert->execute([
-        'manager_id' => $managerId,
-        'end_user_id' => $user['id'],
-        'event_key' => $eventKey,
-        'title' => $title,
-        'message_text' => $message,
-    ]);
-    if ($insert->rowCount() === 0) {
+    if (!$notification) {
         return;
     }
 
-    $manager = db()->prepare('SELECT telegram_id FROM managers WHERE id = :id LIMIT 1');
-    $manager->execute(['id' => $managerId]);
-    $telegramId = trim((string)$manager->fetchColumn());
-    $delivery = send_client_journey_telegram_message($telegramId, $message);
-
-    $update = db()->prepare(
-        'UPDATE consultant_notifications
-         SET delivery_status = :status, delivery_error = :error
-         WHERE manager_id = :manager_id AND event_key = :event_key'
-    );
-    $update->execute([
-        'status' => $delivery['ok'] ? 'sent' : 'failed',
-        'error' => $delivery['ok'] ? null : $delivery['error'],
-        'manager_id' => $managerId,
-        'event_key' => $eventKey,
-    ]);
+    $delivery = $notification['telegram_id'] !== ''
+        ? send_client_journey_telegram_message(
+            $notification['telegram_id'],
+            $message,
+            consultant_notification_action_url()
+        )
+        : ['ok' => false, 'error' => 'Telegram ID не указан', 'chat_id' => null, 'message_id' => null];
+    mark_consultant_notification_delivery_result((int)$notification['notification_id'], $delivery);
 }
 
 function notify_consultant_about_contact(array $user, int $leadId): void
 {
-    $managerId = (int)($user['manager_id'] ?? 0);
-    if ($managerId <= 0) {
+    if (empty($user['manager_id']) && empty($user['reseller_id'])) {
         return;
     }
 
     $name = trim((string)($user['first_name'] ?? '') . ' ' . (string)($user['last_name'] ?? ''));
     $name = $name !== '' ? $name : 'Клиент #' . (int)$user['id'];
     $eventKey = 'consultation_requested:' . $leadId;
-    $leadStmt = db()->prepare('SELECT message FROM leads WHERE id = :id LIMIT 1');
-    $leadStmt->execute(['id' => $leadId]);
-    $leadMessage = trim((string)($leadStmt->fetchColumn() ?: ''));
-    $message = $name . ' запросил связь с консультантом.';
-    if ($leadMessage !== '') {
-        $message .= "\n\nСообщение:\n" . $leadMessage;
-    }
-    $message .= "\n\nОбращение #" . $leadId . ' доступно в кабинете SWPro.';
-    $message = mb_substr($message, 0, 3900);
-
-    $insert = db()->prepare(
-        'INSERT IGNORE INTO consultant_notifications (
-            manager_id, end_user_id, notification_type, event_key, title, message_text
-         ) VALUES (
-            :manager_id, :end_user_id, "consultation_requested", :event_key,
-            "Запрос на консультацию", :message_text
-         )'
+    $leadStmt = db()->prepare(
+        'SELECT l.message, l.request_type, l.source_platform, p.title AS product_title
+         FROM leads l
+         LEFT JOIN products p ON p.id = l.product_id
+         WHERE l.id = :id
+         LIMIT 1'
     );
-    $insert->execute([
-        'manager_id' => $managerId,
-        'end_user_id' => $user['id'],
-        'event_key' => $eventKey,
-        'message_text' => $message,
-    ]);
-    if ($insert->rowCount() === 0) {
+    $leadStmt->execute(['id' => $leadId]);
+    $lead = $leadStmt->fetch() ?: [];
+    $leadMessage = trim((string)($lead['message'] ?? ''));
+    $sourcePlatform = normalize_platform((string)($lead['source_platform'] ?? $user['current_platform'] ?? $user['platform'] ?? 'web'));
+    $requestType = (string)($lead['request_type'] ?? 'consultation');
+    $parts = [
+        'Новое обращение #' . $leadId,
+        'Источник: ' . platform_label($sourcePlatform),
+        'Тип: ' . lead_request_type_label($requestType),
+        'Клиент: ' . $name,
+    ];
+    if (!empty($lead['product_title'])) {
+        $parts[] = 'Продукт: ' . $lead['product_title'];
+    }
+    if ($leadMessage !== '') {
+        $parts[] = "Сообщение:\n" . $leadMessage;
+    }
+    $parts[] = 'Ответьте на это сообщение, чтобы отправить ответ клиенту.';
+    $message = mb_substr(implode("\n\n", $parts), 0, 3900);
+
+    $notification = create_consultant_notification_record(
+        $user,
+        'consultation_requested',
+        $eventKey,
+        'Новое обращение',
+        $message,
+        $leadId,
+        $sourcePlatform
+    );
+    if (!$notification) {
         return;
     }
 
-    $manager = db()->prepare('SELECT telegram_id FROM managers WHERE id = :id LIMIT 1');
-    $manager->execute(['id' => $managerId]);
-    $telegramId = trim((string)$manager->fetchColumn());
-    $delivery = send_client_journey_telegram_message($telegramId, $message);
-
-    $update = db()->prepare(
-        'UPDATE consultant_notifications
-         SET delivery_status = :status, delivery_error = :error
-         WHERE manager_id = :manager_id AND event_key = :event_key'
-    );
-    $update->execute([
-        'status' => $delivery['ok'] ? 'sent' : 'failed',
-        'error' => $delivery['ok'] ? null : $delivery['error'],
-        'manager_id' => $managerId,
-        'event_key' => $eventKey,
-    ]);
+    $delivery = $notification['telegram_id'] !== ''
+        ? send_client_journey_telegram_message(
+            $notification['telegram_id'],
+            $message,
+            consultant_notification_action_url($leadId)
+        )
+        : ['ok' => false, 'error' => 'Telegram ID не указан', 'chat_id' => null, 'message_id' => null];
+    mark_consultant_notification_delivery_result((int)$notification['notification_id'], $delivery);
 }

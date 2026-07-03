@@ -161,6 +161,7 @@ function require_platform_user(?array $data = null): array
         json_response(['error' => 'referral_required'], 403);
     }
 
+    $user['current_platform'] = $platform;
     return $user;
 }
 

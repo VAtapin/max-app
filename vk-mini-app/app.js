@@ -1085,7 +1085,7 @@ function renderCashback() {
             <div class="rich-text">${renderTextBlocks(text)}</div>
             <div class="detail-actions">
                 ${profile.cashback_url ? `<a class="primary button-link" href="${escapeHtml(profile.cashback_url)}" target="_blank" rel="noopener">Оформить карту клиента</a>` : ''}
-                <button class="secondary" data-action="contact">Задать вопрос консультанту</button>
+                <button class="secondary" data-action="contact-cashback">Задать вопрос консультанту</button>
             </div>
         </section>
     `;
@@ -1109,7 +1109,7 @@ function renderCooperation() {
     `;
 }
 
-function renderContactPage() {
+async function renderContactPage() {
     const profile = state.consultantProfile?.profile || {};
     const contacts = [
         ['Телефон', profile.phone],
@@ -1136,7 +1136,30 @@ function renderContactPage() {
             ` : ''}
             <button class="primary" data-action="contact">Написать консультанту</button>
         </section>
+        <section class="panel" id="lead-history">
+            <div class="empty">${escapeHtml(ui('common.loading'))}</div>
+        </section>
     `;
+
+    try {
+        const result = await api(`leads.php?${userQuery()}`);
+        const unreadLeadIds = result.leads.filter(leadHasUnreadResponse).map((lead) => lead.id);
+        const history = document.querySelector('#lead-history');
+        if (history) {
+            history.innerHTML = `
+                <div class="section-title">
+                    <h2>${escapeHtml(ui('leads.history_title', 'Ваши обращения'))}</h2>
+                </div>
+                ${leadListMarkup(result.leads)}
+            `;
+        }
+        await Promise.allSettled(unreadLeadIds.map(markLeadRead));
+    } catch (error) {
+        const history = document.querySelector('#lead-history');
+        if (history) {
+            history.innerHTML = `<div class="empty">${escapeHtml(friendlyError(error))}</div>`;
+        }
+    }
 }
 
 async function renderProfile() {
@@ -1411,7 +1434,7 @@ function leadTitle(lead) {
     if (lead.product_title) {
         return formatUi('leads.product_question', {product: lead.product_title});
     }
-    return ui('leads.question');
+    return ui(`request_type.${lead.request_type || 'consultation'}`, ui('leads.question'));
 }
 
 function leadHasUnreadResponse(lead) {
@@ -1428,11 +1451,9 @@ async function markLeadRead(leadId) {
     });
 }
 
-async function renderLeads() {
-    const result = await api(`leads.php?${userQuery()}`);
-    const unreadLeadIds = result.leads.filter(leadHasUnreadResponse).map((lead) => lead.id);
-    page.innerHTML = result.leads.length
-        ? result.leads.map((lead) => `
+function leadListMarkup(leads) {
+    return leads.length
+        ? leads.map((lead) => `
             <article class="lead-chat-card">
                 <div class="lead-chat-head">
                     <div>
@@ -1461,11 +1482,16 @@ async function renderLeads() {
             </article>
         `).join('')
         : `<div class="empty-card">${escapeHtml(ui('leads.empty'))}</div>`;
+}
 
+async function renderLeads() {
+    const result = await api(`leads.php?${userQuery()}`);
+    const unreadLeadIds = result.leads.filter(leadHasUnreadResponse).map((lead) => lead.id);
+    page.innerHTML = leadListMarkup(result.leads);
     await Promise.allSettled(unreadLeadIds.map(markLeadRead));
 }
 
-function openContactModal(productId = null, presetMessage = '', titleOverride = '') {
+function openContactModal(productId = null, presetMessage = '', titleOverride = '', requestType = 'consultation') {
     document.querySelector('.modal-backdrop')?.remove();
     const productTitle = productId
         ? document.querySelector(`[data-product-id="${productId}"]`)?.closest('article')?.querySelector('strong')?.textContent || ''
@@ -1480,6 +1506,7 @@ function openContactModal(productId = null, presetMessage = '', titleOverride = 
                 <p class="muted">${escapeHtml(ui('lead.modal_hint'))}</p>
                 <form id="contact-form">
                     <input type="hidden" name="product_id" value="${productId ? Number(productId) : ''}">
+                    <input type="hidden" name="request_type" value="${escapeHtml(requestType)}">
                     <textarea name="message" rows="5" required placeholder="${escapeHtml(ui('lead.message_placeholder'))}">${escapeHtml(presetMessage)}</textarea>
                     <div class="form-error" id="contact-error"></div>
                     <div class="modal-actions">
@@ -1497,7 +1524,7 @@ function closeModal() {
     document.querySelector('.modal-backdrop')?.remove();
 }
 
-async function createLeadFromMessage(productId = null, message = '') {
+async function createLeadFromMessage(productId = null, message = '', requestType = 'consultation') {
     const text = String(message || '').trim();
     if (!text) {
         throw new Error(ui('lead.message_required'));
@@ -1508,6 +1535,7 @@ async function createLeadFromMessage(productId = null, message = '') {
         body: JSON.stringify({
             ...userPayload(),
             product_id: productId,
+            request_type: requestType,
             message: text,
         }),
     });
@@ -1920,7 +1948,7 @@ async function render() {
                 await loadConsultantProfile();
             }
             if (state.page === 'cashback') renderCashback();
-            if (state.page === 'contact') renderContactPage();
+            if (state.page === 'contact') await renderContactPage();
             if (state.page === 'cooperation') renderCooperation();
         }
         if (state.page === 'tests') {
@@ -1968,14 +1996,24 @@ page.addEventListener('click', async (event) => {
         openContactModal(
             null,
             ui('result.contact_message', 'Здравствуйте! Хочу разобрать результаты диагностики и понять, с чего начать.'),
-            ui('result.contact_manager', 'Разобрать с консультантом')
+            ui('result.contact_manager', 'Разобрать с консультантом'),
+            'test_result'
+        );
+    }
+    if (target.dataset.action === 'contact-cashback') {
+        openContactModal(
+            null,
+            'Здравствуйте! Хочу узнать подробнее о регистрации, кэшбэке и подарках.',
+            'Кэшбэк и регистрация',
+            'cashback'
         );
     }
     if (target.dataset.action === 'contact-cooperation') {
         openContactModal(
             null,
             'Здравствуйте! Хочу узнать подробнее о возможности сотрудничества.',
-            'Обсудить сотрудничество'
+            'Обсудить сотрудничество',
+            'cooperation'
         );
     }
     if (target.dataset.action === 'disable-marketing') {
@@ -2030,7 +2068,7 @@ page.addEventListener('click', async (event) => {
     if (target.dataset.openTestId) await renderTest(Number(target.dataset.openTestId));
     if (target.dataset.openProductId) await renderProductDetail(Number(target.dataset.openProductId));
     if (target.dataset.openMaterialId) await renderMaterialDetail(Number(target.dataset.openMaterialId));
-    if (target.dataset.productId) openContactModal(Number(target.dataset.productId));
+    if (target.dataset.productId) openContactModal(Number(target.dataset.productId), '', '', 'product');
 });
 
 document.addEventListener('click', (event) => {
@@ -2154,6 +2192,7 @@ document.addEventListener('submit', async (event) => {
     const button = target.querySelector('button[type="submit"]');
     const formData = new FormData(target);
     const productId = Number(formData.get('product_id') || 0) || null;
+    const requestType = String(formData.get('request_type') || 'consultation');
     const message = String(formData.get('message') || '').trim();
 
     if (!message) {
@@ -2168,7 +2207,7 @@ document.addEventListener('submit', async (event) => {
     }
 
     try {
-        await createLeadFromMessage(productId, message);
+        await createLeadFromMessage(productId, message, requestType);
         closeModal();
     } catch (exception) {
         if (error) error.textContent = exception instanceof Error ? exception.message : ui('common.load_failed');

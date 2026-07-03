@@ -78,12 +78,18 @@ $modules = [
     'leads' => [
         'title' => app_text('auto.k_be11d71726a6'),
         'table' => 'leads',
-        'columns' => ['id', 'end_user_id', 'manager_id', 'reseller_id', 'product_id', 'source_platform', 'status', 'created_at'],
+        'columns' => ['id', 'end_user_id', 'manager_id', 'reseller_id', 'product_id', 'request_type', 'source_platform', 'status', 'created_at'],
         'fields' => [
             'end_user_id' => ['label' => app_text('auto.k_51aff1853949'), 'type' => 'select', 'source' => 'end_users', 'required' => true],
             'manager_id' => ['label' => app_text('auto.k_8d98911527e4'), 'type' => 'select', 'source' => 'managers', 'nullable' => true],
             'reseller_id' => ['label' => app_text('auto.k_86469fea3a4a'), 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
             'product_id' => ['label' => app_text('auto.k_82a9ca014bb8'), 'type' => 'select', 'source' => 'products', 'nullable' => true],
+            'request_type' => [
+                'label' => 'Тип обращения',
+                'type' => 'select',
+                'options' => ['consultation', 'product', 'test_result', 'cashback', 'cooperation', 'other'],
+                'required' => true,
+            ],
             'source_platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['telegram', 'VK', 'OK', 'MAX', 'web'], 'required' => true],
             'message' => ['label' => app_text('auto.k_dc72346ac447'), 'type' => 'textarea'],
             'status' => ['label' => app_text('auto.k_f7f293b5c58c'), 'type' => 'select', 'options' => ['new', 'contacted', 'interested', 'closed', 'lost'], 'required' => true],
@@ -1690,7 +1696,11 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         <article class="lead-response-card">
                             <div class="lead-response-head">
                                 <div>
-                                    <strong><?= h($response['admin_name'] ?? app_text('auto.k_1b93795b9768')) ?></strong>
+                                    <strong><?= h(
+                                        ($response['response_source'] ?? 'admin') === 'telegram'
+                                            ? 'Ответ из Telegram'
+                                            : ($response['admin_name'] ?? app_text('auto.k_1b93795b9768'))
+                                    ) ?></strong>
                                     <span><?= h($response['created_at']) ?></span>
                                 </div>
                                 <span class="<?= h(status_badge_class($status)) ?>"><?= h($status) ?></span>

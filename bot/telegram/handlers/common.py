@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import html
 import os
+from pathlib import Path
+from uuid import uuid4
 
 from aiogram import F, Router
-from aiogram.filters import Command
+from aiogram.filters import BaseFilter, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, ReplyKeyboardRemove, User
@@ -15,11 +17,17 @@ from bot.core.client_journey import (
     consultant_profile_for_user,
     create_consultant_notification,
     grant_consent,
-    manager_telegram_id,
     mark_consultant_notification_delivery,
     onboarding_status,
     parse_age_or_birth_date,
     revoke_consents,
+)
+from bot.core.consultant_replies import (
+    consultant_reply_context,
+    create_telegram_lead_response,
+    finish_telegram_lead_response,
+    telegram_client_chat_id,
+    telegram_reply_already_saved,
 )
 from bot.core.leads import create_lead
 from bot.core.materials import get_material, list_materials
@@ -77,6 +85,136 @@ class OnboardingFlow(StatesGroup):
     waiting_marketing = State()
 
 
+class ConsultantNotificationReplyFilter(BaseFilter):
+    async def __call__(self, message: Message) -> dict | bool:
+        if (
+            message.chat.type != "private"
+            or message.reply_to_message is None
+            or message.from_user is None
+        ):
+            return False
+
+        context = await consultant_reply_context(
+            str(message.chat.id),
+            int(message.reply_to_message.message_id),
+        )
+        return {"consultant_notification": context} if context else False
+
+
+def consultant_reply_attachment(message: Message) -> tuple[str, str] | None:
+    if message.photo:
+        return message.photo[-1].file_id, "jpg"
+    if message.video:
+        return message.video.file_id, "mp4"
+    if message.document:
+        suffix = Path(message.document.file_name or "").suffix.lower()
+        allowed = {
+            ".jpg": "jpg",
+            ".jpeg": "jpg",
+            ".png": "png",
+            ".webp": "webp",
+            ".pdf": "pdf",
+            ".mp4": "mp4",
+        }
+        if suffix in allowed:
+            return message.document.file_id, allowed[suffix]
+    return None
+
+
+async def save_consultant_reply_attachment(message: Message) -> list[str]:
+    attachment = consultant_reply_attachment(message)
+    if not attachment:
+        return []
+
+    file_id, extension = attachment
+    directory = Path(__file__).resolve().parents[3] / "admin" / "uploads" / "responses"
+    directory.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid4().hex}.{extension}"
+    await message.bot.download(file_id, destination=directory / filename)
+    return [f"/admin/uploads/responses/{filename}"]
+
+
+@router.message(ConsultantNotificationReplyFilter())
+async def consultant_notification_reply(
+    message: Message,
+    consultant_notification: dict,
+) -> None:
+    telegram_chat_id = str(message.chat.id)
+    telegram_message_id = int(message.message_id)
+    if await telegram_reply_already_saved(telegram_chat_id, telegram_message_id):
+        await message.answer("Этот ответ уже обработан.")
+        return
+
+    message_text = (message.text or message.caption or "").strip()
+    has_supported_attachment = consultant_reply_attachment(message) is not None
+    if not message_text and not has_supported_attachment:
+        await message.answer("Ответьте текстом, фотографией, видео MP4 или документом PDF.")
+        return
+
+    try:
+        attachment_paths = await save_consultant_reply_attachment(message)
+    except Exception as exc:
+        await message.answer(f"Не удалось сохранить вложение: {str(exc)[:300]}")
+        return
+
+    response_id, lead_id, created = await create_telegram_lead_response(
+        consultant_notification,
+        telegram_chat_id,
+        telegram_message_id,
+        message_text,
+        attachment_paths,
+    )
+    if not created:
+        await message.answer("Этот ответ уже обработан.")
+        return
+
+    source_platform = str(
+        consultant_notification.get("lead_source_platform")
+        or consultant_notification.get("source_platform")
+        or "web"
+    )
+    delivery_ok = True
+    delivery_error = None
+    if source_platform == "telegram":
+        client_chat_id = await telegram_client_chat_id(
+            int(consultant_notification["end_user_id"])
+        )
+        if not client_chat_id:
+            delivery_ok = False
+            delivery_error = "Telegram клиента не подключён"
+        else:
+            try:
+                await message.bot.copy_message(
+                    chat_id=client_chat_id,
+                    from_chat_id=message.chat.id,
+                    message_id=message.message_id,
+                )
+            except Exception as exc:
+                delivery_ok = False
+                delivery_error = str(exc)[:500]
+
+    await finish_telegram_lead_response(
+        response_id,
+        lead_id,
+        consultant_notification,
+        delivery_ok,
+        delivery_error,
+        message_text,
+    )
+    if delivery_ok:
+        destination = (
+            "Telegram"
+            if source_platform == "telegram"
+            else f"{platform_display_name(source_platform)} Mini App"
+        )
+        await message.answer(f"Ответ отправлен клиенту: {destination}.")
+    else:
+        await message.answer(
+            "Ответ сохранён, но доставить его не удалось. "
+            f"Причина: {delivery_error or 'неизвестная ошибка'}."
+        )
+
+
 async def resolve_user(message: Message, referral_code: str | None = None) -> dict:
     return await resolve_telegram_user(message.from_user, referral_code)
 
@@ -106,6 +244,16 @@ def user_referral_code(user: dict) -> str | None:
 
 def has_consultant_binding(user: dict) -> bool:
     return bool(user.get("manager_id") or user.get("reseller_id"))
+
+
+def platform_display_name(platform: str | None) -> str:
+    return {
+        "telegram": "Telegram",
+        "VK": "VK",
+        "OK": "OK",
+        "MAX": "MAX",
+        "web": "Web",
+    }.get(str(platform or ""), str(platform or "Web"))
 
 
 async def request_referral_code(message: Message, state: FSMContext, *, invalid: bool = False) -> None:
@@ -213,27 +361,59 @@ async def notify_manager_event(
     event_key: str,
     title: str,
     message_text: str,
+    lead_id: int | None = None,
+    source_platform: str | None = None,
 ) -> None:
-    created = await create_consultant_notification(
+    notification = await create_consultant_notification(
         user,
         notification_type,
         event_key,
         title,
         message_text,
+        lead_id=lead_id,
+        source_platform=source_platform,
     )
-    manager_id = int(user.get("manager_id") or 0)
-    if not created or manager_id <= 0:
+    if not notification:
         return
 
-    chat_id = await manager_telegram_id(user)
+    notification_id = int(notification["notification_id"])
+    chat_id = str(notification.get("telegram_id") or "").strip()
     if not chat_id:
-        await mark_consultant_notification_delivery(manager_id, event_key, False, "Telegram ID не указан")
+        await mark_consultant_notification_delivery(
+            notification_id,
+            False,
+            "Telegram ID не указан",
+        )
         return
+
+    action_path = (
+        f"/admin/crud.php?module=leads&action=edit&id={lead_id}"
+        if lead_id
+        else "/admin/results.php"
+    )
+    reply_markup = InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(
+                text="Открыть в админке",
+                url=f"{public_base_url()}{action_path}",
+            )
+        ]]
+    )
     try:
-        await bot.send_message(chat_id, message_text)
-        await mark_consultant_notification_delivery(manager_id, event_key, True)
+        sent = await bot.send_message(chat_id, message_text, reply_markup=reply_markup)
+        await mark_consultant_notification_delivery(
+            notification_id,
+            True,
+            telegram_chat_id=str(sent.chat.id),
+            telegram_message_id=int(sent.message_id),
+        )
     except Exception as exc:
-        await mark_consultant_notification_delivery(manager_id, event_key, False, str(exc)[:500])
+        await mark_consultant_notification_delivery(
+            notification_id,
+            False,
+            str(exc)[:500],
+            telegram_chat_id=chat_id,
+        )
 
 
 def consultant_contacts_text(profile: dict | None) -> str:
@@ -453,13 +633,19 @@ async def send_test_question(message: Message, state: FSMContext, *, replace_cur
                 f"{scale_result.get('title') or 'результат не задан'} "
                 f"({int(item.get('score') or 0)})"
             )
+        source_platform = str(user.get("current_platform") or user.get("platform") or "telegram")
         manager_parts = [
-            f"{client_name} завершил чек-ап.",
+            "Завершён чек-ап",
+            f"Источник: {platform_display_name(source_platform)}",
+            f"Клиент: {client_name}",
             str(result.get("summary") or "").strip(),
         ]
         if manager_scale_lines:
             manager_parts.append("Карта по направлениям:\n" + "\n".join(manager_scale_lines))
-        manager_parts.append("Полный результат доступен в кабинете SWPro.")
+        manager_parts.append(
+            "Полный результат доступен в кабинете SWPro.\n\n"
+            "Ответьте на это сообщение, чтобы написать клиенту."
+        )
         await notify_manager_event(
             message.bot,
             user,
@@ -467,6 +653,7 @@ async def send_test_question(message: Message, state: FSMContext, *, replace_cur
             event_key=f"test_completed:{result['session_id']}",
             title="Клиент завершил чек-ап",
             message_text="\n\n".join(part for part in manager_parts if part)[:3900],
+            source_platform=source_platform,
         )
         await state.clear()
         await send_test_result_message(message, user, result, replace_current=replace_current)
@@ -944,12 +1131,17 @@ async def lead_message(message: Message, state: FSMContext) -> None:
         user,
         notification_type="consultation_requested",
         event_key=f"consultation_requested:{lead_id}",
-        title="Запрос на консультацию",
+        title="Новое обращение",
         message_text=(
-            f"{client_name} запросил связь.\n\n"
+            f"Новое обращение #{lead_id}\n\n"
+            f"Источник: Telegram\n\n"
+            f"Тип: Связь с консультантом\n\n"
+            f"Клиент: {client_name}\n\n"
             f"Сообщение:\n{text}\n\n"
-            f"Обращение #{lead_id} доступно в кабинете SWPro."
+            "Ответьте на это сообщение, чтобы отправить ответ клиенту."
         )[:3900],
+        lead_id=lead_id,
+        source_platform="telegram",
     )
     await state.clear()
     await message.answer("Сообщение отправлено. Консультант свяжется с вами.")

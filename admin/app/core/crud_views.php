@@ -756,6 +756,7 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
                     <div class="lead-card-top">
                         <span class="<?= h(status_badge_class($status)) ?>"><?= h($status) ?></span>
                         <?= render_platform_badge((string)($row['source_platform'] ?? '')) ?>
+                        <span class="badge"><?= h(lead_request_type_label((string)($row['request_type'] ?? 'consultation'))) ?></span>
                         <span class="cell-muted">#<?= (int)$row['id'] ?> · <?= h((string)($row['created_at'] ?? '')) ?></span>
                     </div>
                     <h3><?= h($user) ?></h3>

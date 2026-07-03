@@ -657,6 +657,7 @@ CREATE TABLE leads (
   manager_id BIGINT UNSIGNED NULL,
   reseller_id BIGINT UNSIGNED NULL,
   product_id BIGINT UNSIGNED NULL,
+  request_type VARCHAR(50) NOT NULL DEFAULT 'consultation',
   source_platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
   message TEXT NULL,
   status ENUM('new', 'contacted', 'interested', 'closed', 'lost') NOT NULL DEFAULT 'new',
@@ -686,6 +687,9 @@ CREATE TABLE lead_responses (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   lead_id BIGINT UNSIGNED NOT NULL,
   admin_user_id BIGINT UNSIGNED NULL,
+  response_source ENUM('admin', 'telegram') NOT NULL DEFAULT 'admin',
+  telegram_chat_id VARCHAR(100) NULL,
+  telegram_message_id BIGINT UNSIGNED NULL,
   content_post_id BIGINT UNSIGNED NULL,
   test_id BIGINT UNSIGNED NULL,
   platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
@@ -695,7 +699,9 @@ CREATE TABLE lead_responses (
   status ENUM('pending', 'sent', 'failed') NOT NULL DEFAULT 'pending',
   error_message TEXT NULL,
   sent_at DATETIME NULL,
+  read_at DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_lead_response_telegram_message (telegram_chat_id, telegram_message_id),
   INDEX idx_lead_responses_lead_id (lead_id),
   INDEX idx_lead_responses_admin_user_id (admin_user_id),
   INDEX idx_lead_responses_status (status),
@@ -870,25 +876,40 @@ CREATE TABLE automation_logs (
 
 CREATE TABLE consultant_notifications (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  manager_id BIGINT UNSIGNED NOT NULL,
+  manager_id BIGINT UNSIGNED NULL,
+  reseller_id BIGINT UNSIGNED NULL,
   end_user_id BIGINT UNSIGNED NOT NULL,
+  lead_id BIGINT UNSIGNED NULL,
   notification_type VARCHAR(50) NOT NULL,
+  source_platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NULL,
   event_key VARCHAR(190) NOT NULL,
   title VARCHAR(190) NOT NULL,
   message_text TEXT NOT NULL,
   is_read TINYINT(1) NOT NULL DEFAULT 0,
   delivery_status ENUM('pending', 'sent', 'failed') NOT NULL DEFAULT 'pending',
   delivery_error TEXT NULL,
+  telegram_chat_id VARCHAR(100) NULL,
+  telegram_message_id BIGINT UNSIGNED NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   read_at DATETIME NULL,
   UNIQUE KEY uq_consultant_notification_event (manager_id, event_key),
+  UNIQUE KEY uq_consultant_notification_reseller_event (reseller_id, event_key),
+  UNIQUE KEY uq_consultant_notification_telegram_message (telegram_chat_id, telegram_message_id),
   INDEX idx_consultant_notifications_manager (manager_id, is_read, created_at),
+  INDEX idx_consultant_notifications_reseller (reseller_id, is_read, created_at),
+  INDEX idx_consultant_notifications_lead (lead_id),
   CONSTRAINT fk_consultant_notifications_manager
     FOREIGN KEY (manager_id) REFERENCES managers(id)
     ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_consultant_notifications_reseller
+    FOREIGN KEY (reseller_id) REFERENCES resellers(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_consultant_notifications_user
     FOREIGN KEY (end_user_id) REFERENCES end_users(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_consultant_notifications_lead
+    FOREIGN KEY (lead_id) REFERENCES leads(id)
+    ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE leader_subscriptions (

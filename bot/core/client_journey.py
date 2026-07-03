@@ -281,16 +281,64 @@ async def consultant_profile_for_user(user: dict) -> dict | None:
 
 
 async def manager_telegram_id(user: dict) -> str | None:
-    if not user.get("manager_id"):
-        return None
+    recipient = await consultant_telegram_recipient(user)
+    return str((recipient or {}).get("telegram_id") or "").strip() or None
+
+
+async def consultant_telegram_recipient(user: dict) -> dict | None:
+    manager_id = int(user.get("manager_id") or 0)
+    reseller_id = int(user.get("reseller_id") or 0)
     async with cursor() as cur:
+        if manager_id:
+            await cur.execute(
+                """
+                SELECT COALESCE(
+                    NULLIF(m.telegram_id, ''),
+                    (
+                        SELECT NULLIF(au.telegram_id, '')
+                        FROM admin_users au
+                        WHERE au.manager_id = m.id
+                          AND au.role = 'manager'
+                          AND au.is_active = 1
+                        ORDER BY au.id
+                        LIMIT 1
+                    )
+                ) AS telegram_id
+                FROM managers m
+                WHERE m.id = %s AND m.is_active = 1
+                LIMIT 1
+                """,
+                (manager_id,),
+            )
+            row = await cur.fetchone()
+            return {
+                "manager_id": manager_id,
+                "reseller_id": None,
+                "telegram_id": str((row or {}).get("telegram_id") or "").strip(),
+            }
+
+        if not reseller_id:
+            return None
         await cur.execute(
-            "SELECT telegram_id FROM managers WHERE id = %s LIMIT 1",
-            (user["manager_id"],),
+            """
+            SELECT telegram_id
+            FROM admin_users
+            WHERE reseller_id = %s
+              AND role = 'reseller'
+              AND is_active = 1
+              AND telegram_id IS NOT NULL
+              AND telegram_id <> ''
+            ORDER BY id
+            LIMIT 1
+            """,
+            (reseller_id,),
         )
         row = await cur.fetchone()
-        value = str((row or {}).get("telegram_id") or "").strip()
-        return value or None
+        return {
+            "manager_id": None,
+            "reseller_id": reseller_id,
+            "telegram_id": str((row or {}).get("telegram_id") or "").strip(),
+        }
 
 
 async def create_consultant_notification(
@@ -299,42 +347,64 @@ async def create_consultant_notification(
     event_key: str,
     title: str,
     message: str,
-) -> bool:
-    if not user.get("manager_id"):
-        return False
+    *,
+    lead_id: int | None = None,
+    source_platform: str | None = None,
+) -> dict | None:
+    recipient = await consultant_telegram_recipient(user)
+    if not recipient:
+        return None
+
     async with cursor() as cur:
         await cur.execute(
             """
             INSERT IGNORE INTO consultant_notifications (
-                manager_id, end_user_id, notification_type, event_key, title, message_text
-            ) VALUES (%s, %s, %s, %s, %s, %s)
+                manager_id, reseller_id, end_user_id, lead_id, notification_type,
+                source_platform, event_key, title, message_text
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
-                user["manager_id"],
+                recipient["manager_id"],
+                recipient["reseller_id"],
                 user["id"],
+                lead_id,
                 notification_type,
+                source_platform,
                 event_key,
                 title,
                 message,
             ),
         )
-        return cur.rowcount > 0
+        if cur.rowcount == 0:
+            return None
+        return recipient | {"notification_id": int(cur.lastrowid)}
 
 
 async def mark_consultant_notification_delivery(
-    manager_id: int,
-    event_key: str,
+    notification_id: int,
     ok: bool,
     error: str | None = None,
+    *,
+    telegram_chat_id: str | None = None,
+    telegram_message_id: int | None = None,
 ) -> None:
     async with cursor() as cur:
         await cur.execute(
             """
             UPDATE consultant_notifications
-            SET delivery_status = %s, delivery_error = %s
-            WHERE manager_id = %s AND event_key = %s
+            SET delivery_status = %s,
+                delivery_error = %s,
+                telegram_chat_id = %s,
+                telegram_message_id = %s
+            WHERE id = %s
             """,
-            ("sent" if ok else "failed", error, manager_id, event_key),
+            (
+                "sent" if ok else "failed",
+                error,
+                telegram_chat_id,
+                telegram_message_id,
+                notification_id,
+            ),
         )
 
 

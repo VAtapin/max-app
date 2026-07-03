@@ -441,7 +441,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
 
     $content = content_snippet($contentId);
     $test = test_snippet($testId);
-    $text = build_lead_response_text($message, $content, $test, (string)$lead['source_platform']);
+    $text = build_lead_response_text($message, $content, $test);
     if ($text === '' && !$attachmentPaths && $externalUrl === '') {
         $errors[] = app_text('lead_response.empty_response');
         return null;
@@ -452,14 +452,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
     }
 
     $attachmentValue = $attachmentPaths ? json_encode($attachmentPaths, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
-    $platform = (string)$lead['source_platform'];
-    $deliveryPlatforms = array_values(array_unique(array_map(
-        static fn(array $account): string => normalize_platform((string)$account['platform']),
-        lead_platform_accounts($lead)
-    )));
-    if (!$deliveryPlatforms) {
-        $deliveryPlatforms = [normalize_platform($platform)];
-    }
+    $platform = normalize_platform((string)$lead['source_platform']);
 
     $stmt = db()->prepare(
         'INSERT INTO lead_responses
@@ -481,39 +474,23 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
 
     $status = 'sent';
     $deliveryErrors = [];
-    $sentAtLeastOneExternal = false;
-    foreach ($deliveryPlatforms as $deliveryPlatform) {
-        if ($deliveryPlatform === 'telegram') {
+    if ($platform === 'telegram') {
         $telegramChatId = lead_platform_account_id($lead, 'telegram');
         if ($telegramChatId) {
             $result = send_telegram_response($telegramChatId, $text, $content, $test, $attachmentPaths, $externalUrl);
-                if ($result['ok']) {
-                    $sentAtLeastOneExternal = true;
-                } else {
-                    $deliveryErrors[] = 'telegram: ' . $result['error'];
-                }
+            if (!$result['ok']) {
+                $deliveryErrors[] = 'telegram: ' . $result['error'];
+                $status = 'failed';
+            }
         } else {
-                $deliveryErrors[] = app_text('lead_response.platform_not_connected', ['platform' => 'telegram']);
+            $deliveryErrors[] = app_text('lead_response.platform_not_connected', ['platform' => 'telegram']);
+            $status = 'failed';
         }
-            continue;
-        }
-
-        if (in_array($deliveryPlatform, ['VK', 'OK'], true)) {
-            continue;
-        }
-
-        if ($deliveryPlatform !== 'web') {
-            $deliveryErrors[] = app_text('lead_response.platform_not_connected', ['platform' => $deliveryPlatform]);
-        }
-    }
-
-    if ($deliveryErrors && !$sentAtLeastOneExternal && !array_intersect($deliveryPlatforms, ['VK', 'OK', 'web'])) {
+    } elseif (!in_array($platform, ['VK', 'OK', 'MAX', 'web'], true)) {
+        $deliveryErrors[] = app_text('lead_response.platform_not_connected', ['platform' => $platform]);
         $status = 'failed';
     }
     $error = $deliveryErrors ? implode('; ', array_filter($deliveryErrors)) : null;
-    if ($status === 'sent' && $error) {
-        $error = app_text('lead_response.response_saved_not_sent', ['error' => $error]);
-    }
 
     $stmt = db()->prepare(
         'UPDATE lead_responses
@@ -528,6 +505,16 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
     ]);
 
     if ($status === 'sent') {
+        $config = app_config();
+        $miniAppUrl = rtrim((string)($config['integrations']['mini_app_url'] ?? ''), '/');
+        create_user_notification(
+            (int)$lead['end_user_id'],
+            'lead_response',
+            'Ответ консультанта',
+            $message !== '' ? $message : 'Консультант отправил вам материалы.',
+            'Открыть ответ',
+            $miniAppUrl !== '' ? $miniAppUrl . '/?page=contact' : null
+        );
         $stmt = db()->prepare('UPDATE leads SET status = "contacted" WHERE id = :id AND status = "new"');
         $stmt->execute(['id' => $leadId]);
         $stageStmt = db()->prepare('SELECT client_stage FROM end_users WHERE id = :id LIMIT 1');
