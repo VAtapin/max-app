@@ -320,6 +320,17 @@ function default_manager_card(?string $platform): ?array
     ];
 }
 
+function referral_code_or_platform_default(?string $referralCode, string $platform): ?string
+{
+    $referralCode = normalize_referral_code($referralCode);
+    if ($referralCode) {
+        return $referralCode;
+    }
+
+    $defaultManager = default_manager_card($platform);
+    return normalize_referral_code($defaultManager['referral_code'] ?? null);
+}
+
 function account_link_secret(): string
 {
     $config = app_config();
@@ -473,6 +484,10 @@ function create_or_get_user(array $data): array
 {
     $data = enrich_vk_ok_platform_data($data);
     $platform = normalize_platform($data['platform'] ?? 'VK');
+    $data['referral_code'] = referral_code_or_platform_default(
+        $data['referral_code'] ?? null,
+        $platform
+    );
     $platformUserId = (string)($data['platform_user_id'] ?? '');
     if ($platformUserId === '') {
         json_response(['error' => 'platform_user_id is required'], 422);

@@ -2179,6 +2179,10 @@ Promise.all([loadI18n(), authorize()])
             renderAuthGate();
             return;
         }
+        if (!hasTeamAccess()) {
+            await render();
+            return;
+        }
         await loadOnboarding();
         await render();
 
