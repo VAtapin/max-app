@@ -99,7 +99,8 @@ INSERT IGNORE INTO schema_migrations (migration) VALUES
 ('20260618_01_multiscale_health_test.sql'),
 ('20260618_02_admin_multiscale_tests.sql'),
 ('20260618_03_test_intro_progress_media.sql'),
-('20260703_01_simplified_client_journey.sql');
+('20260703_01_simplified_client_journey.sql'),
+('20260703_02_referral_links_only.sql');
 SQL
 
 echo "Database import complete."

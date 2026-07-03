@@ -81,20 +81,6 @@ CREATE TABLE managers (
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE default_platform_managers (
-  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
-  manager_id BIGINT UNSIGNED NOT NULL,
-  is_active TINYINT(1) NOT NULL DEFAULT 1,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_default_platform_manager (platform),
-  INDEX idx_default_platform_manager_id (manager_id),
-  CONSTRAINT fk_default_platform_manager
-    FOREIGN KEY (manager_id) REFERENCES managers(id)
-    ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 CREATE TABLE admin_users (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   role ENUM('superadmin', 'reseller', 'manager') NOT NULL,

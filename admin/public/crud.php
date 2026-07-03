@@ -907,47 +907,6 @@ function apply_role_defaults(string $moduleKey, array $payload, array $admin): a
     return $payload;
 }
 
-function default_manager_platform_options(): array
-{
-    return ['telegram', 'VK', 'OK', 'MAX', 'web'];
-}
-
-function default_platforms_for_manager(int $managerId): array
-{
-    if ($managerId <= 0) {
-        return [];
-    }
-
-    $stmt = db()->prepare('SELECT platform FROM default_platform_managers WHERE manager_id = :manager_id AND is_active = 1');
-    $stmt->execute(['manager_id' => $managerId]);
-    return array_map(static fn($row) => (string)$row['platform'], $stmt->fetchAll());
-}
-
-function save_default_manager_platforms(int $managerId, array $platforms): void
-{
-    $allowed = default_manager_platform_options();
-    $platforms = array_values(array_intersect($allowed, array_map('normalize_platform', $platforms)));
-
-    $delete = db()->prepare('DELETE FROM default_platform_managers WHERE manager_id = :manager_id');
-    $delete->execute(['manager_id' => $managerId]);
-
-    if (!$platforms) {
-        return;
-    }
-
-    $stmt = db()->prepare(
-        'INSERT INTO default_platform_managers (platform, manager_id, is_active)
-         VALUES (:platform, :manager_id, 1)
-         ON DUPLICATE KEY UPDATE manager_id = VALUES(manager_id), is_active = 1'
-    );
-    foreach ($platforms as $platform) {
-        $stmt->execute([
-            'platform' => $platform,
-            'manager_id' => $managerId,
-        ]);
-    }
-}
-
 function detach_owner_content(string $ownerType, int $ownerId): void
 {
     foreach (['product_categories', 'products', 'tests', 'content_posts'] as $table) {
@@ -1379,7 +1338,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $savedId = save_record($moduleKey, $module, $payload, $postId, $admin);
             if ($moduleKey === 'managers' && $admin['role'] === 'superadmin') {
-                save_default_manager_platforms($savedId, $_POST['default_platforms'] ?? []);
                 save_manager_admin_access($savedId, $payload, $_POST, $errors);
                 if ($errors) {
                     $action = $postId ? 'edit' : 'create';
@@ -1432,15 +1390,6 @@ try {
 } catch (Throwable $e) {
     $errors[] = app_text('auto.k_49fb23bb29cf') . $e->getMessage();
     $listHtml = app_text('auto.k_fda0c24ca2e9');
-}
-
-$managerDefaultPlatforms = [];
-if ($moduleKey === 'managers' && $admin['role'] === 'superadmin' && ($action === 'create' || $action === 'edit')) {
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $managerDefaultPlatforms = array_map('normalize_platform', $_POST['default_platforms'] ?? []);
-    } elseif (!empty($editRow['id'])) {
-        $managerDefaultPlatforms = default_platforms_for_manager((int)$editRow['id']);
-    }
 }
 
 $adminAccess = null;
@@ -1595,22 +1544,6 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         <input type="checkbox" name="admin_is_active" value="1" <?= (int)($adminAccess['is_active'] ?? 1) === 1 ? 'checked' : '' ?>>
                         <?= h(app_text('admin_access.active')) ?>
                     </label>
-                </fieldset>
-            <?php endif; ?>
-            <?php if ($moduleKey === 'managers' && $admin['role'] === 'superadmin'): ?>
-                <fieldset class="field checkbox-group">
-                    <legend><?= h(app_text('auto.k_89009febe5c6')) ?></legend>
-                    <?php foreach (default_manager_platform_options() as $platformOption): ?>
-                        <label>
-                            <input
-                                type="checkbox"
-                                name="default_platforms[]"
-                                value="<?= h($platformOption) ?>"
-                                <?= in_array($platformOption, $managerDefaultPlatforms, true) ? 'checked' : '' ?>
-                            >
-                            <?= h(platform_label($platformOption)) ?>
-                        </label>
-                    <?php endforeach; ?>
                 </fieldset>
             <?php endif; ?>
             <div class="form-actions">

@@ -60,7 +60,6 @@ try {
             'platform_user_id' => $telegramId,
             'auth_token' => telegram_auth_token($telegramId),
         ],
-        'default_manager' => default_manager_card('telegram'),
     ];
 
     $redirectParams = ['oidc' => '1'];

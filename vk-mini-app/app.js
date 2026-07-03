@@ -11,7 +11,6 @@ const state = {
     activeTest: null,
     initialTestId: null,
     i18n: {},
-    defaultManager: null,
     consultantProfile: null,
     consultantProfilePromise: null,
     onboarding: null,
@@ -49,7 +48,7 @@ function applyInitialRoute() {
 
 async function loadI18n() {
     try {
-        const response = await fetch('i18n/ru.json?v=20260703-1', {cache: 'force-cache'});
+        const response = await fetch('i18n/ru.json?v=20260703-2', {cache: 'force-cache'});
         state.i18n = response.ok ? await response.json() : {};
         applyStaticI18n();
     } catch (_) {
@@ -196,7 +195,6 @@ async function initTelegram() {
     state.platform = result.auth.platform;
     state.platformUserId = result.auth.platform_user_id;
     state.user = result.user;
-    state.defaultManager = result.default_manager || null;
     return result.user;
 }
 
@@ -297,7 +295,6 @@ async function initWebUser() {
     state.platformUserId = webUserId;
     state.auth = {platform: 'web', platform_user_id: webUserId};
     state.user = result.user;
-    state.defaultManager = result.default_manager || null;
     if (referralCode && hasTeamAccess()) {
         localStorage.setItem('swpro_last_referral_code', referralCode);
         localStorage.removeItem('swpro_pending_referral_code');
@@ -315,7 +312,6 @@ async function consumeTelegramOidc() {
     state.platform = result.auth.platform;
     state.platformUserId = result.auth.platform_user_id;
     state.user = result.user;
-    state.defaultManager = result.default_manager || null;
     search.delete('oidc');
     const nextUrl = `${window.location.pathname}${search.toString() ? `?${search}` : ''}${window.location.hash}`;
     window.history.replaceState({}, '', nextUrl);
@@ -381,46 +377,6 @@ async function authorize() {
         body: JSON.stringify(payload),
     });
     state.user = result.user;
-    state.defaultManager = result.default_manager || null;
-    return result.user;
-}
-
-async function authorizeWithReferral(referralCode) {
-    if (telegramInitData()) {
-        const result = await api('telegram_auth.php', {
-            method: 'POST',
-            body: JSON.stringify({
-                init_data: telegramInitData(),
-                referral_code: referralCode,
-            }),
-        });
-        state.auth = result.auth;
-        state.platform = result.auth.platform;
-        state.platformUserId = result.auth.platform_user_id;
-        state.user = result.user;
-        state.defaultManager = result.default_manager || null;
-        return result.user;
-    }
-
-    if (!state.vkUser || !state.platformUserId) {
-        throw new Error(ui('auth.required_text'));
-    }
-
-    const result = await api('auth.php', {
-        method: 'POST',
-        body: JSON.stringify({
-            platform: state.platform,
-            platform_user_id: state.platformUserId,
-            first_name: state.vkUser.first_name,
-            last_name: state.vkUser.last_name,
-            username: state.vkUser.domain,
-            referral_code: referralCode,
-            link_token: getLinkToken(),
-            platform_meta: Object.fromEntries(vkLaunchParams().entries()),
-        }),
-    });
-    state.user = result.user;
-    state.defaultManager = result.default_manager || null;
     return result.user;
 }
 
@@ -825,9 +781,7 @@ function renderReferralGate() {
         tab.disabled = true;
         tab.classList.remove('active');
     });
-    const manager = state.defaultManager;
     const linkReferralCode = normalizeReferralCodeInput(getReferralCode());
-    const suggestedCode = linkReferralCode || manager?.referral_code || '';
     page.innerHTML = `
         <section class="panel auth-panel">
             <h2>${escapeHtml(ui('referral.required_title'))}</h2>
@@ -839,21 +793,6 @@ function renderReferralGate() {
                     <span class="muted">${escapeHtml(ui('referral.link_code_hint'))}</span>
                 </div>
             ` : ''}
-            ${!linkReferralCode && manager ? `
-                <div class="default-manager">
-                    <div class="default-avatar">${escapeHtml((manager.manager_name || 'SW').slice(0, 2).toUpperCase())}</div>
-                    <div>
-                        <strong>${escapeHtml(manager.manager_name || ui('referral.default_manager'))}</strong>
-                        ${manager.reseller_name ? `<span class="muted">${escapeHtml(manager.reseller_name)}</span>` : ''}
-                        <span class="code">${escapeHtml(manager.referral_code || '')}</span>
-                    </div>
-                </div>
-            ` : ''}
-            <form class="referral-form" id="referral-form">
-                <input name="referral_code" autocomplete="one-time-code" required value="${escapeHtml(suggestedCode)}" placeholder="${escapeHtml(ui('referral.code_placeholder'))}">
-                <button class="primary" type="submit">${escapeHtml(ui('referral.submit'))}</button>
-                <div class="form-error" id="referral-error"></div>
-            </form>
         </section>
     `;
 }
@@ -2099,31 +2038,6 @@ page.addEventListener('submit', async (event) => {
             await render();
         } catch (exception) {
             if (error) error.textContent = exception instanceof Error ? exception.message : 'Не удалось сохранить анкету.';
-        } finally {
-            if (button) button.disabled = false;
-        }
-        return;
-    }
-    if (target instanceof HTMLFormElement && target.id === 'referral-form') {
-        event.preventDefault();
-        const error = target.querySelector('#referral-error');
-        const button = target.querySelector('button[type="submit"]');
-        const formData = new FormData(target);
-        const referralCode = normalizeReferralCodeInput(formData.get('referral_code'));
-        if (!referralCode) return;
-        if (error) error.textContent = '';
-        if (button) button.disabled = true;
-        try {
-            await authorizeWithReferral(referralCode);
-            if (!hasTeamAccess()) {
-                throw new Error(ui('referral.invalid_code'));
-            }
-            await loadOnboarding();
-            await loadConsultantProfile();
-            state.page = 'home';
-            await render();
-        } catch (exception) {
-            if (error) error.textContent = exception instanceof Error ? exception.message : ui('referral.invalid_code');
         } finally {
             if (button) button.disabled = false;
         }

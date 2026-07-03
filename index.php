@@ -21,30 +21,6 @@ if (!$profile && $referralCode) {
     }
 }
 
-if (!$profile && !$slug && !$referralCode) {
-    $stmt = db()->prepare(
-        'SELECT m.referral_code
-         FROM default_platform_managers dpm
-         JOIN managers m ON m.id = dpm.manager_id
-         WHERE dpm.platform = "web"
-           AND dpm.is_active = 1
-           AND m.is_active = 1
-           AND m.referral_code IS NOT NULL
-           AND m.referral_code <> ""
-         ORDER BY dpm.id
-         LIMIT 1'
-    );
-    $stmt->execute();
-    $defaultReferralCode = consultant_referral_code($stmt->fetchColumn() ?: null);
-    if ($defaultReferralCode) {
-        $candidate = consultant_profile_by_referral_code($defaultReferralCode);
-        if ($candidate && (int)$candidate['is_public'] === 1) {
-            $profile = $candidate;
-            $referralCode = $defaultReferralCode;
-        }
-    }
-}
-
 $payload = $profile ? consultant_profile_payload($profile) : null;
 $blocks = $payload['blocks'] ?? [];
 

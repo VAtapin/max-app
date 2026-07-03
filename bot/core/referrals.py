@@ -41,27 +41,6 @@ async def resolve_referral(referral_code: str | None) -> dict:
     return {"reseller_id": None, "manager_id": None, "owner_type": None}
 
 
-async def default_referral_code(platform: str) -> str | None:
-    async with cursor() as cur:
-        await cur.execute(
-            """
-            SELECT m.referral_code
-            FROM default_platform_managers dpm
-            INNER JOIN managers m ON m.id = dpm.manager_id
-            WHERE dpm.platform = %s
-              AND dpm.is_active = 1
-              AND m.is_active = 1
-              AND m.referral_code IS NOT NULL
-              AND m.referral_code <> ''
-            ORDER BY dpm.id
-            LIMIT 1
-            """,
-            (platform,),
-        )
-        row = await cur.fetchone()
-        return normalize_referral_code((row or {}).get("referral_code"))
-
-
 async def increment_registration(referral_code: str | None, platform: str) -> None:
     referral_code = normalize_referral_code(referral_code)
     if not referral_code:

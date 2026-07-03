@@ -291,46 +291,6 @@ function attach_referral_if_missing(array $user, ?string $referralCode): array
     return $updated->fetch() ?: $user;
 }
 
-function default_manager_card(?string $platform): ?array
-{
-    $platform = normalize_platform($platform ?: 'web');
-    $stmt = db()->prepare(
-        'SELECT m.id AS manager_id, m.name AS manager_name, m.referral_code,
-                r.name AS reseller_name
-         FROM default_platform_managers dpm
-         JOIN managers m ON m.id = dpm.manager_id
-         LEFT JOIN resellers r ON r.id = m.reseller_id
-         WHERE dpm.platform = :platform
-           AND dpm.is_active = 1
-           AND m.is_active = 1
-         LIMIT 1'
-    );
-    $stmt->execute(['platform' => $platform]);
-    $row = $stmt->fetch();
-    if (!$row) {
-        return null;
-    }
-
-    return [
-        'platform' => $platform,
-        'manager_id' => (int)$row['manager_id'],
-        'manager_name' => $row['manager_name'],
-        'reseller_name' => $row['reseller_name'],
-        'referral_code' => $row['referral_code'],
-    ];
-}
-
-function referral_code_or_platform_default(?string $referralCode, string $platform): ?string
-{
-    $referralCode = normalize_referral_code($referralCode);
-    if ($referralCode) {
-        return $referralCode;
-    }
-
-    $defaultManager = default_manager_card($platform);
-    return normalize_referral_code($defaultManager['referral_code'] ?? null);
-}
-
 function account_link_secret(): string
 {
     $config = app_config();
@@ -484,10 +444,6 @@ function create_or_get_user(array $data): array
 {
     $data = enrich_vk_ok_platform_data($data);
     $platform = normalize_platform($data['platform'] ?? 'VK');
-    $data['referral_code'] = referral_code_or_platform_default(
-        $data['referral_code'] ?? null,
-        $platform
-    );
     $platformUserId = (string)($data['platform_user_id'] ?? '');
     if ($platformUserId === '') {
         json_response(['error' => 'platform_user_id is required'], 422);

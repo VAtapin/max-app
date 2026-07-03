@@ -105,7 +105,6 @@ function crud_display_columns(string $moduleKey): array
             'reseller_name' => app_text('auto.k_86469fea3a4a'),
             'contacts' => app_text('auto.k_dba0fcb2cbbb'),
             'referral_code' => app_text('auto.k_b162c37f62ea'),
-            'default_platforms' => app_text('auto.k_89009febe5c6'),
             'users_count' => app_text('auto.k_0f0b8f55edcc'),
             'state' => app_text('auto.k_f7f293b5c58c'),
         ],
@@ -379,12 +378,10 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
             "SELECT m.id, m.name, m.email, m.phone, m.referral_code,
                     IF(m.is_active = 1, 'active', 'inactive') AS state,
                     r.name AS reseller_name,
-                    GROUP_CONCAT(DISTINCT dpm.platform ORDER BY FIELD(dpm.platform, 'telegram', 'VK', 'OK', 'MAX', 'web') SEPARATOR ',') AS default_platforms,
                     COUNT(DISTINCT eu.id) AS users_count
              FROM managers m
              LEFT JOIN resellers r ON r.id = m.reseller_id
              LEFT JOIN end_users eu ON eu.manager_id = m.id
-             LEFT JOIN default_platform_managers dpm ON dpm.manager_id = m.id AND dpm.is_active = 1
              $where
              GROUP BY m.id
              ORDER BY m.id DESC
@@ -640,13 +637,6 @@ function render_cell(string $moduleKey, string $key, array $row): string
             $html[] = render_platform_badge($platform) . '<div class="cell-muted">' . h($platformUserId) . '</div>';
         }
         return implode('', $html);
-    }
-
-    if ($key === 'default_platforms') {
-        $platforms = array_filter(explode(',', (string)($row[$key] ?? '')));
-        return $platforms
-            ? implode(' ', array_map(static fn($platform) => render_platform_badge($platform), $platforms))
-            : '—';
     }
 
     if ($key === 'platform') {
