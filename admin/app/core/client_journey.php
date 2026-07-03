@@ -102,6 +102,7 @@ function client_onboarding_status(array $user): array
     }
 
     $profileComplete = trim((string)($user['first_name'] ?? '')) !== ''
+        && trim((string)($user['last_name'] ?? '')) !== ''
         && !empty($user['gender'])
         && (!empty($user['birth_date']) || !empty($user['age_years']))
         && trim((string)($user['city'] ?? '')) !== '';
@@ -287,8 +288,8 @@ function complete_client_onboarding(int $endUserId, array $profile): array
     $ageYears = isset($profile['age_years']) ? (int)$profile['age_years'] : 0;
     $timezone = trim((string)($profile['timezone'] ?? 'Europe/Moscow'));
 
-    if ($firstName === '' || $city === '') {
-        throw new InvalidArgumentException('first_name and city are required');
+    if ($firstName === '' || $lastName === '' || $city === '') {
+        throw new InvalidArgumentException('first_name, last_name and city are required');
     }
     if ($ageYears > 0 && ($ageYears < 14 || $ageYears > 100)) {
         throw new InvalidArgumentException('age is invalid');
@@ -329,7 +330,7 @@ function complete_client_onboarding(int $endUserId, array $profile): array
     );
     $stmt->execute([
         'first_name' => $firstName,
-        'last_name' => $lastName !== '' ? $lastName : null,
+        'last_name' => $lastName,
         'gender' => $gender,
         'birth_date' => $birthDate !== '' ? $birthDate : null,
         'age_years' => $ageYears > 0 ? $ageYears : null,

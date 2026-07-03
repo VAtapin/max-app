@@ -21,6 +21,7 @@ if (!$profile && $referralCode) {
     }
 }
 
+$invalidReferralCode = $referralCode !== null && !$profile;
 $payload = $profile ? consultant_profile_payload($profile) : null;
 $blocks = $payload['blocks'] ?? [];
 
@@ -221,6 +222,9 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
                     <input name="ref" placeholder="Код консультанта" required>
                     <button type="submit">Открыть страницу</button>
                 </form>
+                <?php if ($invalidReferralCode): ?>
+                    <p class="form-error" role="alert">Код не найден или консультант неактивен. Проверьте код и попробуйте снова.</p>
+                <?php endif; ?>
                 <div class="landing-badges">
                     <span>Без корзины</span>
                     <span>Без оплат</span>

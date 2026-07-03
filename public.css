@@ -424,6 +424,11 @@ button {
     padding: 13px 14px;
 }
 
+.form-error {
+    color: #b42318;
+    margin: 10px 0 0;
+}
+
 .video-card {
     align-items: center;
     background: #ffffff;

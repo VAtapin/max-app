@@ -10,6 +10,30 @@ class StaffAccountError(RuntimeError):
     pass
 
 
+async def fill_user_names_if_missing(cur, user: dict, first_name: str | None, last_name: str | None) -> dict:
+    first_name = str(first_name or "").strip()
+    last_name = str(last_name or "").strip()
+    assignments: list[str] = []
+    params: list[object] = []
+
+    if first_name and not str(user.get("first_name") or "").strip():
+        assignments.append("first_name = %s")
+        params.append(first_name)
+    if last_name and not str(user.get("last_name") or "").strip():
+        assignments.append("last_name = %s")
+        params.append(last_name)
+    if not assignments:
+        return user
+
+    params.append(user["id"])
+    await cur.execute(
+        f"UPDATE end_users SET {', '.join(assignments)} WHERE id = %s",
+        tuple(params),
+    )
+    await cur.execute("SELECT * FROM end_users WHERE id = %s LIMIT 1", (user["id"],))
+    return await cur.fetchone() or user
+
+
 async def attach_referral_if_missing(user: dict, referral_code: str | None, platform: str) -> dict:
     normalized_code = normalize_referral_code(referral_code)
     if not normalized_code or user.get("reseller_id") or user.get("manager_id"):
@@ -98,9 +122,32 @@ async def get_or_create_user(
         existing = await cur.fetchone()
         if existing:
             await cur.execute(
+                """
+                UPDATE platform_accounts
+                SET username = COALESCE(NULLIF(%s, ''), username),
+                    first_name = COALESCE(NULLIF(%s, ''), first_name),
+                    last_name = COALESCE(NULLIF(%s, ''), last_name),
+                    display_name = COALESCE(
+                        NULLIF(TRIM(CONCAT_WS(' ', %s, %s)), ''),
+                        display_name
+                    )
+                WHERE platform = %s AND platform_user_id = %s
+                """,
+                (
+                    username,
+                    first_name,
+                    last_name,
+                    first_name,
+                    last_name,
+                    platform,
+                    platform_user_id,
+                ),
+            )
+            await cur.execute(
                 "UPDATE end_users SET last_activity_at = NOW() WHERE id = %s",
                 (existing["id"],),
             )
+            existing = await fill_user_names_if_missing(cur, existing, first_name, last_name)
             return await attach_referral_if_missing(existing, referral_code, platform)
 
         await cur.execute(
@@ -111,20 +158,40 @@ async def get_or_create_user(
         if legacy:
             await cur.execute(
                 """
-                INSERT INTO platform_accounts (end_user_id, platform, platform_user_id, username)
-                VALUES (%s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE end_user_id = VALUES(end_user_id), username = VALUES(username)
+                INSERT INTO platform_accounts (
+                    end_user_id, platform, platform_user_id, username,
+                    first_name, last_name, display_name
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, NULLIF(TRIM(CONCAT_WS(' ', %s, %s)), ''))
+                ON DUPLICATE KEY UPDATE
+                    end_user_id = VALUES(end_user_id),
+                    username = COALESCE(NULLIF(VALUES(username), ''), username),
+                    first_name = COALESCE(NULLIF(VALUES(first_name), ''), first_name),
+                    last_name = COALESCE(NULLIF(VALUES(last_name), ''), last_name),
+                    display_name = COALESCE(NULLIF(VALUES(display_name), ''), display_name)
                 """,
-                (legacy["id"], platform, platform_user_id, username),
+                (
+                    legacy["id"],
+                    platform,
+                    platform_user_id,
+                    username,
+                    first_name,
+                    last_name,
+                    first_name,
+                    last_name,
+                ),
             )
             await cur.execute(
                 "UPDATE end_users SET last_activity_at = NOW() WHERE id = %s",
                 (legacy["id"],),
             )
+            legacy = await fill_user_names_if_missing(cur, legacy, first_name, last_name)
             return await attach_referral_if_missing(legacy, referral_code, platform)
 
     normalized_referral_code = normalize_referral_code(referral_code)
     referral = await resolve_referral(normalized_referral_code)
+    if not referral["owner_type"]:
+        normalized_referral_code = None
 
     async with cursor() as cur:
         await cur.execute(
@@ -148,10 +215,22 @@ async def get_or_create_user(
         user_id = cur.lastrowid
         await cur.execute(
             """
-            INSERT INTO platform_accounts (end_user_id, platform, platform_user_id, username)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO platform_accounts (
+                end_user_id, platform, platform_user_id, username,
+                first_name, last_name, display_name
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, NULLIF(TRIM(CONCAT_WS(' ', %s, %s)), ''))
             """,
-            (user_id, platform, platform_user_id, username),
+            (
+                user_id,
+                platform,
+                platform_user_id,
+                username,
+                first_name,
+                last_name,
+                first_name,
+                last_name,
+            ),
         )
         await cur.execute(
             """

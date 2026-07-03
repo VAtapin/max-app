@@ -158,7 +158,7 @@ function require_platform_user(?array $data = null): array
     }
 
     if (empty($user['reseller_id']) && empty($user['manager_id'])) {
-        json_response(['error' => 'referral code is required'], 403);
+        json_response(['error' => 'referral_required'], 403);
     }
 
     return $user;
@@ -286,6 +286,37 @@ function attach_referral_if_missing(array $user, ?string $referralCode): array
         'id' => $user['id'],
     ]);
 
+    $updated = db()->prepare('SELECT * FROM end_users WHERE id = :id LIMIT 1');
+    $updated->execute(['id' => $user['id']]);
+    return $updated->fetch() ?: $user;
+}
+
+function fill_user_names_if_missing(array $user, array $data): array
+{
+    $firstName = trim((string)($data['first_name'] ?? ''));
+    $lastName = trim((string)($data['last_name'] ?? ''));
+    $currentFirstName = trim((string)($user['first_name'] ?? ''));
+    $currentLastName = trim((string)($user['last_name'] ?? ''));
+    $technicalPlaceholder = in_array((string)($user['platform'] ?? ''), ['VK', 'OK', 'web'], true)
+        && in_array($currentFirstName, ['VK', 'Web'], true)
+        && $currentLastName === 'User';
+    $assignments = [];
+    $params = ['id' => $user['id']];
+
+    if ($firstName !== '' && ($currentFirstName === '' || $technicalPlaceholder)) {
+        $assignments[] = 'first_name = :first_name';
+        $params['first_name'] = $firstName;
+    }
+    if ($lastName !== '' && ($currentLastName === '' || $technicalPlaceholder)) {
+        $assignments[] = 'last_name = :last_name';
+        $params['last_name'] = $lastName;
+    }
+    if (!$assignments) {
+        return $user;
+    }
+
+    $update = db()->prepare('UPDATE end_users SET ' . implode(', ', $assignments) . ' WHERE id = :id');
+    $update->execute($params);
     $updated = db()->prepare('SELECT * FROM end_users WHERE id = :id LIMIT 1');
     $updated->execute(['id' => $user['id']]);
     return $updated->fetch() ?: $user;
@@ -471,12 +502,14 @@ function create_or_get_user(array $data): array
             if ($linkTargetUserId && (int)$existing['id'] !== $linkTargetUserId) {
                 $linkedUser = link_existing_user_to_target($linkTargetUserId, (int)$existing['id']);
                 if ($linkedUser) {
+                    $linkedUser = fill_user_names_if_missing($linkedUser, $data);
                     return attach_referral_if_missing($linkedUser, $data['referral_code'] ?? null);
                 }
             }
             ensure_platform_account((int)$existing['id'], $account['platform'], $account['platform_user_id'], $account['username'] ?? null, $account['first_name'] ?? null, $account['last_name'] ?? null, $account['display_name'] ?? null);
             $touch = db()->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
             $touch->execute(['id' => $existing['id']]);
+            $existing = fill_user_names_if_missing($existing, $data);
             return attach_referral_if_missing($existing, $data['referral_code'] ?? null);
         }
     }
@@ -489,6 +522,7 @@ function create_or_get_user(array $data): array
             ensure_platform_account((int)$targetUser['id'], $platform, $platformUserId, $data['username'] ?? null, $data['first_name'] ?? null, $data['last_name'] ?? null, $data['display_name'] ?? null, false);
             $touch = db()->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
             $touch->execute(['id' => $targetUser['id']]);
+            $targetUser = fill_user_names_if_missing($targetUser, $data);
             return attach_referral_if_missing($targetUser, $data['referral_code'] ?? null);
         }
     }
@@ -504,6 +538,7 @@ function create_or_get_user(array $data): array
             ensure_platform_account((int)$legacyUser['id'], $account['platform'], $account['platform_user_id'], $account['username'] ?? null, $account['first_name'] ?? null, $account['last_name'] ?? null, $account['display_name'] ?? null, false);
             $touch = db()->prepare('UPDATE end_users SET last_activity_at = NOW() WHERE id = :id');
             $touch->execute(['id' => $legacyUser['id']]);
+            $legacyUser = fill_user_names_if_missing($legacyUser, $data);
             return attach_referral_if_missing($legacyUser, $data['referral_code'] ?? null);
         }
     }
@@ -516,6 +551,8 @@ function create_or_get_user(array $data): array
     if ($binding) {
         $managerId = $binding['manager_id'];
         $resellerId = $binding['reseller_id'];
+    } else {
+        $referralCode = null;
     }
 
     $insert = db()->prepare(
@@ -580,11 +617,20 @@ function ensure_platform_account(
 
     $sql = 'INSERT INTO platform_accounts (end_user_id, platform, platform_user_id, username, first_name, last_name, display_name)
             VALUES (:end_user_id, :platform, :platform_user_id, :username, :first_name, :last_name, :display_name)
-            ON DUPLICATE KEY UPDATE username = VALUES(username), first_name = VALUES(first_name), last_name = VALUES(last_name), display_name = VALUES(display_name)';
+            ON DUPLICATE KEY UPDATE
+              username = COALESCE(NULLIF(VALUES(username), ""), username),
+              first_name = COALESCE(NULLIF(VALUES(first_name), ""), first_name),
+              last_name = COALESCE(NULLIF(VALUES(last_name), ""), last_name),
+              display_name = COALESCE(NULLIF(VALUES(display_name), ""), display_name)';
     if ($moveExisting) {
         $sql = 'INSERT INTO platform_accounts (end_user_id, platform, platform_user_id, username, first_name, last_name, display_name)
                 VALUES (:end_user_id, :platform, :platform_user_id, :username, :first_name, :last_name, :display_name)
-                ON DUPLICATE KEY UPDATE end_user_id = VALUES(end_user_id), username = VALUES(username), first_name = VALUES(first_name), last_name = VALUES(last_name), display_name = VALUES(display_name)';
+                ON DUPLICATE KEY UPDATE
+                  end_user_id = VALUES(end_user_id),
+                  username = COALESCE(NULLIF(VALUES(username), ""), username),
+                  first_name = COALESCE(NULLIF(VALUES(first_name), ""), first_name),
+                  last_name = COALESCE(NULLIF(VALUES(last_name), ""), last_name),
+                  display_name = COALESCE(NULLIF(VALUES(display_name), ""), display_name)';
     }
 
     $stmt = db()->prepare($sql);

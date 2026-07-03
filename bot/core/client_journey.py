@@ -61,6 +61,7 @@ async def onboarding_status(user: dict) -> dict:
 
     profile_complete = bool(
         str(user.get("first_name") or "").strip()
+        and str(user.get("last_name") or "").strip()
         and user.get("gender")
         and (user.get("birth_date") or user.get("age_years"))
         and str(user.get("city") or "").strip()
@@ -204,7 +205,7 @@ async def complete_onboarding(
     end_user_id: int,
     *,
     first_name: str,
-    last_name: str | None,
+    last_name: str,
     gender: str,
     birth_date: date | None,
     age_years: int | None,
@@ -213,8 +214,8 @@ async def complete_onboarding(
 ) -> dict:
     if gender not in GENDERS:
         raise ValueError("Invalid gender")
-    if not first_name.strip() or not city.strip():
-        raise ValueError("Name and city are required")
+    if not first_name.strip() or not last_name.strip() or not city.strip():
+        raise ValueError("First name, last name and city are required")
     if age_years is not None and not 14 <= age_years <= 100:
         raise ValueError("Invalid age")
     if birth_date is None and age_years is None:
@@ -241,7 +242,7 @@ async def complete_onboarding(
             """,
             (
                 first_name.strip(),
-                last_name.strip() if last_name else None,
+                last_name.strip(),
                 gender,
                 birth_date,
                 age_years,

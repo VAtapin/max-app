@@ -65,6 +65,10 @@ class LeadFlow(StatesGroup):
     waiting_message = State()
 
 
+class ReferralFlow(StatesGroup):
+    waiting_code = State()
+
+
 class OnboardingFlow(StatesGroup):
     waiting_first_name = State()
     waiting_last_name = State()
@@ -98,6 +102,20 @@ def referral_from_start(text: str | None) -> str | None:
 
 def user_referral_code(user: dict) -> str | None:
     return user.get("referral_code_used")
+
+
+def has_consultant_binding(user: dict) -> bool:
+    return bool(user.get("manager_id") or user.get("reseller_id"))
+
+
+async def request_referral_code(message: Message, state: FSMContext, *, invalid: bool = False) -> None:
+    await state.set_state(ReferralFlow.waiting_code)
+    text = (
+        "Код не найден или консультант неактивен. Проверьте код и отправьте его ещё раз."
+        if invalid
+        else "Откройте персональную ссылку консультанта или отправьте его реферальный код сообщением."
+    )
+    await message.answer(text, reply_markup=ReplyKeyboardRemove())
 
 
 def diagnosis_test_id(tests: list[dict]) -> int | None:
@@ -163,6 +181,10 @@ async def start_profile_questionnaire(message: Message, state: FSMContext, user:
 
 
 async def continue_onboarding(message: Message, state: FSMContext, user: dict) -> bool:
+    if not has_consultant_binding(user):
+        await request_referral_code(message, state)
+        return False
+
     status = await onboarding_status(user)
     missing = set(status["missing_consents"])
     if "personal_data_consent" in missing or "user_agreement" in missing:
@@ -551,12 +573,41 @@ async def start_test(
 @router.message(Command("start"))
 async def start(message: Message, state: FSMContext) -> None:
     await state.clear()
+    referral_code = referral_from_start(message.text)
     try:
-        user = await resolve_user(message, referral_from_start(message.text))
+        user = await resolve_user(message, referral_code)
     except StaffAccountError:
         await message.answer(tr("staff.client_registration_blocked"), reply_markup=ReplyKeyboardRemove())
         return
 
+    if not has_consultant_binding(user):
+        await request_referral_code(message, state, invalid=bool(referral_code))
+        return
+
+    await send_consultant_welcome(message, user)
+    if await continue_onboarding(message, state, user):
+        await show_main_menu(message, user)
+
+
+@router.message(ReferralFlow.waiting_code)
+async def referral_code_message(message: Message, state: FSMContext) -> None:
+    referral_code = (message.text or "").strip()
+    if not referral_code:
+        await request_referral_code(message, state)
+        return
+
+    try:
+        user = await resolve_user(message, referral_code)
+    except StaffAccountError:
+        await state.clear()
+        await message.answer(tr("staff.client_registration_blocked"), reply_markup=ReplyKeyboardRemove())
+        return
+
+    if not has_consultant_binding(user):
+        await request_referral_code(message, state, invalid=True)
+        return
+
+    await state.clear()
     await send_consultant_welcome(message, user)
     if await continue_onboarding(message, state, user):
         await show_main_menu(message, user)
@@ -599,8 +650,8 @@ async def onboarding_decline(callback: CallbackQuery, state: FSMContext) -> None
 async def ask_last_name(message: Message, state: FSMContext, value: str | None = None) -> None:
     await state.set_state(OnboardingFlow.waiting_last_name)
     await message.answer(
-        "Укажите фамилию. Если не хотите указывать её сейчас, нажмите «Пропустить».",
-        reply_markup=use_profile_value_keyboard(value, "last_name", allow_skip=True),
+        "Укажите фамилию или подтвердите фамилию из Telegram.",
+        reply_markup=use_profile_value_keyboard(value, "last_name"),
     )
 
 
@@ -635,7 +686,11 @@ async def onboarding_first_name(message: Message, state: FSMContext) -> None:
 @router.callback_query(F.data == "onboarding:use:last_name")
 async def onboarding_use_last_name(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
-    await state.update_data(profile_last_name=str(data.get("profile_last_name") or "").strip())
+    value = str(data.get("profile_last_name") or callback.from_user.last_name or "").strip()
+    if not value:
+        await callback.answer("Напишите фамилию сообщением", show_alert=True)
+        return
+    await state.update_data(profile_last_name=value)
     if callback.message:
         await ask_gender(callback.message, state)
     await callback.answer()
@@ -643,17 +698,16 @@ async def onboarding_use_last_name(callback: CallbackQuery, state: FSMContext) -
 
 @router.callback_query(F.data == "onboarding:skip:last_name")
 async def onboarding_skip_last_name(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.update_data(profile_last_name="")
     if callback.message:
-        await ask_gender(callback.message, state)
-    await callback.answer()
+        await ask_last_name(callback.message, state)
+    await callback.answer("Фамилия обязательна", show_alert=True)
 
 
 @router.message(OnboardingFlow.waiting_last_name)
 async def onboarding_last_name(message: Message, state: FSMContext) -> None:
     value = (message.text or "").strip()
     if len(value) < 2:
-        await message.answer("Напишите фамилию полностью или нажмите «Пропустить».")
+        await message.answer("Напишите фамилию полностью.")
         return
     await state.update_data(profile_last_name=value)
     await ask_gender(message, state)
@@ -722,7 +776,7 @@ async def onboarding_marketing(callback: CallbackQuery, state: FSMContext) -> No
     updated = await complete_onboarding(
         int(user["id"]),
         first_name=str(data.get("profile_first_name") or user.get("first_name") or ""),
-        last_name=str(data.get("profile_last_name") or "") or None,
+        last_name=str(data.get("profile_last_name") or ""),
         gender=str(data.get("profile_gender") or "prefer_not_to_say"),
         birth_date=birth_date,
         age_years=int(data["profile_age_years"]) if data.get("profile_age_years") else None,
@@ -736,8 +790,11 @@ async def onboarding_marketing(callback: CallbackQuery, state: FSMContext) -> No
 
 
 @router.message(Command("app"))
-async def app_command(message: Message) -> None:
+async def app_command(message: Message, state: FSMContext) -> None:
     user = await resolve_user(message)
+    if not has_consultant_binding(user):
+        await request_referral_code(message, state)
+        return
     await message.answer(
         tr("app.open_text"),
         reply_markup=app_button(user_referral_code(user)),

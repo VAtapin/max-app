@@ -38,6 +38,8 @@ try {
 
     $name = trim((string)($claims['name'] ?? ''));
     $nameParts = preg_split('/\s+/u', $name, 2) ?: [];
+    $firstName = trim((string)($claims['given_name'] ?? ($nameParts[0] ?? '')));
+    $lastName = trim((string)($claims['family_name'] ?? ($nameParts[1] ?? '')));
     $telegramId = (string)($claims['id'] ?? $claims['sub'] ?? '');
     if ($telegramId === '') {
         throw new RuntimeException('Telegram user identifier is missing');
@@ -46,8 +48,8 @@ try {
         'platform' => 'telegram',
         'platform_user_id' => $telegramId,
         'username' => $claims['preferred_username'] ?? null,
-        'first_name' => $nameParts[0] ?? null,
-        'last_name' => $nameParts[1] ?? null,
+        'first_name' => $firstName !== '' ? $firstName : null,
+        'last_name' => $lastName !== '' ? $lastName : null,
         'referral_code' => $flow['referral_code'] ?: null,
         'link_token' => $flow['link_token'] ?: null,
     ]);

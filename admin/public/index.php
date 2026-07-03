@@ -29,11 +29,12 @@ function manager_referral_links(array $manager): array
     $baseUrl = rtrim(public_base_url(), '/');
     $miniAppUrl = trim((string)($config['integrations']['mini_app_url'] ?? ''));
     $vkAppId = preg_replace('/\D+/', '', (string)($config['integrations']['vk_app_id'] ?? '')) ?: '';
+    $okAppId = preg_replace('/\D+/', '', (string)($config['integrations']['ok_app_id'] ?? '')) ?: '';
     if ($miniAppUrl === '' && $baseUrl !== '') {
         $miniAppUrl = $baseUrl . '/vk-mini-app/';
     }
 
-    $telegramBot = trim((string)(getenv('TELEGRAM_BOT_USERNAME') ?: 'SWProAssistant_bot'));
+    $telegramBot = trim((string)($config['integrations']['telegram_bot_username'] ?? 'SWProAssistant_bot'));
     $encodedCode = rawurlencode($code);
     $links = [
         'telegram' => [
@@ -49,14 +50,21 @@ function manager_referral_links(array $manager): array
         ];
     }
 
-    if ($miniAppUrl !== '') {
-        $separator = str_contains($miniAppUrl, '?') ? '&' : '?';
+    if ($okAppId !== '') {
         $links['OK'] = [
             'label' => 'OK',
-            'url' => $miniAppUrl . $separator . 'ref=' . $encodedCode,
+            'url' => 'https://ok.ru/app/' . $okAppId . '?ref=' . $encodedCode,
         ];
+    }
+
+    if ($miniAppUrl !== '') {
+        $separator = str_contains($miniAppUrl, '?') ? '&' : '?';
         $links['MAX'] = [
             'label' => 'MAX',
+            'url' => $miniAppUrl . $separator . 'ref=' . $encodedCode,
+        ];
+        $links['web_app'] = [
+            'label' => 'Web Mini App',
             'url' => $miniAppUrl . $separator . 'ref=' . $encodedCode,
         ];
         $links['web'] = [
