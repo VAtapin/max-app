@@ -147,6 +147,9 @@ async def consultant_notification_reply(
 
     message_text = (message.text or message.caption or "").strip()
     has_supported_attachment = consultant_reply_attachment(message) is not None
+    if message.document and not has_supported_attachment:
+        await message.answer("Поддерживаются документы JPG, PNG, WEBP, PDF и MP4.")
+        return
     if not message_text and not has_supported_attachment:
         await message.answer("Ответьте текстом, фотографией, видео MP4 или документом PDF.")
         return
@@ -387,9 +390,9 @@ async def notify_manager_event(
         return
 
     action_path = (
-        f"/admin/crud.php?module=leads&action=edit&id={lead_id}"
+        f"/admin/public/crud.php?module=leads&action=edit&id={lead_id}"
         if lead_id
-        else "/admin/results.php"
+        else "/admin/public/results.php"
     )
     reply_markup = InlineKeyboardMarkup(
         inline_keyboard=[[

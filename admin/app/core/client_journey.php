@@ -491,8 +491,8 @@ function consultant_notification_action_url(?int $leadId = null): ?string
     }
 
     return $leadId
-        ? $baseUrl . '/admin/crud.php?module=leads&action=edit&id=' . $leadId
-        : $baseUrl . '/admin/results.php';
+        ? $baseUrl . '/admin/public/crud.php?module=leads&action=edit&id=' . $leadId
+        : $baseUrl . '/admin/public/results.php';
 }
 
 function send_client_journey_telegram_message(

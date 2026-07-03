@@ -48,7 +48,7 @@ function applyInitialRoute() {
 
 async function loadI18n() {
     try {
-        const response = await fetch('i18n/ru.json?v=20260703-3', {cache: 'force-cache'});
+        const response = await fetch('i18n/ru.json?v=20260703-4', {cache: 'force-cache'});
         state.i18n = response.ok ? await response.json() : {};
         applyStaticI18n();
     } catch (_) {
