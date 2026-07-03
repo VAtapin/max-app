@@ -1,12 +1,10 @@
-import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import aiomysql
-from dotenv import load_dotenv
 
-BOT_DIR = Path(__file__).resolve().parents[1]
-load_dotenv(BOT_DIR / ".env")
+from bot.core.environment import load_project_env, required_env
+
+load_project_env()
 
 _pool: aiomysql.Pool | None = None
 
@@ -15,11 +13,11 @@ async def init_pool() -> aiomysql.Pool:
     global _pool
     if _pool is None:
         _pool = await aiomysql.create_pool(
-            host=os.getenv("DB_HOST", "127.0.0.1"),
-            port=int(os.getenv("DB_PORT", "3306")),
-            user=os.getenv("DB_USER", "root"),
-            password=os.getenv("DB_PASSWORD", ""),
-            db=os.getenv("DB_NAME", "health_sales_system"),
+            host=required_env("DB_HOST"),
+            port=int(required_env("DB_PORT")),
+            user=required_env("DB_USERNAME"),
+            password=required_env("DB_PASSWORD"),
+            db=required_env("DB_DATABASE"),
             charset="utf8mb4",
             autocommit=True,
             minsize=1,

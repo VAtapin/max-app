@@ -109,7 +109,7 @@ def diagnosis_test_id(tests: list[dict]) -> int | None:
 
 
 def public_base_url() -> str:
-    return os.getenv("SWPRO_PUBLIC_BASE_URL", "https://swpro.ru").rstrip("/")
+    return os.getenv("SWPRO_PUBLIC_URL", "https://swpro.ru").rstrip("/")
 
 
 async def show_main_menu(message: Message, user: dict) -> None:
@@ -330,7 +330,7 @@ def public_url(path: str | None) -> str | None:
         return None
     if value.startswith(("http://", "https://")):
         return value
-    base_url = os.getenv("SWPRO_PUBLIC_BASE_URL", "https://swpro.ru").rstrip("/")
+    base_url = os.getenv("SWPRO_PUBLIC_URL", "https://swpro.ru").rstrip("/")
     return f"{base_url}/{value.lstrip('/')}"
 
 

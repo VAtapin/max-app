@@ -12,8 +12,8 @@ if [[ ! -x bot/.venv/bin/python ]]; then
   exit 1
 fi
 
-if [[ ! -f bot/.env ]]; then
-  echo "Missing bot/.env"
+if [[ ! -f deploy/plesk/live.env ]]; then
+  echo "Missing deploy/plesk/live.env"
   exit 1
 fi
 

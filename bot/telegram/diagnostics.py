@@ -1,19 +1,17 @@
 import asyncio
 import os
-from pathlib import Path
 
-from dotenv import load_dotenv
-
+from bot.core.environment import load_project_env
 from bot.db.mysql import close_pool, cursor, init_pool
 from bot.telegram.adapter import build_bot
 
 
 async def main() -> None:
-    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    env_file = load_project_env()
 
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN is not set in bot/.env")
+        raise RuntimeError(f"TELEGRAM_BOT_TOKEN is not set in {env_file}")
 
     bot = build_bot(token)
     try:

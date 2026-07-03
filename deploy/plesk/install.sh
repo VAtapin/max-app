@@ -22,18 +22,13 @@ set +a
 : "${DB_DATABASE:?DB_DATABASE is required}"
 : "${DB_USERNAME:?DB_USERNAME is required}"
 : "${DB_PASSWORD:?DB_PASSWORD is required}"
+: "${SWPRO_PUBLIC_URL:?SWPRO_PUBLIC_URL is required}"
+: "${SWPRO_MINI_APP_URL:?SWPRO_MINI_APP_URL is required}"
 
 PHP_BIN="${PHP_BIN:-php}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 cd "$PROJECT_ROOT"
-
-php_quote() {
-  local value="${1:-}"
-  value="${value//\\/\\\\}"
-  value="${value//\'/\\\'}"
-  printf "'%s'" "$value"
-}
 
 echo "Checking PHP..."
 "$PHP_BIN" -v
@@ -44,52 +39,8 @@ for extension in pdo_mysql mbstring openssl fileinfo; do
   }
 done
 
-echo "Writing PHP local config..."
-cat > admin/app/config/local.php <<PHP
-<?php
-
-return [
-    'app' => [
-        'base_url' => '/admin/public',
-        'public_url' => $(php_quote "${SWPRO_PUBLIC_URL:-https://swpro.ru}"),
-        'automation_timezone' => $(php_quote "${AUTOMATION_TIMEZONE:-Europe/Moscow}"),
-    ],
-    'db' => [
-        'host' => $(php_quote "$DB_HOST"),
-        'port' => $(php_quote "$DB_PORT"),
-        'database' => $(php_quote "$DB_DATABASE"),
-        'username' => $(php_quote "$DB_USERNAME"),
-        'password' => $(php_quote "$DB_PASSWORD"),
-        'charset' => 'utf8mb4',
-    ],
-    'integrations' => [
-        'telegram_bot_token' => $(php_quote "${TELEGRAM_BOT_TOKEN:-}"),
-        'telegram_oidc_client_id' => $(php_quote "${TELEGRAM_OIDC_CLIENT_ID:-}"),
-        'telegram_oidc_client_secret' => $(php_quote "${TELEGRAM_OIDC_CLIENT_SECRET:-}"),
-        'telegram_oidc_redirect_uri' => $(php_quote "${TELEGRAM_OIDC_REDIRECT_URI:-}"),
-        'mini_app_url' => $(php_quote "${SWPRO_MINI_APP_URL:-https://swpro.ru/vk-mini-app/}"),
-        'vk_app_id' => $(php_quote "${VK_APP_ID:-}"),
-        'vk_secure_key' => $(php_quote "${VK_SECURE_KEY:-}"),
-        'vk_service_token' => $(php_quote "${VK_SERVICE_TOKEN:-}"),
-    ],
-];
-PHP
-
-echo "Writing bot environment..."
-cat > bot/.env <<BOTENV
-DB_HOST=${DB_HOST}
-DB_PORT=${DB_PORT}
-DB_NAME=${DB_DATABASE}
-DB_USER=${DB_USERNAME}
-DB_PASSWORD=${DB_PASSWORD}
-
-TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-MAX_BOT_TOKEN=${MAX_BOT_TOKEN:-}
-MAX_API_BASE_URL=${MAX_API_BASE_URL:-https://botapi.max.ru}
-SWPRO_MINI_APP_URL=${SWPRO_MINI_APP_URL:-https://swpro.ru/vk-mini-app/}
-SWPRO_PUBLIC_BASE_URL=${SWPRO_PUBLIC_URL:-https://swpro.ru}
-LOG_LEVEL=${LOG_LEVEL:-INFO}
-BOTENV
+echo "Using the single application configuration: $ENV_FILE"
+rm -f admin/app/config/local.php bot/.env
 
 echo "Preparing Python virtualenv..."
 "$PYTHON_BIN" -m venv bot/.venv
@@ -106,7 +57,9 @@ fi
 
 if [[ -n "${APP_USER:-}" ]]; then
   echo "Applying ownership to $APP_USER:${APP_GROUP:-psacln}..."
-  chown -R "$APP_USER:${APP_GROUP:-psacln}" admin/uploads admin/app/config/local.php bot/.env bot/.venv || true
+  chown "$APP_USER:${APP_GROUP:-psacln}" "$ENV_FILE" || true
+  chmod 640 "$ENV_FILE" || true
+  chown -R "$APP_USER:${APP_GROUP:-psacln}" admin/uploads bot/.venv || true
 fi
 
 echo "Checking PHP syntax..."
@@ -124,8 +77,13 @@ for path in files:
 print(f"Python syntax OK: {len(files)} files")
 PY
 
+echo "Checking the configured PHP database..."
+SWPRO_ENV_FILE="$ENV_FILE" "$PHP_BIN" -r \
+  'require "admin/app/core/db.php"; echo "Database: ", db()->query("SELECT DATABASE()")->fetchColumn(), PHP_EOL;'
+
 echo "Install files prepared."
 echo "Next:"
-echo "  1) Import DB: deploy/plesk/import-db.sh $ENV_FILE"
-echo "  2) Install systemd bot service if needed: see deploy/plesk/max-app-telegram.service"
-echo "  3) Open https://${APP_DOMAIN}/api/index.php"
+echo "  1) Existing DB: deploy/plesk/migrate-db.sh $ENV_FILE"
+echo "  2) Empty disposable DB only: deploy/plesk/import-db.sh $ENV_FILE"
+echo "  3) Install systemd bot service if needed: see deploy/plesk/max-app-telegram.service"
+echo "  4) Open https://${APP_DOMAIN}/api/index.php"

@@ -32,7 +32,8 @@ After=network.target mariadb.service mysql.service
 [Service]
 Type=simple
 WorkingDirectory=${APP_ROOT}
-EnvironmentFile=${APP_ROOT}/bot/.env
+EnvironmentFile=${APP_ROOT}/deploy/plesk/live.env
+Environment=SWPRO_ENV_FILE=${APP_ROOT}/deploy/plesk/live.env
 ExecStart=${APP_ROOT}/bot/.venv/bin/python -m bot.telegram.main
 Restart=always
 RestartSec=5

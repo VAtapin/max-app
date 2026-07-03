@@ -66,7 +66,10 @@ cp deploy/plesk/env.example deploy/plesk/live.env
 nano deploy/plesk/live.env
 ```
 
-Fill DB credentials, Telegram token, public URLs and system user.
+Fill DB credentials, Telegram token, public URLs and system user. This is the
+only runtime configuration file used by the PHP application, bots, migrations
+and systemd service. Do not create `admin/app/config/local.php`, `bot/.env` or
+a root `.env`.
 
 For Telegram OpenID Connect on ordinary desktop/mobile web:
 
@@ -96,16 +99,10 @@ cd /var/www/vhosts/swpro.ru/httpdocs
 bash deploy/plesk/install.sh deploy/plesk/live.env
 ```
 
-This creates:
-
-- `admin/app/config/local.php`
-- `bot/.env`
-- `bot/.venv`
-- upload folders
-
-Private files are ignored by Git.
-
-Run this again after updates that add new private config values. Telegram Mini App requires the bot token in `admin/app/config/local.php` to verify `initData`.
+This creates `bot/.venv` and upload folders, validates the database connection,
+and removes legacy configuration copies. Private `deploy/plesk/live.env` is
+ignored by Git. Telegram Mini App reads its bot token from this file to verify
+`initData`.
 
 ## 6. Import Database
 

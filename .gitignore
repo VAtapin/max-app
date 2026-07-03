@@ -1,6 +1,4 @@
-/.env
-/admin/app/config/local.php
-/bot/.env
+/deploy/plesk/live.env
 /admin/uploads/*
 !/admin/uploads/.gitkeep
 !/admin/uploads/content/

@@ -5,11 +5,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ENV_FILE="${1:-$SCRIPT_DIR/live.env}"
 
-if [[ -f "$ENV_FILE" ]]; then
-  set -a
-  source "$ENV_FILE"
-  set +a
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Missing application configuration: $ENV_FILE"
+  exit 1
 fi
+
+set -a
+source "$ENV_FILE"
+set +a
+
+: "${DB_HOST:?DB_HOST is required}"
+: "${DB_PORT:?DB_PORT is required}"
+: "${DB_DATABASE:?DB_DATABASE is required}"
+: "${DB_USERNAME:?DB_USERNAME is required}"
+: "${DB_PASSWORD:?DB_PASSWORD is required}"
+: "${SWPRO_PUBLIC_URL:?SWPRO_PUBLIC_URL is required}"
+: "${SWPRO_MINI_APP_URL:?SWPRO_MINI_APP_URL is required}"
 
 PHP_BIN="${PHP_BIN:-php}"
 
@@ -18,68 +29,16 @@ cd "$PROJECT_ROOT"
 echo "Pulling latest code..."
 git pull --ff-only
 
-if [[ -f "$ENV_FILE" ]]; then
-  php_quote() {
-    local value="${1:-}"
-    value="${value//\\/\\\\}"
-    value="${value//\'/\\\'}"
-    printf "'%s'" "$value"
-  }
-
-  echo "Updating PHP local config..."
-  cat > admin/app/config/local.php <<PHP
-<?php
-
-return [
-    'app' => [
-        'base_url' => '/admin/public',
-        'public_url' => $(php_quote "${SWPRO_PUBLIC_URL:-https://swpro.ru}"),
-        'automation_timezone' => $(php_quote "${AUTOMATION_TIMEZONE:-Europe/Moscow}"),
-    ],
-    'db' => [
-        'host' => $(php_quote "$DB_HOST"),
-        'port' => $(php_quote "$DB_PORT"),
-        'database' => $(php_quote "$DB_DATABASE"),
-        'username' => $(php_quote "$DB_USERNAME"),
-        'password' => $(php_quote "$DB_PASSWORD"),
-        'charset' => 'utf8mb4',
-    ],
-    'integrations' => [
-        'telegram_bot_token' => $(php_quote "${TELEGRAM_BOT_TOKEN:-}"),
-        'telegram_oidc_client_id' => $(php_quote "${TELEGRAM_OIDC_CLIENT_ID:-}"),
-        'telegram_oidc_client_secret' => $(php_quote "${TELEGRAM_OIDC_CLIENT_SECRET:-}"),
-        'telegram_oidc_redirect_uri' => $(php_quote "${TELEGRAM_OIDC_REDIRECT_URI:-}"),
-        'mini_app_url' => $(php_quote "${SWPRO_MINI_APP_URL:-https://swpro.ru/vk-mini-app/}"),
-        'vk_app_id' => $(php_quote "${VK_APP_ID:-}"),
-        'vk_secure_key' => $(php_quote "${VK_SECURE_KEY:-}"),
-        'vk_service_token' => $(php_quote "${VK_SERVICE_TOKEN:-}"),
-    ],
-];
-PHP
-
-  echo "Updating bot environment..."
-  cat > bot/.env <<BOTENV
-DB_HOST=${DB_HOST}
-DB_PORT=${DB_PORT}
-DB_NAME=${DB_DATABASE}
-DB_USER=${DB_USERNAME}
-DB_PASSWORD=${DB_PASSWORD}
-
-TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-MAX_BOT_TOKEN=${MAX_BOT_TOKEN:-}
-MAX_API_BASE_URL=${MAX_API_BASE_URL:-https://botapi.max.ru}
-SWPRO_MINI_APP_URL=${SWPRO_MINI_APP_URL:-https://swpro.ru/vk-mini-app/}
-SWPRO_PUBLIC_BASE_URL=${SWPRO_PUBLIC_URL:-https://swpro.ru}
-LOG_LEVEL=${LOG_LEVEL:-INFO}
-BOTENV
-fi
+echo "Using the single application configuration: $ENV_FILE"
+rm -f admin/app/config/local.php bot/.env
 
 mkdir -p admin/uploads/products admin/uploads/content admin/uploads/tests admin/uploads/profiles admin/uploads/broadcasts admin/uploads/files admin/uploads/responses
 
-if [[ -f "$ENV_FILE" ]]; then
-  echo "Applying database migrations..."
-  bash deploy/plesk/migrate-db.sh "$ENV_FILE"
-fi
+echo "Applying database migrations..."
+bash deploy/plesk/migrate-db.sh "$ENV_FILE"
+echo "Checking the configured PHP database..."
+SWPRO_ENV_FILE="$ENV_FILE" "$PHP_BIN" -r \
+  'require "admin/app/core/db.php"; echo "Database: ", db()->query("SELECT DATABASE()")->fetchColumn(), PHP_EOL;'
 
 echo "Checking PHP syntax..."
 find admin api -name '*.php' -print0 | xargs -0 -n1 "$PHP_BIN" -l >/tmp/max-app-php-lint.log

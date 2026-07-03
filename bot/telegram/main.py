@@ -1,11 +1,10 @@
 import asyncio
 import logging
 import os
-from pathlib import Path
 
-from dotenv import load_dotenv
 from aiogram.types import BotCommand, MenuButtonCommands
 
+from bot.core.environment import load_project_env
 from bot.db.mysql import close_pool, init_pool
 from bot.telegram.adapter import build_bot, build_dispatcher
 
@@ -28,7 +27,7 @@ async def configure_telegram_menu(bot) -> None:
 
 
 async def main() -> None:
-    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    load_project_env()
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
     token = os.getenv("TELEGRAM_BOT_TOKEN")

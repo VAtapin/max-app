@@ -1,19 +1,66 @@
 <?php
 
-$config = [
+$projectRoot = dirname(__DIR__, 3);
+$envFile = (string)(getenv('SWPRO_ENV_FILE') ?: $projectRoot . '/deploy/plesk/live.env');
+$fileEnv = [];
+
+if (is_file($envFile)) {
+    $parsedEnv = parse_ini_file($envFile, false, INI_SCANNER_RAW);
+    if ($parsedEnv === false) {
+        throw new RuntimeException('Cannot parse the application configuration: ' . $envFile);
+    }
+    $fileEnv = $parsedEnv;
+}
+
+$env = static function (string $key, ?string $default = null) use ($fileEnv): ?string {
+    if (array_key_exists($key, $fileEnv)) {
+        return (string)$fileEnv[$key];
+    }
+
+    $processValue = getenv($key);
+    if ($processValue !== false) {
+        return (string)$processValue;
+    }
+
+    return $default;
+};
+
+foreach ($fileEnv as $key => $value) {
+    putenv($key . '=' . $value);
+    $_ENV[$key] = $value;
+}
+
+$requiredKeys = [
+    'DB_HOST',
+    'DB_PORT',
+    'DB_DATABASE',
+    'DB_USERNAME',
+    'DB_PASSWORD',
+    'SWPRO_PUBLIC_URL',
+    'SWPRO_MINI_APP_URL',
+];
+foreach ($requiredKeys as $requiredKey) {
+    if ($env($requiredKey) === null || $env($requiredKey) === '') {
+        throw new RuntimeException(
+            sprintf('Missing %s in the application configuration: %s', $requiredKey, $envFile)
+        );
+    }
+}
+
+return [
     'app' => [
         'name' => 'SWPro',
         'base_url' => '/admin/public',
-        'public_url' => rtrim((string)(getenv('SWPRO_PUBLIC_URL') ?: 'https://swpro.ru'), '/'),
+        'public_url' => rtrim((string)$env('SWPRO_PUBLIC_URL'), '/'),
         'session_name' => 'health_admin_session',
-        'automation_timezone' => getenv('AUTOMATION_TIMEZONE') ?: 'Europe/Moscow',
+        'automation_timezone' => $env('AUTOMATION_TIMEZONE', 'Europe/Moscow'),
     ],
     'db' => [
-        'host' => getenv('DB_HOST') ?: '127.0.0.1',
-        'port' => getenv('DB_PORT') ?: '3306',
-        'database' => getenv('DB_DATABASE') ?: 'health_sales_system',
-        'username' => getenv('DB_USERNAME') ?: 'root',
-        'password' => getenv('DB_PASSWORD') ?: '',
+        'host' => $env('DB_HOST'),
+        'port' => $env('DB_PORT'),
+        'database' => $env('DB_DATABASE'),
+        'username' => $env('DB_USERNAME'),
+        'password' => $env('DB_PASSWORD'),
         'charset' => 'utf8mb4',
     ],
     'security' => [
@@ -28,20 +75,13 @@ $config = [
         ],
     ],
     'integrations' => [
-        'telegram_bot_token' => getenv('TELEGRAM_BOT_TOKEN') ?: '',
-        'telegram_oidc_client_id' => getenv('TELEGRAM_OIDC_CLIENT_ID') ?: '',
-        'telegram_oidc_client_secret' => getenv('TELEGRAM_OIDC_CLIENT_SECRET') ?: '',
-        'telegram_oidc_redirect_uri' => getenv('TELEGRAM_OIDC_REDIRECT_URI') ?: '',
-        'mini_app_url' => getenv('SWPRO_MINI_APP_URL') ?: '',
-        'vk_app_id' => getenv('VK_APP_ID') ?: '',
-        'vk_secure_key' => getenv('VK_SECURE_KEY') ?: '',
-        'vk_service_token' => getenv('VK_SERVICE_TOKEN') ?: '',
+        'telegram_bot_token' => $env('TELEGRAM_BOT_TOKEN', ''),
+        'telegram_oidc_client_id' => $env('TELEGRAM_OIDC_CLIENT_ID', ''),
+        'telegram_oidc_client_secret' => $env('TELEGRAM_OIDC_CLIENT_SECRET', ''),
+        'telegram_oidc_redirect_uri' => $env('TELEGRAM_OIDC_REDIRECT_URI', ''),
+        'mini_app_url' => $env('SWPRO_MINI_APP_URL'),
+        'vk_app_id' => $env('VK_APP_ID', ''),
+        'vk_secure_key' => $env('VK_SECURE_KEY', ''),
+        'vk_service_token' => $env('VK_SERVICE_TOKEN', ''),
     ],
 ];
-
-$localConfig = __DIR__ . '/local.php';
-if (is_file($localConfig)) {
-    $config = array_replace_recursive($config, require $localConfig);
-}
-
-return $config;
