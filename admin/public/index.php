@@ -28,6 +28,7 @@ function manager_referral_links(array $manager): array
     $config = app_config();
     $baseUrl = rtrim(public_base_url(), '/');
     $miniAppUrl = trim((string)($config['integrations']['mini_app_url'] ?? ''));
+    $vkAppId = preg_replace('/\D+/', '', (string)($config['integrations']['vk_app_id'] ?? '')) ?: '';
     if ($miniAppUrl === '' && $baseUrl !== '') {
         $miniAppUrl = $baseUrl . '/vk-mini-app/';
     }
@@ -41,12 +42,15 @@ function manager_referral_links(array $manager): array
         ],
     ];
 
-    if ($miniAppUrl !== '') {
-        $separator = str_contains($miniAppUrl, '?') ? '&' : '?';
+    if ($vkAppId !== '') {
         $links['VK'] = [
             'label' => 'VK',
-            'url' => $miniAppUrl . $separator . 'ref=' . $encodedCode,
+            'url' => 'https://vk.com/app' . $vkAppId . '#ref=' . $encodedCode,
         ];
+    }
+
+    if ($miniAppUrl !== '') {
+        $separator = str_contains($miniAppUrl, '?') ? '&' : '?';
         $links['OK'] = [
             'label' => 'OK',
             'url' => $miniAppUrl . $separator . 'ref=' . $encodedCode,
