@@ -711,6 +711,10 @@ function renderOnboardingGate() {
     const user = state.user || {};
     const profile = state.consultantProfile?.profile || {};
     const missing = new Set(state.onboarding?.missing_consents || []);
+    const technicalName = ['Web', 'VK'].includes(String(user.first_name || '').trim())
+        && String(user.last_name || '').trim() === 'User';
+    const firstName = technicalName ? '' : (user.first_name || '');
+    const lastName = technicalName ? '' : (user.last_name || '');
     page.innerHTML = `
         <section class="panel onboarding-panel">
             <div class="consultant-strip onboarding-consultant">
@@ -743,11 +747,11 @@ function renderOnboardingGate() {
 
                 <label>
                     <span>Имя *</span>
-                    <input name="first_name" required maxlength="190" value="${escapeHtml(user.first_name || '')}">
+                    <input name="first_name" required maxlength="190" value="${escapeHtml(firstName)}">
                 </label>
                 <label>
                     <span>Фамилия *</span>
-                    <input name="last_name" required maxlength="190" value="${escapeHtml(user.last_name || '')}">
+                    <input name="last_name" required maxlength="190" value="${escapeHtml(lastName)}">
                 </label>
                 <label>
                     <span>Пол *</span>

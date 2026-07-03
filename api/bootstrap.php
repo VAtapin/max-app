@@ -304,6 +304,19 @@ function fill_user_names_if_missing(array $user, array $data): array
     $assignments = [];
     $params = ['id' => $user['id']];
 
+    if ($technicalPlaceholder && $firstName === '' && $lastName === '') {
+        $assignments[] = 'first_name = NULL';
+        $assignments[] = 'last_name = NULL';
+        $clearAccount = db()->prepare(
+            'UPDATE platform_accounts
+             SET first_name = NULL, last_name = NULL, display_name = NULL
+             WHERE end_user_id = :end_user_id
+               AND platform IN ("VK", "OK", "web")
+               AND first_name IN ("VK", "Web")
+               AND last_name = "User"'
+        );
+        $clearAccount->execute(['end_user_id' => $user['id']]);
+    }
     if ($firstName !== '' && ($currentFirstName === '' || $technicalPlaceholder)) {
         $assignments[] = 'first_name = :first_name';
         $params['first_name'] = $firstName;
@@ -476,6 +489,19 @@ function create_or_get_user(array $data): array
 {
     $data = enrich_vk_ok_platform_data($data);
     $platform = normalize_platform($data['platform'] ?? 'VK');
+    $firstName = trim((string)($data['first_name'] ?? ''));
+    $lastName = trim((string)($data['last_name'] ?? ''));
+    if (
+        in_array($platform, ['VK', 'OK', 'web'], true)
+        && in_array($firstName, ['VK', 'Web'], true)
+        && $lastName === 'User'
+    ) {
+        $data['first_name'] = null;
+        $data['last_name'] = null;
+        if (in_array(trim((string)($data['display_name'] ?? '')), ['VK User', 'Web User'], true)) {
+            $data['display_name'] = null;
+        }
+    }
     $platformUserId = (string)($data['platform_user_id'] ?? '');
     if ($platformUserId === '') {
         json_response(['error' => 'platform_user_id is required'], 422);
