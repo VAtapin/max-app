@@ -1,8 +1,3 @@
-CREATE DATABASE IF NOT EXISTS health_sales_system
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-USE health_sales_system;
 SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 0;

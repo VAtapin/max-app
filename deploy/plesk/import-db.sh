@@ -24,6 +24,21 @@ MYSQL_BIN="${MYSQL_BIN:-mysql}"
 
 cd "$PROJECT_ROOT"
 
+assert_database_neutral_sql() {
+  local sql_file="$1"
+  if grep -Eiq '^[[:space:]]*(USE[[:space:]]+|CREATE[[:space:]]+DATABASE|DROP[[:space:]]+DATABASE)' "$sql_file"; then
+    echo "Unsafe database selection found in $sql_file. The target database must come from DB_DATABASE."
+    exit 1
+  fi
+}
+
+assert_database_neutral_sql database/schema.sql
+assert_database_neutral_sql database/seed.sql
+for sql_file in database/migrations/*.sql; do
+  [[ -e "$sql_file" ]] || continue
+  assert_database_neutral_sql "$sql_file"
+done
+
 echo "Importing schema into ${DB_DATABASE}..."
 MYSQL_PWD="$DB_PASSWORD" "$MYSQL_BIN" \
   --host="$DB_HOST" \

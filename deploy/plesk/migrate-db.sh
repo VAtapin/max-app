@@ -44,6 +44,10 @@ SQL
 for migration in database/migrations/*.sql; do
   [[ -e "$migration" ]] || continue
   migration_name="$(basename "$migration")"
+  if grep -Eiq '^[[:space:]]*(USE[[:space:]]+|CREATE[[:space:]]+DATABASE|DROP[[:space:]]+DATABASE)' "$migration"; then
+    echo "Unsafe database selection found in $migration. The target database must come from DB_DATABASE."
+    exit 1
+  fi
   applied="$(
     MYSQL_PWD="$DB_PASSWORD" "$MYSQL_BIN" \
       --batch --skip-column-names \

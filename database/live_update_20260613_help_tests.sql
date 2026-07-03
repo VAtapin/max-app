@@ -1,5 +1,3 @@
-USE health_sales_system;
-
 ALTER TABLE consultant_profiles
   ADD COLUMN IF NOT EXISTS theme_key VARCHAR(50) NOT NULL DEFAULT 'classic' AFTER ok_url;
 
