@@ -1712,7 +1712,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
         <?php $consentStatus = client_onboarding_status($editRow); ?>
         <section class="panel form-panel">
             <h2>Анкета и согласия</h2>
-            <p><strong>Этап:</strong> <?= h(client_stage_labels()[(string)($editRow['client_stage'] ?? 'new')] ?? (string)$editRow['client_stage']) ?></p>
+            <p><strong>Этап:</strong> <?= h(user_client_stage_label($editRow)) ?></p>
             <p><strong>Анкета:</strong> <?= $consentStatus['profile_complete'] ? 'заполнена' : 'не завершена' ?></p>
             <p><strong>Обязательные согласия:</strong> <?= $consentStatus['missing_consents'] ? 'не подтверждены полностью' : 'подтверждены' ?></p>
             <p><strong>Информационные рассылки:</strong> <?= $consentStatus['marketing_consent'] ? 'разрешены' : 'не разрешены' ?></p>
@@ -1903,6 +1903,15 @@ require __DIR__ . '/../app/views/layouts/header.php';
         <section class="panel">
             <form method="get" class="filters">
                 <input type="hidden" name="module" value="users">
+                <label>
+                    <span>Записи</span>
+                    <?php $userScope = users_scope_filter(); ?>
+                    <select name="user_scope">
+                        <option value="clients" <?= $userScope === 'clients' ? 'selected' : '' ?>>Клиенты</option>
+                        <option value="visitors" <?= $userScope === 'visitors' ? 'selected' : '' ?>>Без консультанта</option>
+                        <option value="all" <?= $userScope === 'all' ? 'selected' : '' ?>>Все записи</option>
+                    </select>
+                </label>
                 <label>
                     <span>Этап</span>
                     <select name="client_stage">

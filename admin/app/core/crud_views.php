@@ -262,6 +262,32 @@ function scoped_where_with_alias(array $scope, string $alias): array
     return [$where, $params];
 }
 
+function users_scope_filter(): string
+{
+    $scope = (string)($_GET['user_scope'] ?? 'clients');
+    return in_array($scope, ['clients', 'visitors', 'all'], true) ? $scope : 'clients';
+}
+
+function append_sql_condition(string $where, string $condition): string
+{
+    return $where !== '' ? $where . ' AND ' . $condition : 'WHERE ' . $condition;
+}
+
+function user_is_unassigned(array $row): bool
+{
+    return empty($row['reseller_id']) && empty($row['manager_id']);
+}
+
+function user_client_stage_label(array $row): string
+{
+    if (user_is_unassigned($row)) {
+        return 'Ожидает реферальный код';
+    }
+
+    $stage = (string)($row['client_stage'] ?? 'new');
+    return client_stage_labels()[$stage] ?? $stage;
+}
+
 function crud_list_query(string $moduleKey, array $module, array $admin): array
 {
     if ($moduleKey === 'users') {
@@ -269,6 +295,13 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
         $where = $where
             ? $where . ' AND eu.merged_into_user_id IS NULL'
             : 'WHERE eu.merged_into_user_id IS NULL';
+
+        $userScope = users_scope_filter();
+        if ($userScope === 'clients') {
+            $where .= ' AND (eu.reseller_id IS NOT NULL OR eu.manager_id IS NOT NULL)';
+        } elseif ($userScope === 'visitors') {
+            $where .= ' AND eu.reseller_id IS NULL AND eu.manager_id IS NULL';
+        }
 
         $stage = (string)($_GET['client_stage'] ?? '');
         if ($stage !== '' && isset(client_stage_labels()[$stage])) {
@@ -293,6 +326,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
         return [
             "SELECT eu.id, CONCAT_WS(' ', NULLIF(eu.first_name, ''), NULLIF(eu.last_name, '')) AS full_name,
                     eu.username, eu.platform, eu.platform_user_id, eu.status, eu.created_at,
+                    eu.reseller_id, eu.manager_id,
                     eu.gender, eu.birth_date, eu.age_years, eu.city, eu.client_stage,
                     eu.onboarding_completed_at, eu.last_activity_at,
                     r.name AS reseller_name, m.name AS manager_name,
@@ -569,13 +603,21 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
     }
 
     if ($moduleKey === 'users' && $column === 'client_profile') {
+        if (
+            trim((string)($row['city'] ?? '')) === ''
+            && empty($row['gender'])
+            && empty($row['birth_date'])
+            && empty($row['age_years'])
+        ) {
+            return '—';
+        }
         $gender = client_gender_labels()[(string)($row['gender'] ?? '')] ?? '—';
         $age = $row['age_years'] ?: ($row['birth_date'] ? date_diff(date_create((string)$row['birth_date']), date_create('today'))->y : null);
         return trim((string)($row['city'] ?? '')) . "\n" . $gender . ($age ? ', ' . $age . ' лет' : '');
     }
 
     if ($moduleKey === 'users' && $column === 'client_stage') {
-        return client_stage_labels()[(string)($row['client_stage'] ?? 'new')] ?? (string)($row['client_stage'] ?? '');
+        return user_client_stage_label($row);
     }
 
     if ($moduleKey === 'users' && $column === 'checkup_status') {
@@ -594,7 +636,7 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
 function status_badge_class(string $value): string
 {
     return match ($value) {
-        'new', 'none', status_label('none') => 'badge badge-new',
+        'new', 'none', 'Присоединился', 'Ожидает реферальный код', status_label('none') => 'badge badge-new',
         'contacted', 'sent', status_label('contacted'), status_label('sent') => 'badge badge-sent',
         'interested', 'pending', status_label('interested'), status_label('pending') => 'badge badge-pending',
         'closed', status_label('closed') => 'badge badge-closed',

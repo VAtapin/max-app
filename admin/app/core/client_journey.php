@@ -6,7 +6,7 @@ require_once __DIR__ . '/helpers.php';
 function client_stage_labels(): array
 {
     return [
-        'new' => 'Новый',
+        'new' => 'Присоединился',
         'profile_completed' => 'Анкета заполнена',
         'test_started' => 'Чек-ап начат',
         'test_completed' => 'Чек-ап завершён',

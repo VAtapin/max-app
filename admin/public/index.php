@@ -101,13 +101,30 @@ function count_table(string $sql, array $params = []): int
     return (int)$stmt->fetchColumn();
 }
 
+function append_where_condition(string $where, string $condition): string
+{
+    return $where !== '' ? $where . ' AND ' . $condition : 'WHERE ' . $condition;
+}
+
+function alias_user_where(string $where): string
+{
+    return str_replace(
+        ['WHERE reseller_id', 'WHERE manager_id', 'AND reseller_id', 'AND manager_id', 'OR reseller_id', 'OR manager_id'],
+        ['WHERE eu.reseller_id', 'WHERE eu.manager_id', 'AND eu.reseller_id', 'AND eu.manager_id', 'OR eu.reseller_id', 'OR eu.manager_id'],
+        $where
+    );
+}
+
 [$userWhere, $userParams] = scope_where_for_users($admin);
 [$leadWhere, $leadParams] = scope_where_for_leads($admin);
-$userAliasWhere = str_replace(['WHERE reseller_id', 'WHERE manager_id'], ['WHERE eu.reseller_id', 'WHERE eu.manager_id'], $userWhere);
+$assignedUserWhere = append_where_condition($userWhere, '(reseller_id IS NOT NULL OR manager_id IS NOT NULL)');
+$visitorUserWhere = append_where_condition($userWhere, 'reseller_id IS NULL AND manager_id IS NULL');
+$assignedUserAliasWhere = append_where_condition(alias_user_where($userWhere), '(eu.reseller_id IS NOT NULL OR eu.manager_id IS NOT NULL)');
 
 $stats = [
-    'users' => count_table("SELECT COUNT(*) FROM end_users $userWhere", $userParams),
-    'new_today' => count_table("SELECT COUNT(*) FROM end_users $userWhere " . ($userWhere ? 'AND' : 'WHERE') . ' DATE(created_at) = CURRENT_DATE', $userParams),
+    'users' => count_table("SELECT COUNT(*) FROM end_users $assignedUserWhere", $userParams),
+    'new_today' => count_table("SELECT COUNT(*) FROM end_users $assignedUserWhere AND DATE(created_at) = CURRENT_DATE", $userParams),
+    'visitors' => count_table("SELECT COUNT(*) FROM end_users $visitorUserWhere", $userParams),
     'managers' => count_table($admin['role'] === 'superadmin'
         ? 'SELECT COUNT(*) FROM managers'
         : 'SELECT COUNT(*) FROM managers WHERE reseller_id = :reseller_id',
@@ -115,8 +132,8 @@ $stats = [
     ),
     'resellers' => $admin['role'] === 'superadmin' ? count_table('SELECT COUNT(*) FROM resellers') : 0,
     'tests' => count_table(
-        "SELECT COUNT(*) FROM user_test_sessions uts INNER JOIN end_users eu ON eu.id = uts.end_user_id $userAliasWhere "
-        . ($userAliasWhere ? 'AND' : 'WHERE') . ' uts.completed_at IS NOT NULL',
+        "SELECT COUNT(*) FROM user_test_sessions uts INNER JOIN end_users eu ON eu.id = uts.end_user_id $assignedUserAliasWhere
+         AND uts.completed_at IS NOT NULL",
         $userParams
     ),
     'leads' => count_table("SELECT COUNT(*) FROM leads $leadWhere", $leadParams),
@@ -125,7 +142,7 @@ $stats = [
 $stageStmt = db()->prepare(
     "SELECT client_stage, COUNT(*) AS total
      FROM end_users
-     $userWhere
+     $assignedUserWhere
      GROUP BY client_stage"
 );
 $stageStmt->execute($userParams);
@@ -147,11 +164,11 @@ if ($subscriptionResellerId > 0) {
     $subscription = $subscriptionStmt->fetch() ?: null;
 }
 
-$recentStmt = db()->prepare("SELECT id, platform, username, first_name, created_at FROM end_users $userWhere ORDER BY id DESC LIMIT 8");
+$recentStmt = db()->prepare("SELECT id, platform, username, first_name, created_at FROM end_users $assignedUserWhere ORDER BY id DESC LIMIT 8");
 $recentStmt->execute($userParams);
 $recentUsers = $recentStmt->fetchAll();
 
-$platformStmt = db()->prepare("SELECT platform, COUNT(*) AS total FROM end_users $userWhere GROUP BY platform ORDER BY total DESC");
+$platformStmt = db()->prepare("SELECT platform, COUNT(*) AS total FROM end_users $assignedUserWhere GROUP BY platform ORDER BY total DESC");
 $platformStmt->execute($userParams);
 $platforms = $platformStmt->fetchAll();
 $dashboardManager = dashboard_manager($admin);
@@ -218,14 +235,15 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php endif; ?>
 
 <div class="grid stats-grid">
-    <a class="stat" href="crud.php?module=users"><span>Клиенты</span><strong><?= $stats['users'] ?></strong></a>
-    <a class="stat" href="crud.php?module=users&client_stage=new"><span>Новые сегодня</span><strong><?= $stats['new_today'] ?></strong></a>
+    <a class="stat" href="crud.php?module=users&user_scope=clients"><span>Клиенты</span><strong><?= $stats['users'] ?></strong></a>
+    <a class="stat" href="crud.php?module=users&user_scope=clients&client_stage=new"><span>Присоединились сегодня</span><strong><?= $stats['new_today'] ?></strong></a>
+    <?php if ($admin['role'] === 'superadmin'): ?><a class="stat" href="crud.php?module=users&user_scope=visitors"><span>Без консультанта</span><strong><?= $stats['visitors'] ?></strong></a><?php endif; ?>
     <?php if (can_manage('managers', $admin)): ?><a class="stat" href="crud.php?module=managers"><span>Консультанты</span><strong><?= $stats['managers'] ?></strong></a><?php endif; ?>
     <?php if (can_manage('resellers', $admin)): ?><a class="stat" href="crud.php?module=resellers"><span>Лидеры</span><strong><?= $stats['resellers'] ?></strong></a><?php endif; ?>
     <a class="stat" href="results.php"><span>Завершили чек-ап</span><strong><?= $stats['tests'] ?></strong></a>
     <a class="stat" href="crud.php?module=leads"><span>Обращения</span><strong><?= $stats['leads'] ?></strong></a>
-    <a class="stat" href="crud.php?module=users&client_stage=test_started"><span>Чек-ап начат</span><strong><?= $stageStats['test_started'] ?? 0 ?></strong></a>
-    <a class="stat" href="crud.php?module=users&client_stage=consultation_requested"><span>Ждут связи</span><strong><?= $stageStats['consultation_requested'] ?? 0 ?></strong></a>
+    <a class="stat" href="crud.php?module=users&user_scope=clients&client_stage=test_started"><span>Чек-ап начат</span><strong><?= $stageStats['test_started'] ?? 0 ?></strong></a>
+    <a class="stat" href="crud.php?module=users&user_scope=clients&client_stage=consultation_requested"><span>Ждут связи</span><strong><?= $stageStats['consultation_requested'] ?? 0 ?></strong></a>
 </div>
 
 <div class="two-columns">
