@@ -360,11 +360,15 @@ function scoped_end_user_exists(int $endUserId, array $admin): bool
 function user_display_label(array $row): string
 {
     $name = trim((string)($row['full_name'] ?? ''));
+    if (is_technical_client_name($name)) {
+        $name = '';
+    }
     if ($name === '') {
         $name = trim((string)($row['username'] ?? ''));
     }
     if ($name === '') {
-        $name = '#' . (int)$row['id'];
+        $platform = trim((string)($row['platform'] ?? ''));
+        $name = ($platform ? platform_label($platform) . ' клиент ' : 'Клиент ') . '#' . (int)$row['id'];
     }
 
     $platform = trim((string)($row['platform'] ?? ''));
@@ -817,7 +821,7 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin)
         }
     }
 
-    if ($moduleKey === 'users' && !empty($payload['manager_id']) && !empty($payload['reseller_id'])) {
+    if (in_array($moduleKey, ['users', 'leads'], true) && !empty($payload['manager_id']) && !empty($payload['reseller_id'])) {
         $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id LIMIT 1');
         $stmt->execute(['id' => (int)$payload['manager_id']]);
         $manager = $stmt->fetch();
@@ -863,15 +867,19 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin)
     return $errors;
 }
 
+function manager_reseller_id(int $managerId): ?int
+{
+    $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id LIMIT 1');
+    $stmt->execute(['id' => $managerId]);
+    $manager = $stmt->fetch();
+
+    return $manager && $manager['reseller_id'] !== null ? (int)$manager['reseller_id'] : null;
+}
+
 function apply_role_defaults(string $moduleKey, array $payload, array $admin): array
 {
-    if ($moduleKey === 'users' && !empty($payload['manager_id'])) {
-        $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id LIMIT 1');
-        $stmt->execute(['id' => (int)$payload['manager_id']]);
-        $manager = $stmt->fetch();
-        if ($manager) {
-            $payload['reseller_id'] = $manager['reseller_id'] !== null ? (int)$manager['reseller_id'] : null;
-        }
+    if (in_array($moduleKey, ['users', 'leads'], true) && !empty($payload['manager_id'])) {
+        $payload['reseller_id'] = manager_reseller_id((int)$payload['manager_id']);
     }
 
     if ($admin['role'] === 'reseller' && in_array($moduleKey, ['managers', 'users', 'leads'], true)) {
@@ -911,6 +919,128 @@ function apply_role_defaults(string $moduleKey, array $payload, array $admin): a
     }
 
     return $payload;
+}
+
+function nullable_int_value(mixed $value): ?int
+{
+    return $value === null || $value === '' ? null : (int)$value;
+}
+
+function sync_active_leads_assignment(int $endUserId, ?int $resellerId, ?int $managerId): int
+{
+    $stmt = db()->prepare(
+        'UPDATE leads
+         SET reseller_id = :reseller_id,
+             manager_id = :manager_id
+         WHERE end_user_id = :end_user_id
+           AND status IN ("new", "contacted", "interested")'
+    );
+    $stmt->execute([
+        'reseller_id' => $resellerId,
+        'manager_id' => $managerId,
+        'end_user_id' => $endUserId,
+    ]);
+
+    return $stmt->rowCount();
+}
+
+function sync_consultant_notifications_assignment(int $endUserId, ?int $resellerId, ?int $managerId): int
+{
+    $stmt = db()->prepare(
+        'UPDATE IGNORE consultant_notifications
+         SET reseller_id = :reseller_id,
+             manager_id = :manager_id
+         WHERE end_user_id = :end_user_id
+           AND is_read = 0'
+    );
+    $stmt->execute([
+        'reseller_id' => $resellerId,
+        'manager_id' => $managerId,
+        'end_user_id' => $endUserId,
+    ]);
+
+    return $stmt->rowCount();
+}
+
+function log_end_user_transfer(
+    int $endUserId,
+    ?int $oldResellerId,
+    ?int $oldManagerId,
+    ?int $newResellerId,
+    ?int $newManagerId,
+    array $admin,
+    string $action,
+    array $extra = []
+): void {
+    if ($oldResellerId === $newResellerId && $oldManagerId === $newManagerId) {
+        return;
+    }
+
+    log_activity('admin', (int)$admin['id'], $action, 'end_users', $endUserId, $extra + [
+        'old_reseller_id' => $oldResellerId,
+        'old_manager_id' => $oldManagerId,
+        'new_reseller_id' => $newResellerId,
+        'new_manager_id' => $newManagerId,
+    ]);
+}
+
+function sync_user_assignment_from_lead(int $leadId, array $leadBefore, array $payload, array $admin): void
+{
+    $endUserId = nullable_int_value($payload['end_user_id'] ?? $leadBefore['end_user_id'] ?? null);
+    if (!$endUserId) {
+        return;
+    }
+
+    $oldLeadResellerId = nullable_int_value($leadBefore['reseller_id'] ?? null);
+    $oldLeadManagerId = nullable_int_value($leadBefore['manager_id'] ?? null);
+    $newResellerId = nullable_int_value($payload['reseller_id'] ?? null);
+    $newManagerId = nullable_int_value($payload['manager_id'] ?? null);
+    if ($newResellerId === null && $newManagerId === null) {
+        return;
+    }
+    if ($oldLeadResellerId === $newResellerId && $oldLeadManagerId === $newManagerId) {
+        return;
+    }
+
+    $stmt = db()->prepare('SELECT reseller_id, manager_id FROM end_users WHERE id = :id LIMIT 1');
+    $stmt->execute(['id' => $endUserId]);
+    $userBefore = $stmt->fetch();
+    if (!$userBefore) {
+        return;
+    }
+
+    $oldUserResellerId = nullable_int_value($userBefore['reseller_id'] ?? null);
+    $oldUserManagerId = nullable_int_value($userBefore['manager_id'] ?? null);
+
+    $update = db()->prepare(
+        'UPDATE end_users
+         SET reseller_id = :reseller_id,
+             manager_id = :manager_id
+         WHERE id = :id'
+    );
+    $update->execute([
+        'reseller_id' => $newResellerId,
+        'manager_id' => $newManagerId,
+        'id' => $endUserId,
+    ]);
+
+    $updatedLeads = sync_active_leads_assignment($endUserId, $newResellerId, $newManagerId);
+    $updatedNotifications = sync_consultant_notifications_assignment($endUserId, $newResellerId, $newManagerId);
+
+    log_end_user_transfer(
+        $endUserId,
+        $oldUserResellerId,
+        $oldUserManagerId,
+        $newResellerId,
+        $newManagerId,
+        $admin,
+        'transfer_end_user_from_lead',
+        [
+            'lead_id' => $leadId,
+            'updated_active_leads' => $updatedLeads,
+            'updated_unread_notifications' => $updatedNotifications,
+        ]
+    );
 }
 
 function detach_owner_content(string $ownerType, int $ownerId): void
@@ -1161,6 +1291,10 @@ function save_record(string $moduleKey, array $module, array $payload, ?int $id,
             $beforeStmt = db()->prepare('SELECT reseller_id, manager_id, client_stage FROM end_users WHERE id = :id LIMIT 1');
             $beforeStmt->execute(['id' => $id]);
             $before = $beforeStmt->fetch();
+        } elseif ($moduleKey === 'leads') {
+            $beforeStmt = db()->prepare('SELECT end_user_id, reseller_id, manager_id FROM leads WHERE id = :id LIMIT 1');
+            $beforeStmt->execute(['id' => $id]);
+            $before = $beforeStmt->fetch();
         }
 
         $assignments = implode(', ', array_map(static fn($column) => "`$column` = :$column", $columns));
@@ -1175,12 +1309,21 @@ function save_record(string $moduleKey, array $module, array $payload, ?int $id,
             $newResellerId = $payload['reseller_id'] !== null ? (int)$payload['reseller_id'] : null;
             $newManagerId = $payload['manager_id'] !== null ? (int)$payload['manager_id'] : null;
             if ($oldResellerId !== $newResellerId || $oldManagerId !== $newManagerId) {
-                log_activity('admin', (int)$admin['id'], 'transfer_end_user', 'end_users', $id, [
-                    'old_reseller_id' => $oldResellerId,
-                    'old_manager_id' => $oldManagerId,
-                    'new_reseller_id' => $newResellerId,
-                    'new_manager_id' => $newManagerId,
-                ]);
+                $updatedLeads = sync_active_leads_assignment($id, $newResellerId, $newManagerId);
+                $updatedNotifications = sync_consultant_notifications_assignment($id, $newResellerId, $newManagerId);
+                log_end_user_transfer(
+                    $id,
+                    $oldResellerId,
+                    $oldManagerId,
+                    $newResellerId,
+                    $newManagerId,
+                    $admin,
+                    'transfer_end_user',
+                    [
+                        'updated_active_leads' => $updatedLeads,
+                        'updated_unread_notifications' => $updatedNotifications,
+                    ]
+                );
             }
             $oldStage = (string)($before['client_stage'] ?? 'new');
             $newStage = (string)($payload['client_stage'] ?? $oldStage);
@@ -1202,6 +1345,9 @@ function save_record(string $moduleKey, array $module, array $payload, ?int $id,
                     'actor_id' => $admin['id'],
                 ]);
             }
+        }
+        if ($moduleKey === 'leads' && $before) {
+            sync_user_assignment_from_lead($id, $before, $payload, $admin);
         }
 
         return $id;
@@ -1339,6 +1485,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = normalize_module_payload($moduleKey, $payload);
     $payload = apply_file_uploads($moduleKey, $formFields, $payload, $errors);
     $errors = array_merge($errors, validate_payload($formFields, $payload));
+    $payload = apply_role_defaults($moduleKey, $payload, $admin);
     $errors = array_merge($errors, validate_scope_payload($moduleKey, $payload, $admin));
     if (!$errors) {
         try {
@@ -1591,7 +1738,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         <tr>
                             <td><?= render_platform_badge((string)$account['platform']) ?></td>
                             <td><?= h((string)$account['platform_user_id']) ?></td>
-                            <td><?= h(trim((string)($account['display_name'] ?? '')) ?: trim((string)(($account['first_name'] ?? '') . ' ' . ($account['last_name'] ?? ''))) ?: '—') ?></td>
+                            <td><?= h(crud_cell_value('platform_accounts', 'platform_profile', $account)) ?></td>
                             <td><?= h((string)($account['username'] ?? '')) ?></td>
                             <td><?= h((string)$account['created_at']) ?></td>
                         </tr>

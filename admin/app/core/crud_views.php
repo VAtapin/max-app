@@ -111,6 +111,7 @@ function crud_display_columns(string $moduleKey): array
         'users' => [
             'id' => 'ID',
             'display_name' => app_text('auto.k_51aff1853949'),
+            'platform_accounts_summary' => app_text('user_platforms.title'),
             'client_profile' => 'Анкета',
             'client_stage' => 'Этап',
             'checkup_status' => 'Чек-ап',
@@ -332,9 +333,11 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
         $baseWhere = $where ?: 'WHERE 1=1';
         $baseWhere = append_lead_filter_sql($baseWhere, $filters, $params);
         return [
-            "SELECT l.id, l.status, l.source_platform, l.message, l.created_at,
+            "SELECT l.id, l.end_user_id, l.status, l.source_platform, l.message, l.created_at,
                     CONCAT_WS(' ', NULLIF(eu.first_name, ''), NULLIF(eu.last_name, '')) AS full_name,
                     eu.username AS user_username,
+                    eu.platform AS user_platform,
+                    eu.platform_user_id AS user_platform_user_id,
                     p.title AS product_title, m.name AS manager_name, r.name AS reseller_name,
                     lrc.response_count, lr.status AS last_response_status, lr.created_at AS last_response_at,
                     lr.message_text AS last_response_text
@@ -478,6 +481,11 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     return ["SELECT $columnsSql FROM {$module['table']} $where ORDER BY id DESC LIMIT 100", $params];
 }
 
+function is_technical_client_name(string $name): bool
+{
+    return in_array(trim($name), ['Web User', 'VK User'], true);
+}
+
 function crud_cell_value(string $moduleKey, string $column, array $row): string
 {
     if ($column === 'contacts') {
@@ -485,7 +493,17 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
     }
 
     if ($column === 'display_name' || $column === 'user_name') {
-        return trim(($row['full_name'] ?? '') ?: ($row['user_username'] ?? '') ?: ($row['username'] ?? '')) ?: app_text('auto.k_1b93795b9768');
+        $fullName = trim((string)($row['full_name'] ?? ''));
+        if (is_technical_client_name($fullName)) {
+            $fullName = '';
+        }
+        $name = $fullName ?: trim((string)($row['user_username'] ?? '')) ?: trim((string)($row['username'] ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        $platform = (string)($row['user_platform'] ?? $row['platform'] ?? '');
+        return ($platform ? platform_label($platform) . ' клиент ' : 'Клиент ') . '#' . (int)($row['end_user_id'] ?? $row['id'] ?? 0);
     }
 
     if ($column === 'platform_account') {
@@ -493,8 +511,17 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
     }
 
     if ($column === 'platform_profile') {
-        return trim((string)($row['display_name'] ?? ''))
-            ?: trim((string)(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? '')))
+        $displayName = trim((string)($row['display_name'] ?? ''));
+        $fullName = trim((string)(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? '')));
+        if (is_technical_client_name($displayName)) {
+            $displayName = '';
+        }
+        if (is_technical_client_name($fullName)) {
+            $fullName = '';
+        }
+
+        return $displayName
+            ?: $fullName
             ?: trim((string)($row['username'] ?? ''))
             ?: app_text('auto.k_1b93795b9768');
     }
@@ -634,7 +661,10 @@ function render_cell(string $moduleKey, string $key, array $row): string
         $html = [];
         foreach ($items as $item) {
             [$platform, $platformUserId] = array_pad(explode(':', $item, 2), 2, '');
-            $html[] = render_platform_badge($platform) . '<div class="cell-muted">' . h($platformUserId) . '</div>';
+            $html[] = '<div class="platform-account-line">'
+                . render_platform_badge($platform)
+                . '<span class="cell-muted">' . h($platformUserId) . '</span>'
+                . '</div>';
         }
         return implode('', $html);
     }

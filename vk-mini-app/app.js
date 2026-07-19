@@ -506,8 +506,29 @@ function leadStatusLabel(status) {
     return ui(`lead_status.${status}`, status || '');
 }
 
+function isTechnicalName(firstName, lastName) {
+    return ['Web', 'VK'].includes(String(firstName || '').trim())
+        && String(lastName || '').trim() === 'User';
+}
+
+function isTechnicalDisplayName(name) {
+    return ['Web User', 'VK User'].includes(String(name || '').trim());
+}
+
 function userDisplayName(user) {
-    return [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || ui('profile.client');
+    if (!user || isTechnicalName(user.first_name, user.last_name)) {
+        return user?.username || ui('profile.client');
+    }
+    const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ');
+    return fullName || user.username || ui('profile.client');
+}
+
+function platformAccountDisplayName(account) {
+    if (isTechnicalName(account?.first_name, account?.last_name) || isTechnicalDisplayName(account?.display_name)) {
+        return account?.username || ui('profile.platform_account');
+    }
+    const profileName = account?.display_name || [account?.first_name, account?.last_name].filter(Boolean).join(' ');
+    return profileName || account?.username || ui('profile.platform_account');
 }
 
 function friendlyError(error) {
@@ -711,8 +732,7 @@ function renderOnboardingGate() {
     const user = state.user || {};
     const profile = state.consultantProfile?.profile || {};
     const missing = new Set(state.onboarding?.missing_consents || []);
-    const technicalName = ['Web', 'VK'].includes(String(user.first_name || '').trim())
-        && String(user.last_name || '').trim() === 'User';
+    const technicalName = isTechnicalName(user.first_name, user.last_name);
     const firstName = technicalName ? '' : (user.first_name || '');
     const lastName = technicalName ? '' : (user.last_name || '');
     page.innerHTML = `
@@ -1194,7 +1214,7 @@ async function renderProfile() {
             ${accounts.length ? accounts.map((account) => `
                 <article class="platform-card">
                     <span class="platform-pill">${escapeHtml(platformLabel(account.platform))}</span>
-                    <strong>${escapeHtml(account.display_name || account.username || ui('profile.platform_account'))}</strong>
+                    <strong>${escapeHtml(platformAccountDisplayName(account))}</strong>
                     ${account.username ? `<span class="muted">${escapeHtml(account.username)}</span>` : ''}
                 </article>
             `).join('') : `<div class="empty-card">${escapeHtml(ui('profile.no_accounts'))}</div>`}

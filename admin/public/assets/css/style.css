@@ -1364,6 +1364,17 @@ body {
     text-transform: uppercase;
 }
 
+.platform-account-line {
+    align-items: center;
+    display: flex;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.platform-account-line:last-child {
+    margin-bottom: 0;
+}
+
 .sidebar nav {
     gap: 5px;
 }
