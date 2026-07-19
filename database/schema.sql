@@ -620,16 +620,22 @@ CREATE TABLE content_posts (
   status ENUM('draft', 'published', 'hidden') NOT NULL DEFAULT 'draft',
   publish_at DATETIME NULL,
   created_by BIGINT UNSIGNED NULL,
+  source_content_post_id BIGINT UNSIGNED NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_content_category_id (category_id),
   INDEX idx_content_created_by (created_by),
   INDEX idx_content_section_type (section_type),
+  INDEX idx_content_source_content_post_id (source_content_post_id),
+  UNIQUE KEY uq_content_owner_source_clone (owner_type, owner_id, source_content_post_id),
   CONSTRAINT fk_content_category
     FOREIGN KEY (category_id) REFERENCES product_categories(id)
     ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT fk_content_admin
     FOREIGN KEY (created_by) REFERENCES admin_users(id)
+    ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_content_source_post
+    FOREIGN KEY (source_content_post_id) REFERENCES content_posts(id)
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

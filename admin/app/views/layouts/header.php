@@ -29,6 +29,8 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                 'users' => ['Клиенты', 'crud.php?module=users'],
                 'results' => ['Результаты чек-апов', 'results.php'],
                 'leads' => ['Обращения', 'crud.php?module=leads'],
+                'categories' => ['Категории продуктов', 'crud.php?module=categories'],
+                'products' => ['Продукты', 'crud.php?module=products'],
                 'tests' => [app_text('auto.k_663c94d30018'), 'crud.php?module=tests'],
                 'broadcasts' => ['Рассылки', 'crud.php?module=broadcasts'],
                 'content' => ['Материалы сайта', 'crud.php?module=content'],

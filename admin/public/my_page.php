@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
 require_once __DIR__ . '/../app/core/consultant_profiles.php';
+require_once __DIR__ . '/../app/core/material_cloner.php';
 
 $admin = require_auth();
 if (!can_manage('my_page', $admin)) {
@@ -16,6 +17,10 @@ if (!$owner) {
     exit(app_text('consultant_profile.owner_not_found'));
 }
 
+if ($owner['owner_type'] === 'manager') {
+    clone_reseller_materials_for_manager((int)$owner['owner_id']);
+}
+
 $profile = ensure_consultant_profile($owner['owner_type'], $owner['owner_id']);
 $title = app_text('consultant_profile.menu');
 $errors = [];
@@ -26,12 +31,27 @@ function profile_owner_query(array $owner): string
     return 'owner_type=' . urlencode($owner['owner_type']) . '&owner_id=' . (int)$owner['owner_id'];
 }
 
-function profile_select_options(string $source): array
+function profile_select_options(string $source, array $owner): array
 {
+    if ($source === 'materials') {
+        $stmt = db()->prepare(
+            'SELECT id, title AS label
+             FROM content_posts
+             WHERE status <> "hidden"
+               AND owner_type = :owner_type
+               AND owner_id = :owner_id
+             ORDER BY COALESCE(publish_at, created_at) DESC, title'
+        );
+        $stmt->execute([
+            'owner_type' => $owner['owner_type'],
+            'owner_id' => (int)$owner['owner_id'],
+        ]);
+        return $stmt->fetchAll();
+    }
+
     return match ($source) {
         'products' => db()->query('SELECT id, title AS label FROM products WHERE is_active = 1 ORDER BY sort_order, title')->fetchAll(),
         'tests' => db()->query('SELECT id, title AS label FROM tests WHERE is_active = 1 ORDER BY sort_order, title')->fetchAll(),
-        'materials' => db()->query('SELECT id, title AS label FROM content_posts WHERE status <> "hidden" ORDER BY COALESCE(publish_at, created_at) DESC, title')->fetchAll(),
         default => [],
     };
 }
@@ -471,7 +491,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
         <div class="profile-form-grid">
             <?php
             $selectGroups = [
-                'materials' => [app_text('consultant_profile.materials'), profile_select_options('materials'), $selectedMaterials],
+                'materials' => [app_text('consultant_profile.materials'), profile_select_options('materials', $owner), $selectedMaterials],
             ];
             ?>
             <?php foreach ($selectGroups as $name => [$label, $options, $selected]): ?>

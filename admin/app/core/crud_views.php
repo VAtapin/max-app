@@ -176,6 +176,7 @@ function crud_display_columns(string $moduleKey): array
             'id' => 'ID',
             'image_preview' => app_text('auto.k_fb8ffc7377b8'),
             'title' => app_text('auto.k_19114f713f60'),
+            'owner_label' => app_text('integrations.owner'),
             'content_type' => app_text('auto.k_d25691ca401e'),
             'section_type' => 'Раздел сайта',
             'category_title' => app_text('auto.k_19c85838e63f'),
@@ -485,12 +486,22 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     }
 
     if ($moduleKey === 'content') {
-        [$where, $params] = owner_scope_condition($admin, 'cp');
+        [$where, $params] = owner_scope_condition($admin, 'cp', 'content');
+        if ($admin['role'] !== 'superadmin') {
+            $where = append_sql_condition($where, 'cp.status <> "hidden"');
+        }
         return [
             "SELECT cp.id, cp.title, cp.content_type, cp.section_type, c.title AS category_title, cp.image_path,
-                    cp.attachment_path, cp.video_url, cp.button_url, cp.status, cp.publish_at
+                    cp.attachment_path, cp.video_url, cp.button_url, cp.status, cp.publish_at,
+                    CASE
+                        WHEN cp.owner_type = 'reseller' THEN CONCAT('Реселлер: ', COALESCE(r.name, CONCAT('#', cp.owner_id)))
+                        WHEN cp.owner_type = 'manager' THEN CONCAT('Менеджер: ', COALESCE(m.name, CONCAT('#', cp.owner_id)))
+                        ELSE 'Шаблон супер-админа'
+                    END AS owner_label
              FROM content_posts cp
              LEFT JOIN product_categories c ON c.id = cp.category_id
+             LEFT JOIN resellers r ON r.id = cp.owner_id AND cp.owner_type = 'reseller'
+             LEFT JOIN managers m ON m.id = cp.owner_id AND cp.owner_type = 'manager'
              $where
              ORDER BY cp.id DESC
              LIMIT 100",

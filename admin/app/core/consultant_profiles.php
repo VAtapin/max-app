@@ -344,10 +344,17 @@ function consultant_profile_payload(array $profile): array
                 c.content_type, c.section_type, c.button_text, c.button_url, pm.sort_order
          FROM profile_materials pm
          JOIN content_posts c ON c.id = pm.content_post_id
-         WHERE pm.profile_id = :profile_id AND c.status = "published"
+         WHERE pm.profile_id = :profile_id
+           AND c.status = "published"
+           AND c.owner_type = :owner_type
+           AND c.owner_id = :owner_id
          ORDER BY pm.sort_order, c.publish_at DESC, c.id DESC'
     );
-    $materials->execute(['profile_id' => $profileId]);
+    $materials->execute([
+        'profile_id' => $profileId,
+        'owner_type' => $profile['owner_type'],
+        'owner_id' => (int)$profile['owner_id'],
+    ]);
 
     $reviews = db()->prepare(
         'SELECT client_name, client_photo_path, review_text, rating

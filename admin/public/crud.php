@@ -7,6 +7,7 @@ require_once __DIR__ . '/../app/core/lead_responses.php';
 require_once __DIR__ . '/../app/core/test_admin.php';
 require_once __DIR__ . '/../app/core/broadcast_runner.php';
 require_once __DIR__ . '/../app/core/client_journey.php';
+require_once __DIR__ . '/../app/core/material_cloner.php';
 
 $admin = require_auth();
 
@@ -171,8 +172,10 @@ $modules = [
     'content' => [
         'title' => app_text('auto.k_5e30f01694b5'),
         'table' => 'content_posts',
-        'columns' => ['id', 'title', 'status', 'publish_at', 'created_by'],
+        'columns' => ['id', 'title', 'owner_type', 'owner_id', 'status', 'publish_at', 'created_by'],
         'fields' => [
+            'owner_type' => ['label' => app_text('integrations.owner_type'), 'type' => 'select', 'options' => ['reseller', 'manager'], 'nullable' => true],
+            'owner_id' => ['label' => app_text('integrations.owner_id'), 'type' => 'number', 'nullable' => true],
             'content_type' => ['label' => app_text('auto.k_ef19578bced0'), 'type' => 'select', 'options' => ['article', 'image', 'pdf', 'video', 'link'], 'required' => true],
             'section_type' => ['label' => 'Раздел мини-сайта', 'type' => 'select', 'options' => ['general', 'story', 'result', 'promotion', 'giveaway', 'program', 'marathon'], 'required' => true],
             'title' => ['label' => app_text('auto.k_a8504d513adf'), 'required' => true],
@@ -231,6 +234,13 @@ if (!isset($modules[$moduleKey]) || !can_manage($moduleKey, $admin)) {
 $module = $modules[$moduleKey];
 $title = $module['title'];
 
+if ($admin['role'] === 'manager') {
+    clone_reseller_materials_for_manager(
+        (int)$admin['manager_id'],
+        isset($admin['reseller_id']) ? (int)$admin['reseller_id'] : null
+    );
+}
+
 function scope_where_for_module(string $moduleKey, array $admin): array
 {
     if ($moduleKey === 'users') {
@@ -279,7 +289,7 @@ function scope_where_for_module(string $moduleKey, array $admin): array
     }
 
     if (in_array($moduleKey, owned_modules(), true)) {
-        return owner_scope_condition($admin);
+        return owner_scope_condition($admin, '', $moduleKey);
     }
 
     if ($moduleKey === 'integrations') {
@@ -308,11 +318,25 @@ function owned_modules(): array
     return ['categories', 'products', 'tests', 'content'];
 }
 
-function owner_scope_condition(array $admin, string $alias = ''): array
+function owner_scope_condition(array $admin, string $alias = '', string $moduleKey = ''): array
 {
     $prefix = $alias !== '' ? $alias . '.' : '';
     if ($admin['role'] === 'superadmin') {
         return ['', []];
+    }
+
+    if ($moduleKey === 'content') {
+        if ($admin['role'] === 'reseller') {
+            return [
+                'WHERE ' . $prefix . 'owner_type = "reseller" AND ' . $prefix . 'owner_id = :owner_reseller_id',
+                ['owner_reseller_id' => $admin['reseller_id']],
+            ];
+        }
+
+        return [
+            'WHERE ' . $prefix . 'owner_type = "manager" AND ' . $prefix . 'owner_id = :owner_manager_id',
+            ['owner_manager_id' => $admin['manager_id']],
+        ];
     }
 
     if ($admin['role'] === 'reseller') {
@@ -446,7 +470,7 @@ function merge_end_users(int $targetUserId, int $sourceUserId, array $admin): vo
             'onboarding_completed_at',
         ];
         $assignments = [];
-        $mergeParams = ['target_id' => $targetUserId, 'source_id' => $sourceUserId];
+        $mergeParams = ['target_id' => $targetUserId];
         foreach ($mergeFields as $field) {
             if (($target[$field] ?? null) === null || trim((string)$target[$field]) === '') {
                 if (($source[$field] ?? null) !== null && trim((string)$source[$field]) !== '') {
@@ -839,6 +863,30 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin)
         }
     }
 
+    if (in_array($moduleKey, owned_modules(), true) && $admin['role'] === 'superadmin') {
+        $ownerType = (string)($payload['owner_type'] ?? '');
+        $ownerId = (int)($payload['owner_id'] ?? 0);
+        if ($ownerType === '' && $ownerId > 0) {
+            $errors[] = 'Выберите тип владельца материала.';
+        } elseif ($ownerType !== '') {
+            if ($ownerId <= 0) {
+                $errors[] = 'Укажите ID владельца материала.';
+            } elseif ($ownerType === 'reseller') {
+                $stmt = db()->prepare('SELECT COUNT(*) FROM resellers WHERE id = :id');
+                $stmt->execute(['id' => $ownerId]);
+                if ((int)$stmt->fetchColumn() === 0) {
+                    $errors[] = 'Реселлер для материала не найден.';
+                }
+            } elseif ($ownerType === 'manager') {
+                $stmt = db()->prepare('SELECT COUNT(*) FROM managers WHERE id = :id');
+                $stmt->execute(['id' => $ownerId]);
+                if ((int)$stmt->fetchColumn() === 0) {
+                    $errors[] = 'Менеджер для материала не найден.';
+                }
+            }
+        }
+    }
+
     if ($moduleKey === 'integrations' && $admin['role'] !== 'superadmin') {
         $ownerType = (string)($payload['owner_type'] ?? '');
         $ownerId = (int)($payload['owner_id'] ?? 0);
@@ -889,7 +937,7 @@ function apply_role_defaults(string $moduleKey, array $payload, array $admin): a
         $payload['manager_id'] = $admin['manager_id'];
         $payload['reseller_id'] = $admin['reseller_id'];
     }
-    if (in_array($moduleKey, owned_modules(), true) && empty($payload['owner_type']) && $admin['role'] !== 'superadmin') {
+    if (in_array($moduleKey, owned_modules(), true) && $admin['role'] !== 'superadmin') {
         $payload['owner_type'] = $admin['role'];
         $payload['owner_id'] = $admin['role'] === 'reseller' ? $admin['reseller_id'] : $admin['manager_id'];
     }
@@ -1080,6 +1128,14 @@ function delete_crud_record(string $moduleKey, array $module, int $id, array $ad
             $stmt = $pdo->prepare('DELETE FROM end_users WHERE id = :id');
             $stmt->execute(['id' => $id]);
             log_activity('admin', (int)$admin['id'], 'delete_end_users', 'end_users', $id);
+            $pdo->commit();
+            return;
+        }
+
+        if ($moduleKey === 'content') {
+            $stmt = $pdo->prepare('UPDATE content_posts SET status = "hidden" WHERE id = :id');
+            $stmt->execute(['id' => $id]);
+            log_activity('admin', (int)$admin['id'], 'hide_content_posts', 'content_posts', $id);
             $pdo->commit();
             return;
         }
@@ -1371,6 +1427,9 @@ $canCreate = crud_create_enabled($moduleKey);
 $canEdit = crud_edit_enabled($moduleKey);
 $canDelete = crud_delete_enabled($moduleKey);
 $formFields = crud_form_fields($moduleKey, $module['fields']);
+if (in_array($moduleKey, owned_modules(), true) && $admin['role'] !== 'superadmin') {
+    unset($formFields['owner_type'], $formFields['owner_id']);
+}
 
 if ($action === 'create' && !$canCreate) {
     $errors[] = app_text('auto.k_868d1fd837c9');

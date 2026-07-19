@@ -847,3 +847,24 @@ function client_owner_scope(array $user, string $alias = ''): array
 
     return ['(' . implode(' OR ', $parts) . ')', $params];
 }
+
+function client_material_owner_scope(array $user, string $alias = ''): array
+{
+    $prefix = $alias !== '' ? $alias . '.' : '';
+
+    if (!empty($user['manager_id'])) {
+        return [
+            $prefix . 'owner_type = "manager" AND ' . $prefix . 'owner_id = :client_manager_id',
+            ['client_manager_id' => (int)$user['manager_id']],
+        ];
+    }
+
+    if (!empty($user['reseller_id'])) {
+        return [
+            $prefix . 'owner_type = "reseller" AND ' . $prefix . 'owner_id = :client_reseller_id',
+            ['client_reseller_id' => (int)$user['reseller_id']],
+        ];
+    }
+
+    return ['1 = 0', []];
+}
