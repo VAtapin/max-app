@@ -45,7 +45,12 @@ from bot.core.tests import (
     save_test_result,
     session_answered_question_ids,
 )
-from bot.core.users import StaffAccountError, get_or_create_user
+from bot.core.users import (
+    StaffAccountError,
+    account_suggestions_payload,
+    get_or_create_user,
+    parse_account_link_token,
+)
 from bot.telegram.keyboards.menu import (
     app_button,
     answers_keyboard,
@@ -218,11 +223,15 @@ async def consultant_notification_reply(
         )
 
 
-async def resolve_user(message: Message, referral_code: str | None = None) -> dict:
-    return await resolve_telegram_user(message.from_user, referral_code)
+async def resolve_user(message: Message, referral_code: str | None = None, link_token: str | None = None) -> dict:
+    return await resolve_telegram_user(message.from_user, referral_code, link_token)
 
 
-async def resolve_telegram_user(tg_user: User | None, referral_code: str | None = None) -> dict:
+async def resolve_telegram_user(
+    tg_user: User | None,
+    referral_code: str | None = None,
+    link_token: str | None = None,
+) -> dict:
     if tg_user is None:
         raise RuntimeError("Telegram user is missing")
 
@@ -233,12 +242,27 @@ async def resolve_telegram_user(tg_user: User | None, referral_code: str | None 
         first_name=tg_user.first_name,
         last_name=tg_user.last_name,
         referral_code=referral_code,
+        link_token=link_token,
     )
 
 
-def referral_from_start(text: str | None) -> str | None:
+def start_payload(text: str | None) -> str | None:
     parts = (text or "").split(maxsplit=1)
     return parts[1].strip() if len(parts) > 1 else None
+
+
+def link_token_from_start(text: str | None) -> str | None:
+    payload = start_payload(text)
+    if payload and (payload.startswith("link_") or payload.startswith("l_")):
+        return payload
+    return None
+
+
+def referral_from_start(text: str | None) -> str | None:
+    payload = start_payload(text)
+    if payload and not (payload.startswith("link_") or payload.startswith("l_")):
+        return payload
+    return None
 
 
 def user_referral_code(user: dict) -> str | None:
@@ -286,6 +310,38 @@ async def show_main_menu(message: Message, user: dict) -> None:
     await message.answer(
         "Выберите нужный раздел:",
         reply_markup=main_menu_keyboard(user_referral_code(user), diagnosis_test_id(tests)),
+    )
+
+
+async def send_account_link_suggestion(message: Message, user: dict) -> None:
+    checked_user = dict(user)
+    checked_user["current_platform"] = checked_user.get("current_platform") or "telegram"
+    payload = await account_suggestions_payload(checked_user)
+    suggestions = payload.get("suggestions") or []
+    if not suggestions:
+        return
+
+    links = (payload.get("linking") or {}).get("links") or {}
+    platforms = ", ".join(str(item.get("platform_label") or item.get("platform") or "") for item in suggestions)
+    suggestion_platforms = {str(item.get("platform") or "") for item in suggestions}
+    rows: list[list[InlineKeyboardButton]] = []
+    if "VK" in suggestion_platforms and links.get("vk"):
+        rows.append([InlineKeyboardButton(text="Подтвердить в VK", url=str(links["vk"]))])
+    if "telegram" in suggestion_platforms and links.get("telegram"):
+        rows.append([InlineKeyboardButton(text="Подтвердить в Telegram", url=str(links["telegram"]))])
+    if links.get("mini_app"):
+        rows.append([InlineKeyboardButton(text="Открыть Mini App", url=str(links["mini_app"]))])
+    rows.append([InlineKeyboardButton(text="Не сейчас", callback_data="account_link:dismiss")])
+
+    await message.answer(
+        (
+            "Похоже, у вас уже есть профиль на другой платформе: "
+            f"{html.escape(platforms)}.\n\n"
+            "Если это действительно ваш аккаунт, откройте его по кнопке ниже и подтвердите вход. "
+            "Автоматически ничего не объединяется."
+        ),
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
     )
 
 
@@ -764,8 +820,9 @@ async def start_test(
 async def start(message: Message, state: FSMContext) -> None:
     await state.clear()
     referral_code = referral_from_start(message.text)
+    link_token = link_token_from_start(message.text)
     try:
-        user = await resolve_user(message, referral_code)
+        user = await resolve_user(message, referral_code, link_token)
     except StaffAccountError:
         await message.answer(tr("staff.client_registration_blocked"), reply_markup=ReplyKeyboardRemove())
         return
@@ -775,6 +832,9 @@ async def start(message: Message, state: FSMContext) -> None:
         return
 
     await send_consultant_welcome(message, user)
+    link_target_id = parse_account_link_token(link_token)
+    if link_target_id and int(user["id"]) == link_target_id:
+        await message.answer("Telegram подключён к вашему профилю SWPro.")
     if await continue_onboarding(message, state, user):
         await show_main_menu(message, user)
 
@@ -835,6 +895,13 @@ async def onboarding_decline(callback: CallbackQuery, state: FSMContext) -> None
             "Без согласия на обработку данных анкета и чек-ап недоступны. Вернуться к оформлению можно командой /start."
         )
     await callback.answer()
+
+
+@router.callback_query(F.data == "account_link:dismiss")
+async def account_link_dismiss(callback: CallbackQuery) -> None:
+    if callback.message:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Хорошо")
 
 
 async def ask_last_name(message: Message, state: FSMContext, value: str | None = None) -> None:
@@ -975,6 +1042,8 @@ async def onboarding_marketing(callback: CallbackQuery, state: FSMContext) -> No
     await state.clear()
     if callback.message:
         await callback.message.answer("Спасибо! Анкета заполнена.")
+        updated["current_platform"] = "telegram"
+        await send_account_link_suggestion(callback.message, updated)
         await show_main_menu(callback.message, updated)
     await callback.answer()
 

@@ -352,6 +352,42 @@ function create_account_link_token(int $endUserId, int $ttlSeconds = 900): strin
     return 'l_' . $endUserId . '_' . $expiresAt . '_' . $signature;
 }
 
+function append_query_param(string $url, string $name, string $value): string
+{
+    $separator = str_contains($url, '?') ? '&' : '?';
+    return $url . $separator . rawurlencode($name) . '=' . rawurlencode($value);
+}
+
+function account_link_urls(string $token): array
+{
+    $config = app_config();
+    $miniAppUrl = (string)($config['integrations']['mini_app_url'] ?? getenv('SWPRO_MINI_APP_URL') ?: '');
+    if ($miniAppUrl === '') {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? '';
+        $miniAppUrl = $host !== '' ? $scheme . '://' . $host . '/vk-mini-app/' : '../vk-mini-app/';
+    }
+
+    $telegramBot = trim((string)($config['integrations']['telegram_bot_username'] ?? getenv('TELEGRAM_BOT_USERNAME') ?: 'SWProAssistant_bot'));
+    $vkAppId = trim((string)($config['integrations']['vk_app_id'] ?? getenv('VK_APP_ID') ?: ''));
+
+    return [
+        'mini_app' => $miniAppUrl ? append_query_param($miniAppUrl, 'link_token', $token) : '',
+        'telegram' => $telegramBot !== '' ? 'https://t.me/' . rawurlencode(ltrim($telegramBot, '@')) . '?start=' . rawurlencode('link_' . $token) : '',
+        'vk' => $vkAppId !== '' ? 'https://vk.com/app' . rawurlencode($vkAppId) . '#link_token=' . rawurlencode($token) : '',
+    ];
+}
+
+function account_link_payload(array $user, int $ttlSeconds = 900): array
+{
+    $token = create_account_link_token((int)$user['id'], $ttlSeconds);
+    return [
+        'token' => $token,
+        'expires_in' => $ttlSeconds,
+        'links' => account_link_urls($token),
+    ];
+}
+
 function parse_account_link_token(?string $token): ?int
 {
     if (!$token) {
@@ -379,6 +415,101 @@ function parse_account_link_token(?string $token): ?int
     }
 
     return (int)$endUserId;
+}
+
+function account_suggestion_age(array $user): ?int
+{
+    if (!empty($user['birth_date'])) {
+        try {
+            $birthDate = new DateTimeImmutable((string)$user['birth_date']);
+            $today = new DateTimeImmutable('today');
+            return $birthDate <= $today ? $birthDate->diff($today)->y : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    $age = (int)($user['age_years'] ?? 0);
+    return $age > 0 ? $age : null;
+}
+
+function find_similar_account_suggestions(array $user, int $limit = 3): array
+{
+    $city = trim((string)($user['city'] ?? ''));
+    $currentPlatform = normalize_platform((string)($user['current_platform'] ?? $user['platform'] ?? 'web'));
+    $birthDate = trim((string)($user['birth_date'] ?? ''));
+    $profileAge = account_suggestion_age($user);
+
+    if ((int)($user['id'] ?? 0) <= 0 || $city === '' || ($birthDate === '' && $profileAge === null)) {
+        return [];
+    }
+
+    $where = [
+        'u.id <> :user_id',
+        'u.merged_into_user_id IS NULL',
+        'COALESCE(pa.platform, u.platform) <> :current_platform',
+        'LOWER(TRIM(u.city)) = LOWER(TRIM(:city))',
+    ];
+    $params = [
+        'user_id' => (int)$user['id'],
+        'current_platform' => $currentPlatform,
+        'city' => $city,
+    ];
+
+    if (!empty($user['manager_id'])) {
+        $where[] = 'u.manager_id = :manager_id';
+        $params['manager_id'] = (int)$user['manager_id'];
+    } elseif (!empty($user['reseller_id'])) {
+        $where[] = 'u.reseller_id = :reseller_id';
+        $params['reseller_id'] = (int)$user['reseller_id'];
+    } else {
+        return [];
+    }
+
+    if ($birthDate !== '') {
+        $ageFallback = $profileAge !== null ? ' OR (u.birth_date IS NULL AND u.age_years = :profile_age)' : '';
+        $where[] = '(u.birth_date = :birth_date' . $ageFallback . ')';
+        $params['birth_date'] = $birthDate;
+        if ($profileAge !== null) {
+            $params['profile_age'] = $profileAge;
+        }
+    } elseif ($profileAge !== null) {
+        $where[] = 'u.birth_date IS NULL AND u.age_years = :profile_age';
+        $params['profile_age'] = $profileAge;
+    }
+
+    $gender = (string)($user['gender'] ?? '');
+    if ($gender !== '' && $gender !== 'prefer_not_to_say') {
+        $where[] = '(u.gender = :gender OR u.gender IS NULL OR u.gender = "prefer_not_to_say")';
+        $params['gender'] = $gender;
+    }
+
+    $limit = max(1, min(5, $limit));
+    $stmt = db()->prepare(
+        'SELECT COALESCE(pa.platform, u.platform) AS linked_platform, COUNT(DISTINCT u.id) AS matches_count
+         FROM end_users u
+         LEFT JOIN platform_accounts pa ON pa.end_user_id = u.id
+         WHERE ' . implode(' AND ', $where) . '
+         GROUP BY linked_platform
+         ORDER BY FIELD(linked_platform, "telegram", "VK", "OK", "web", "MAX"), linked_platform
+         LIMIT ' . $limit
+    );
+    $stmt->execute($params);
+
+    $suggestions = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $platform = normalize_platform((string)$row['linked_platform']);
+        if ($platform === $currentPlatform || $platform === 'all') {
+            continue;
+        }
+        $suggestions[] = [
+            'platform' => $platform,
+            'platform_label' => platform_label($platform),
+            'matches' => (int)$row['matches_count'],
+        ];
+    }
+
+    return $suggestions;
 }
 
 function link_existing_user_to_target(int $targetUserId, int $sourceUserId): ?array

@@ -172,6 +172,21 @@ body[data-theme="graphite"] {
     padding: 12px;
 }
 
+.account-suggestion-card {
+    background: #fffafc;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-soft);
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+}
+
+.account-suggestion-card h2 {
+    font-size: 20px;
+    margin-bottom: 6px;
+}
+
 .item-image {
     width: 100%;
     max-height: 220px;

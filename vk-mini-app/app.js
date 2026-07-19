@@ -15,6 +15,7 @@ const state = {
     consultantProfilePromise: null,
     onboarding: null,
     notifications: [],
+    accountSuggestions: null,
     answerPending: false,
 };
 
@@ -691,6 +692,28 @@ async function loadNotifications() {
     return state.notifications;
 }
 
+function accountSuggestionDismissKey() {
+    return state.user?.id ? `swpro_account_suggestion_dismissed_${state.user.id}` : '';
+}
+
+function accountSuggestionDismissed() {
+    const key = accountSuggestionDismissKey();
+    return key !== '' && sessionStorage.getItem(key) === '1';
+}
+
+async function loadAccountSuggestions() {
+    if (!state.onboarding?.complete || accountSuggestionDismissed()) {
+        state.accountSuggestions = {suggestions: []};
+        return state.accountSuggestions;
+    }
+    try {
+        state.accountSuggestions = await api(`account_suggestions.php?${userQuery()}`);
+    } catch (_) {
+        state.accountSuggestions = {suggestions: []};
+    }
+    return state.accountSuggestions;
+}
+
 function onboardingDocuments() {
     const documents = state.onboarding?.documents || {};
     return Array.isArray(documents) ? documents : Object.values(documents);
@@ -886,6 +909,44 @@ function referralFormMarkup(value = '') {
     `;
 }
 
+function renderAccountSuggestionCard() {
+    const result = state.accountSuggestions || {};
+    const suggestions = Array.isArray(result.suggestions) ? result.suggestions : [];
+    if (!suggestions.length || accountSuggestionDismissed()) {
+        return '';
+    }
+
+    const links = result.linking?.links || {};
+    const platforms = suggestions
+        .map((item) => item.platform_label || platformLabel(item.platform))
+        .filter(Boolean)
+        .join(', ');
+    const actions = [];
+    if (links.telegram && suggestions.some((item) => item.platform === 'telegram')) {
+        actions.push(`<a class="soft-link" href="${escapeHtml(links.telegram)}" target="_blank" rel="noopener">${escapeHtml(ui('account_link.open_telegram'))}</a>`);
+    }
+    if (links.vk && suggestions.some((item) => item.platform === 'VK')) {
+        actions.push(`<a class="soft-link" href="${escapeHtml(links.vk)}" target="_blank" rel="noopener">${escapeHtml(ui('account_link.open_vk'))}</a>`);
+    }
+    if (links.mini_app) {
+        actions.push(`<a class="soft-link" href="${escapeHtml(links.mini_app)}" target="_blank" rel="noopener">${escapeHtml(ui('account_link.open_mini_app'))}</a>`);
+    }
+
+    return `
+        <section class="account-suggestion-card">
+            <div>
+                <span class="eyebrow">${escapeHtml(ui('account_link.suggestion_eyebrow'))}</span>
+                <h2>${escapeHtml(ui('account_link.suggestion_title'))}</h2>
+                <p class="muted">${escapeHtml(formatUi('account_link.suggestion_text', {platforms}, `Похоже, у вас уже есть профиль: ${platforms}. Объединяйте только свои личные аккаунты.`))}</p>
+            </div>
+            <div class="detail-actions">
+                ${actions.join('')}
+                <button class="secondary" data-action="dismiss-account-suggestion">${escapeHtml(ui('account_link.later'))}</button>
+            </div>
+        </section>
+    `;
+}
+
 function renderHome() {
     const profile = state.consultantProfile?.profile || {};
     const initials = String(profile.display_name || 'SW').slice(0, 2).toUpperCase();
@@ -921,6 +982,8 @@ function renderHome() {
                 `).join('')}
             </section>
         ` : ''}
+
+        ${renderAccountSuggestionCard()}
 
         <section class="main-action-grid">
             <button class="action-card" data-page-target="tests">
@@ -1187,6 +1250,9 @@ async function renderContactPage() {
 }
 
 async function renderProfile() {
+    if (state.accountSuggestions === null && state.onboarding?.complete) {
+        await loadAccountSuggestions();
+    }
     const result = await api(`user.php?${userQuery()}`);
     const user = result.user;
     const accounts = result.platform_accounts || [];
@@ -1206,6 +1272,7 @@ async function renderProfile() {
                 </div>
             </div>
         </section>
+        ${renderAccountSuggestionCard()}
         <section class="home-section">
             <div class="section-title">
                 <h2>${escapeHtml(ui('profile.accounts'))}</h2>
@@ -1235,6 +1302,7 @@ async function renderAccountLinkPanel() {
         });
         const miniAppLink = result.links?.mini_app || '';
         const telegramLink = result.links?.telegram || '';
+        const vkLink = result.links?.vk || '';
         panel.innerHTML = `
             <div class="link-card">
                 <strong>${escapeHtml(ui('profile.link_title', 'Ссылка для подключения'))}</strong>
@@ -1242,6 +1310,7 @@ async function renderAccountLinkPanel() {
                 <span class="muted">${escapeHtml(ui('profile.link_warning'))}</span>
                 ${miniAppLink ? `<a href="${escapeHtml(miniAppLink)}" target="_blank" rel="noopener">${escapeHtml(ui('profile.open_mini_app', 'Открыть Mini App'))}</a>` : ''}
                 ${telegramLink ? `<a href="${escapeHtml(telegramLink)}" target="_blank" rel="noopener">${escapeHtml(ui('profile.open_telegram', 'Подключить Telegram'))}</a>` : ''}
+                ${vkLink ? `<a href="${escapeHtml(vkLink)}" target="_blank" rel="noopener">${escapeHtml(ui('profile.open_vk', 'Подключить VK'))}</a>` : ''}
             </div>
         `;
     } catch (error) {
@@ -2072,6 +2141,14 @@ page.addEventListener('click', async (event) => {
         ));
         renderHome();
     }
+    if (target.dataset.action === 'dismiss-account-suggestion') {
+        const key = accountSuggestionDismissKey();
+        if (key) {
+            sessionStorage.setItem(key, '1');
+        }
+        state.accountSuggestions = {suggestions: []};
+        await render();
+    }
     if (target.dataset.action === 'start-test') await startTestSession(false);
     if (target.dataset.action === 'resume-test') renderTestQuestion(state.activeTest);
     if (target.dataset.action === 'restart-test') await startTestSession(true);
@@ -2161,7 +2238,7 @@ page.addEventListener('submit', async (event) => {
             state.user = result.user;
             state.onboarding = result.onboarding;
             state.page = 'home';
-            await Promise.all([loadConsultantProfile(), loadNotifications()]);
+            await Promise.all([loadConsultantProfile(), loadNotifications(), loadAccountSuggestions()]);
             await render();
         } catch (exception) {
             if (error) error.textContent = exception instanceof Error ? exception.message : 'Не удалось сохранить анкету.';
@@ -2261,6 +2338,9 @@ Promise.all([loadI18n(), authorize()])
         const deferred = [loadNotifications()];
         if (hasTeamAccess()) {
             deferred.push(loadConsultantProfile());
+        }
+        if (state.onboarding?.complete) {
+            deferred.push(loadAccountSuggestions());
         }
         Promise.all(deferred)
             .then(() => {
