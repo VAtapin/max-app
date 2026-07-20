@@ -13,6 +13,8 @@ const state = {
     i18n: {},
     consultantProfile: null,
     consultantProfilePromise: null,
+    messagingConfig: null,
+    messagingConfigPromise: null,
     onboarding: null,
     notifications: [],
     accountSuggestions: null,
@@ -692,6 +694,114 @@ async function loadNotifications() {
     return state.notifications;
 }
 
+async function loadMessagingConfig() {
+    if (!state.onboarding?.complete || !['VK', 'OK'].includes(state.platform)) {
+        state.messagingConfig = {integrations: {}};
+        return state.messagingConfig;
+    }
+    if (state.messagingConfig) {
+        return state.messagingConfig;
+    }
+    if (state.messagingConfigPromise) {
+        return state.messagingConfigPromise;
+    }
+
+    state.messagingConfigPromise = api(`messaging_config.php?${userQuery()}`)
+        .then((result) => {
+            state.messagingConfig = result;
+            return result;
+        })
+        .catch(() => {
+            state.messagingConfig = {integrations: {}};
+            return state.messagingConfig;
+        })
+        .finally(() => {
+            state.messagingConfigPromise = null;
+        });
+
+    return state.messagingConfigPromise;
+}
+
+function currentMessagingIntegration() {
+    const integrations = state.messagingConfig?.integrations || {};
+    return integrations[state.platform] || null;
+}
+
+function messagingPermissionStorageKey() {
+    const integration = currentMessagingIntegration();
+    if (!integration || !state.platformUserId) {
+        return '';
+    }
+    return `swpro_messages_allowed_${state.platform}_${integration.external_id}_${state.platformUserId}`;
+}
+
+function messagingPermissionWasRequested() {
+    const key = messagingPermissionStorageKey();
+    return key !== '' && localStorage.getItem(key) === '1';
+}
+
+function setMessagingPermissionRequested() {
+    const key = messagingPermissionStorageKey();
+    if (key) {
+        localStorage.setItem(key, '1');
+    }
+}
+
+function renderMessagingPermissionCard() {
+    const integration = currentMessagingIntegration();
+    if (!integration || messagingPermissionWasRequested()) {
+        return '';
+    }
+
+    const title = state.platform === 'VK'
+        ? ui('messages.vk_title', 'Сообщения от консультанта VK')
+        : ui('messages.ok_title', 'Сообщения от консультанта OK');
+    const text = state.platform === 'VK'
+        ? ui('messages.vk_hint', 'Разрешите сообщения от сообщества, чтобы получать ответы консультанта прямо во ВКонтакте.')
+        : ui('messages.ok_hint', 'Разрешите сообщения от группы, чтобы получать ответы консультанта прямо в Одноклассниках.');
+    const button = state.platform === 'VK'
+        ? ui('messages.vk_allow', 'Разрешить сообщения VK')
+        : ui('messages.ok_allow', 'Разрешить сообщения OK');
+
+    return `
+        <section class="message-permission-card">
+            <strong>${escapeHtml(title)}</strong>
+            <span>${escapeHtml(text)}</span>
+            <button class="secondary compact" data-action="allow-social-messages">${escapeHtml(button)}</button>
+        </section>
+    `;
+}
+
+async function allowSocialMessages() {
+    const integration = currentMessagingIntegration();
+    if (!integration) {
+        return;
+    }
+
+    if (state.platform === 'VK' && window.vkBridge) {
+        await vkBridge.send('VKWebAppAllowMessagesFromGroup', {
+            group_id: Number(integration.external_id),
+        });
+        setMessagingPermissionRequested();
+        await render();
+        return;
+    }
+
+    if (state.platform === 'OK' && window.FAPI?.UI?.showPermissions) {
+        await new Promise((resolve) => {
+            window.FAPI.UI.showPermissions(['BOT_API_INIT'], resolve);
+        });
+        setMessagingPermissionRequested();
+        await render();
+        return;
+    }
+
+    page.insertAdjacentHTML(
+        'afterbegin',
+        `<div class="form-error">${escapeHtml(ui('messages.allow_unavailable', 'Разрешение сообщений доступно только внутри приложения платформы.'))}</div>`
+    );
+}
+
 function accountSuggestionDismissKey() {
     return state.user?.id ? `swpro_account_suggestion_dismissed_${state.user.id}` : '';
 }
@@ -1197,6 +1307,7 @@ function renderCooperation() {
 }
 
 async function renderContactPage() {
+    await loadMessagingConfig();
     const profile = state.consultantProfile?.profile || {};
     const contacts = [
         ['Телефон', profile.phone],
@@ -1223,6 +1334,7 @@ async function renderContactPage() {
             ` : ''}
             <button class="primary" data-action="contact">Написать консультанту</button>
         </section>
+        ${renderMessagingPermissionCard()}
         <section class="panel" id="lead-history">
             <div class="empty">${escapeHtml(ui('common.loading'))}</div>
         </section>
@@ -1253,6 +1365,7 @@ async function renderProfile() {
     if (state.accountSuggestions === null && state.onboarding?.complete) {
         await loadAccountSuggestions();
     }
+    await loadMessagingConfig();
     const result = await api(`user.php?${userQuery()}`);
     const user = result.user;
     const accounts = result.platform_accounts || [];
@@ -1273,6 +1386,7 @@ async function renderProfile() {
             </div>
         </section>
         ${renderAccountSuggestionCard()}
+        ${renderMessagingPermissionCard()}
         <section class="home-section">
             <div class="section-title">
                 <h2>${escapeHtml(ui('profile.accounts'))}</h2>
@@ -2149,6 +2263,16 @@ page.addEventListener('click', async (event) => {
         state.accountSuggestions = {suggestions: []};
         await render();
     }
+    if (target.dataset.action === 'allow-social-messages') {
+        try {
+            await allowSocialMessages();
+        } catch (_) {
+            page.insertAdjacentHTML(
+                'afterbegin',
+                `<div class="form-error">${escapeHtml(ui('messages.allow_failed', 'Не удалось получить разрешение на сообщения. Попробуйте позже или напишите консультанту первым сообщением.'))}</div>`
+            );
+        }
+    }
     if (target.dataset.action === 'start-test') await startTestSession(false);
     if (target.dataset.action === 'resume-test') renderTestQuestion(state.activeTest);
     if (target.dataset.action === 'restart-test') await startTestSession(true);
@@ -2335,7 +2459,7 @@ Promise.all([loadI18n(), authorize()])
         await loadOnboarding();
         await render();
 
-        const deferred = [loadNotifications()];
+        const deferred = [loadNotifications(), loadMessagingConfig()];
         if (hasTeamAccess()) {
             deferred.push(loadConsultantProfile());
         }

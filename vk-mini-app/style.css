@@ -1185,6 +1185,21 @@ button.compact {
     box-shadow: none;
 }
 
+.message-permission-card {
+    background: #f7fcfb;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-soft);
+    display: grid;
+    gap: 8px;
+    padding: 14px;
+}
+
+.message-permission-card span {
+    color: var(--muted);
+    line-height: 1.45;
+}
+
 .platform-pill,
 .status-pill {
     background: #eef6f5;

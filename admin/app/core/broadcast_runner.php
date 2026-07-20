@@ -69,6 +69,8 @@ function broadcast_recipients(array $broadcast): array
     }
 
     $sql = 'SELECT eu.id AS end_user_id,
+                   eu.manager_id,
+                   eu.reseller_id,
                    COALESCE(pa.platform, eu.platform) AS platform,
                    COALESCE(pa.platform_user_id, eu.platform_user_id) AS platform_user_id
             FROM end_users eu
@@ -85,6 +87,8 @@ function broadcast_recipients(array $broadcast): array
         $unique[$key] = [
             'end_user_id' => (int)$row['end_user_id'],
             'manager_id' => null,
+            'recipient_manager_id' => !empty($row['manager_id']) ? (int)$row['manager_id'] : null,
+            'reseller_id' => !empty($row['reseller_id']) ? (int)$row['reseller_id'] : null,
             'platform' => normalize_platform((string)$row['platform']),
             'platform_user_id' => (string)$row['platform_user_id'],
         ];
@@ -138,6 +142,40 @@ function send_broadcast_to_recipient(array $broadcast, array $recipient): array
             }
         }
         return ['ok' => !$errors, 'error' => $errors ? implode('; ', $errors) : null];
+    }
+
+    if (in_array($platform, ['VK', 'OK'], true)) {
+        $buttons = [];
+        if (!empty($broadcast['button_url'])) {
+            $buttons[] = [
+                'text' => trim((string)($broadcast['button_text'] ?? 'Открыть')) ?: 'Открыть',
+                'url' => (string)$broadcast['button_url'],
+            ];
+        }
+
+        $mediaUrls = [];
+        foreach (['image_path', 'video_path'] as $field) {
+            $url = absolute_public_url($broadcast[$field] ?? null);
+            if ($url) {
+                $mediaUrls[] = $url;
+            }
+        }
+
+        $messageText = trim((string)$broadcast['message_text']);
+        $result = send_social_platform_message(
+            $platform,
+            (string)$recipient['platform_user_id'],
+            [
+                'manager_id' => $recipient['recipient_manager_id'] ?? null,
+                'reseller_id' => $recipient['reseller_id'] ?? null,
+            ],
+            $messageText !== '' ? $messageText : (string)$broadcast['title'],
+            $buttons,
+            $mediaUrls
+        );
+        if (!$result['ok']) {
+            return $result;
+        }
     }
 
     if (!empty($recipient['end_user_id'])) {

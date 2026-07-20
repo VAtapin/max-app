@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/client_journey.php';
+require_once __DIR__ . '/social_messaging.php';
 
 function absolute_public_url(?string $path): ?string
 {
@@ -345,6 +346,61 @@ function telegram_buttons(?array $content, ?array $test, ?string $externalUrl): 
     return $buttons;
 }
 
+function lead_response_social_buttons(?array $content, ?array $test, ?string $externalUrl): array
+{
+    $buttons = [];
+    if ($test) {
+        $buttons[] = [
+            'text' => 'Пройти тест',
+            'url' => mini_app_url((int)$test['id']),
+        ];
+    }
+
+    $videoUrl = trim((string)($content['video_url'] ?? ''));
+    if ($videoUrl !== '') {
+        $buttons[] = [
+            'text' => 'Открыть видео',
+            'url' => $videoUrl,
+        ];
+    }
+
+    $buttonUrl = trim((string)($content['button_url'] ?? ''));
+    if ($buttonUrl !== '') {
+        $buttons[] = [
+            'text' => trim((string)($content['button_text'] ?? 'Открыть материал')) ?: 'Открыть материал',
+            'url' => $buttonUrl,
+        ];
+    }
+
+    if (trim((string)$externalUrl) !== '') {
+        $buttons[] = [
+            'text' => 'Открыть ссылку',
+            'url' => trim((string)$externalUrl),
+        ];
+    }
+
+    return $buttons;
+}
+
+function lead_response_media_urls(?array $content, array $attachmentPaths): array
+{
+    $urls = [];
+    foreach ([$content['image_path'] ?? null, $content['attachment_path'] ?? null] as $path) {
+        $url = absolute_public_url($path);
+        if ($url) {
+            $urls[] = $url;
+        }
+    }
+    foreach ($attachmentPaths as $path) {
+        $url = absolute_public_url($path);
+        if ($url) {
+            $urls[] = $url;
+        }
+    }
+
+    return $urls;
+}
+
 function send_telegram_text(string $chatId, string $text, array $buttons = []): array
 {
     $payload = [
@@ -486,7 +542,26 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
             $deliveryErrors[] = app_text('lead_response.platform_not_connected', ['platform' => 'telegram']);
             $status = 'failed';
         }
-    } elseif (!in_array($platform, ['VK', 'OK', 'MAX', 'web'], true)) {
+    } elseif (in_array($platform, ['VK', 'OK'], true)) {
+        $platformUserId = lead_platform_account_id($lead, $platform);
+        if ($platformUserId) {
+            $result = send_social_platform_message(
+                $platform,
+                $platformUserId,
+                $lead,
+                $text,
+                lead_response_social_buttons($content, $test, $externalUrl),
+                lead_response_media_urls($content, $attachmentPaths)
+            );
+            if (!$result['ok']) {
+                $deliveryErrors[] = $platform . ': ' . $result['error'];
+                $status = 'failed';
+            }
+        } else {
+            $deliveryErrors[] = app_text('lead_response.platform_not_connected', ['platform' => $platform]);
+            $status = 'failed';
+        }
+    } elseif (!in_array($platform, ['MAX', 'web'], true)) {
         $deliveryErrors[] = app_text('lead_response.platform_not_connected', ['platform' => $platform]);
         $status = 'failed';
     }

@@ -1430,6 +1430,9 @@ $formFields = crud_form_fields($moduleKey, $module['fields']);
 if (in_array($moduleKey, owned_modules(), true) && $admin['role'] !== 'superadmin') {
     unset($formFields['owner_type'], $formFields['owner_id']);
 }
+if ($moduleKey === 'integrations' && $admin['role'] !== 'superadmin') {
+    unset($formFields['owner_type'], $formFields['owner_id']);
+}
 
 if ($action === 'create' && !$canCreate) {
     $errors[] = app_text('auto.k_868d1fd837c9');
