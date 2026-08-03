@@ -128,6 +128,96 @@ function vk_callback_owner_context(array $integration): array
     return ['manager_id' => null, 'reseller_id' => null];
 }
 
+function vk_callback_owner_referral_code(array $integration): ?string
+{
+    $ownerType = (string)($integration['owner_type'] ?? '');
+    $ownerId = (int)($integration['owner_id'] ?? 0);
+    if ($ownerId <= 0) {
+        return null;
+    }
+
+    if ($ownerType === 'manager') {
+        $stmt = db()->prepare('SELECT referral_code FROM managers WHERE id = :id AND is_active = 1 LIMIT 1');
+        $stmt->execute(['id' => $ownerId]);
+        $code = trim((string)($stmt->fetchColumn() ?: ''));
+        return $code !== '' ? $code : null;
+    }
+
+    if ($ownerType === 'reseller') {
+        $stmt = db()->prepare('SELECT referral_code FROM resellers WHERE id = :id AND is_active = 1 LIMIT 1');
+        $stmt->execute(['id' => $ownerId]);
+        $code = trim((string)($stmt->fetchColumn() ?: ''));
+        return $code !== '' ? $code : null;
+    }
+
+    return null;
+}
+
+function vk_callback_mini_app_url(array $integration): string
+{
+    $config = app_config();
+    $code = vk_callback_owner_referral_code($integration);
+    $encodedCode = $code !== null ? rawurlencode($code) : '';
+    $vkAppId = preg_replace('/\D+/', '', (string)($config['integrations']['vk_app_id'] ?? '')) ?: '';
+    if ($vkAppId !== '') {
+        return 'https://vk.com/app' . $vkAppId . ($encodedCode !== '' ? '#ref=' . $encodedCode : '');
+    }
+
+    $miniAppUrl = trim((string)($config['integrations']['mini_app_url'] ?? ''));
+    if ($miniAppUrl === '') {
+        $publicUrl = rtrim((string)($config['app']['public_url'] ?? ''), '/');
+        $miniAppUrl = $publicUrl !== '' ? $publicUrl . '/vk-mini-app/' : 'https://swpro.ru/vk-mini-app/';
+    }
+
+    if ($encodedCode === '') {
+        return $miniAppUrl;
+    }
+
+    $separator = str_contains($miniAppUrl, '?') ? '&' : '?';
+    return $miniAppUrl . $separator . 'ref=' . $encodedCode;
+}
+
+function vk_callback_is_start_command(array $message): bool
+{
+    $text = trim((string)($message['text'] ?? ''));
+    $normalized = function_exists('mb_strtolower') ? mb_strtolower($text, 'UTF-8') : strtolower($text);
+    $normalized = trim($normalized);
+
+    if (in_array($normalized, ['начать', 'старт', 'start', '/start', 'menu', 'меню'], true)) {
+        return true;
+    }
+
+    $payload = $message['payload'] ?? null;
+    if (is_string($payload) && $payload !== '') {
+        $decoded = json_decode($payload, true);
+        $payload = is_array($decoded) ? $decoded : $payload;
+    }
+    if (is_array($payload)) {
+        $command = function_exists('mb_strtolower')
+            ? mb_strtolower(trim((string)($payload['command'] ?? $payload['cmd'] ?? $payload['type'] ?? '')), 'UTF-8')
+            : strtolower(trim((string)($payload['command'] ?? $payload['cmd'] ?? $payload['type'] ?? '')));
+        return in_array($command, ['start', 'начать', 'menu'], true);
+    }
+
+    return false;
+}
+
+function vk_callback_send_start_response(array $integration, string $platformUserId, array $user): void
+{
+    $name = trim((string)($user['first_name'] ?? ''));
+    $greeting = $name !== '' ? 'Здравствуйте, ' . $name . '!' : 'Здравствуйте!';
+    $miniAppUrl = vk_callback_mini_app_url($integration);
+    $text = $greeting . "\n\n"
+        . "SWPro готов к работе. В Mini App можно пройти чек-ап организма, посмотреть материалы и отправить вопрос консультанту.\n\n"
+        . "Открыть SWPro:\n" . $miniAppUrl . "\n\n"
+        . "Если хотите сразу написать консультанту, отправьте сообщение сюда одним текстом.";
+
+    $result = send_vk_community_message($integration, $platformUserId, $text);
+    if (empty($result['ok'])) {
+        throw new RuntimeException((string)($result['error'] ?? 'VK start response failed'));
+    }
+}
+
 function vk_callback_http_form_get(string $url, array $payload): array
 {
     $context = stream_context_create([
@@ -426,6 +516,11 @@ function vk_callback_handle_message_new(array $payload, array $integration): voi
     vk_callback_mark_messages_allowed((int)$user['id'], $fromId, true);
 
     $text = trim((string)($message['text'] ?? ''));
+    if (vk_callback_is_start_command($message)) {
+        vk_callback_send_start_response($integration, $fromId, $user);
+        return;
+    }
+
     $attachments = vk_callback_normalize_attachments(is_array($message['attachments'] ?? null) ? $message['attachments'] : []);
     $attachmentText = vk_callback_attachment_text($attachments);
     $leadMessage = $text !== '' ? $text : 'Клиент отправил вложение без текста.';
