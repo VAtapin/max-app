@@ -751,3 +751,15 @@ function lead_response_history(int $leadId): array
     $stmt->execute(['lead_id' => $leadId]);
     return $stmt->fetchAll();
 }
+
+function lead_response_platform(int $responseId): string
+{
+    if ($responseId <= 0) {
+        return '';
+    }
+
+    $stmt = db()->prepare('SELECT platform FROM lead_responses WHERE id = :id LIMIT 1');
+    $stmt->execute(['id' => $responseId]);
+
+    return normalize_platform((string)($stmt->fetchColumn() ?: ''));
+}

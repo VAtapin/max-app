@@ -1775,7 +1775,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = app_text('auto.k_5cececf97899') . $e->getMessage();
         }
         if ($responseId && !$errors) {
-            redirect('crud.php?module=leads&action=edit&id=' . $postId . '&success=response_sent');
+            $sentPlatform = lead_response_platform($responseId);
+            $sentPlatformQuery = $sentPlatform !== '' ? '&sent_platform=' . rawurlencode($sentPlatform) : '';
+            redirect('crud.php?module=leads&action=edit&id=' . $postId . '&success=response_sent' . $sentPlatformQuery);
         }
         $action = 'edit';
         $id = $postId;
@@ -1966,7 +1968,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php elseif ($success === 'deleted'): ?>
     <div class="notice success"><?= h(app_text('auto.k_5db71cdc4927')) ?></div>
 <?php elseif ($success === 'response_sent'): ?>
-    <div class="notice success"><?= h(app_text('auto.k_0184f257cbfc')) ?></div>
+    <?php $sentPlatformLabel = platform_label((string)($_GET['sent_platform'] ?? '')); ?>
+    <div class="notice success"><?= h(app_text('auto.k_0184f257cbfc', ['platform' => $sentPlatformLabel !== '' ? $sentPlatformLabel : 'платформу заявки'])) ?></div>
 <?php elseif ($success === 'merged'): ?>
     <div class="notice success"><?= h(app_text('user_merge.success')) ?></div>
 <?php elseif ($success === 'personal_copy'): ?>
