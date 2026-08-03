@@ -237,15 +237,20 @@ function confirm_pending_admin_2fa_setup(string $code): bool
         return false;
     }
 
-    $stmt = db()->prepare(
-        'UPDATE admin_users
-         SET two_factor_enabled = 1, two_factor_secret = :secret, two_factor_confirmed_at = NOW()
-         WHERE id = :id'
-    );
-    $stmt->execute([
-        'secret' => $secret,
-        'id' => (int)$user['id'],
-    ]);
+    try {
+        $stmt = db()->prepare(
+            'UPDATE admin_users
+             SET two_factor_enabled = 1, two_factor_secret = :secret, two_factor_confirmed_at = NOW()
+             WHERE id = :id'
+        );
+        $stmt->execute([
+            'secret' => $secret,
+            'id' => (int)$user['id'],
+        ]);
+    } catch (Throwable) {
+        return false;
+    }
+
     $user['two_factor_enabled'] = 1;
     $user['two_factor_secret'] = $secret;
     $user['two_factor_confirmed_at'] = date('Y-m-d H:i:s');

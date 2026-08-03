@@ -67,6 +67,16 @@ function account_current_password_valid(array $admin, string $password): bool
     return $password !== '' && password_verify($password, (string)$admin['password_hash']);
 }
 
+function account_two_factor_save_error(Throwable $e): string
+{
+    $message = $e->getMessage();
+    if (stripos($message, 'two_factor_') !== false || stripos($message, 'Unknown column') !== false) {
+        return 'Не удалось сохранить 2FA: на сервере не применены миграции двухфакторной защиты. Выполните миграции базы данных.';
+    }
+
+    return 'Не удалось сохранить 2FA: ' . $message;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $action = (string)($_POST['action'] ?? '');
@@ -149,18 +159,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (!$errors) {
-            $stmt = db()->prepare(
-                'UPDATE admin_users
-                 SET two_factor_enabled = 1, two_factor_secret = :secret, two_factor_confirmed_at = NOW()
-                 WHERE id = :id'
-            );
-            $stmt->execute([
-                'secret' => $secret,
-                'id' => (int)$admin['id'],
-            ]);
-            unset($_SESSION['account_2fa_setup_secret']);
-            log_activity('admin', (int)$admin['id'], 'enable_own_2fa', 'admin_users', (int)$admin['id']);
-            redirect('account.php?success=2fa_enabled');
+            try {
+                $stmt = db()->prepare(
+                    'UPDATE admin_users
+                     SET two_factor_enabled = 1, two_factor_secret = :secret, two_factor_confirmed_at = NOW()
+                     WHERE id = :id'
+                );
+                $stmt->execute([
+                    'secret' => $secret,
+                    'id' => (int)$admin['id'],
+                ]);
+                unset($_SESSION['account_2fa_setup_secret']);
+                log_activity('admin', (int)$admin['id'], 'enable_own_2fa', 'admin_users', (int)$admin['id']);
+                redirect('account.php?success=2fa_enabled');
+            } catch (Throwable $e) {
+                $errors[] = account_two_factor_save_error($e);
+            }
         }
     } elseif ($action === 'disable_2fa') {
         $currentPassword = (string)($_POST['current_password'] ?? '');
@@ -177,15 +191,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (!$errors) {
-            $stmt = db()->prepare(
-                'UPDATE admin_users
-                 SET two_factor_enabled = 0, two_factor_secret = NULL, two_factor_confirmed_at = NULL
-                 WHERE id = :id'
-            );
-            $stmt->execute(['id' => (int)$admin['id']]);
-            unset($_SESSION['account_2fa_setup_secret']);
-            log_activity('admin', (int)$admin['id'], 'disable_own_2fa', 'admin_users', (int)$admin['id']);
-            redirect('account.php?success=2fa_disabled');
+            try {
+                $stmt = db()->prepare(
+                    'UPDATE admin_users
+                     SET two_factor_enabled = 0, two_factor_secret = NULL, two_factor_confirmed_at = NULL
+                     WHERE id = :id'
+                );
+                $stmt->execute(['id' => (int)$admin['id']]);
+                unset($_SESSION['account_2fa_setup_secret']);
+                log_activity('admin', (int)$admin['id'], 'disable_own_2fa', 'admin_users', (int)$admin['id']);
+                redirect('account.php?success=2fa_disabled');
+            } catch (Throwable $e) {
+                $errors[] = account_two_factor_save_error($e);
+            }
         }
     }
 }
