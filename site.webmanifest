@@ -1,0 +1,16 @@
+{
+  "name": "SWPro Ассистент",
+  "short_name": "SWPro",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b4f86",
+  "icons": [
+    {
+      "src": "/swpro.png",
+      "sizes": "576x576",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

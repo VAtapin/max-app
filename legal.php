@@ -64,6 +64,11 @@ $body = strtr((string)$document['body'], $replacements);
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= h((string)$document['title']) ?> — SWPro</title>
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <meta name="theme-color" content="#0b4f86">
     <style>
         body { margin: 0; background: #f4f6f8; color: #202739; font: 16px/1.65 system-ui, sans-serif; }
         main { max-width: 820px; margin: 0 auto; padding: 32px 20px 60px; }

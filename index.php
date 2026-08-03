@@ -200,6 +200,11 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= h($profile ? $profile['display_name'] . ' - SWPro' : 'SWPro') ?></title>
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <meta name="theme-color" content="#0b4f86">
     <link rel="stylesheet" href="/public.css">
 </head>
 <body>
