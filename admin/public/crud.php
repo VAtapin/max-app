@@ -1758,6 +1758,10 @@ if ($action === 'edit' && !$canEdit) {
     $action = 'list';
 }
 
+$leadChatOnly = $moduleKey === 'leads'
+    && $action === 'edit'
+    && ((string)($_GET['chat_only'] ?? '') === '1' || (string)($_POST['chat_only'] ?? '') === '1');
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $postAction = $_POST['action'] ?? 'save';
@@ -1778,7 +1782,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($responseId && !$errors) {
             $sentPlatform = lead_response_platform($responseId);
             $sentPlatformQuery = $sentPlatform !== '' ? '&sent_platform=' . rawurlencode($sentPlatform) : '';
-            redirect('crud.php?module=leads&action=edit&id=' . $postId . '&success=response_sent' . $sentPlatformQuery);
+            $chatOnlyQuery = (string)($_POST['chat_only'] ?? '') === '1' ? '&chat_only=1' : '';
+            redirect('crud.php?module=leads&action=edit&id=' . $postId . $chatOnlyQuery . '&success=response_sent' . $sentPlatformQuery);
         }
         $action = 'edit';
         $id = $postId;
@@ -1932,11 +1937,13 @@ $rows = [];
 $listHtml = '';
 $displayColumns = crud_display_columns($moduleKey);
 try {
-    [$listSql, $params] = crud_list_query($moduleKey, $module, $admin);
-    $stmt = db()->prepare($listSql);
-    $stmt->execute($params);
-    $rows = $stmt->fetchAll();
-    $listHtml = render_crud_list($moduleKey, $displayColumns, $rows, $canEdit, $canDelete);
+    if (!$leadChatOnly) {
+        [$listSql, $params] = crud_list_query($moduleKey, $module, $admin);
+        $stmt = db()->prepare($listSql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+        $listHtml = render_crud_list($moduleKey, $displayColumns, $rows, $canEdit, $canDelete);
+    }
 } catch (Throwable $e) {
     $errors[] = app_text('auto.k_49fb23bb29cf') . $e->getMessage();
     $listHtml = app_text('auto.k_fda0c24ca2e9');
@@ -1960,7 +1967,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
 ?>
 <div class="toolbar">
     <h1><?= h($title) ?></h1>
-    <?php if ($canCreate): ?>
+    <?php if ($leadChatOnly): ?>
+        <a class="button secondary-button" href="crud.php?module=leads">К списку обращений</a>
+    <?php elseif ($canCreate): ?>
         <a class="button" href="crud.php?module=<?= h($moduleKey) ?>&action=create"><?= h(app_text('auto.k_559a87f7cc13')) ?></a>
     <?php endif; ?>
 </div>
@@ -1987,7 +1996,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php if ($moduleKey === 'integrations'): ?>
     <?= render_vk_connection_help_link() ?>
 <?php endif; ?>
-<?php if ($action === 'create' || $action === 'edit'): ?>
+<?php if (($action === 'create' || $action === 'edit') && !$leadChatOnly): ?>
     <section class="panel form-panel">
         <h2><?= h(crud_form_title($moduleKey, $action)) ?></h2>
         <form method="post" class="crud-form" enctype="multipart/form-data">
@@ -2209,7 +2218,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
             </form>
         </section>
     <?php endif; ?>
-    <?php if ($moduleKey === 'leads' && $action === 'edit' && $editRow): ?>
+<?php if ($moduleKey === 'leads' && $action === 'edit' && $editRow): ?>
         <section class="panel">
             <h2>Чат с клиентом</h2>
             <?= render_lead_conversation((int)($editRow['end_user_id'] ?? 0)) ?>
@@ -2222,6 +2231,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
                 <input type="hidden" name="action" value="send_lead_response">
                 <input type="hidden" name="id" value="<?= h((string)$editRow['id']) ?>">
+                <?php if ($leadChatOnly): ?>
+                    <input type="hidden" name="chat_only" value="1">
+                <?php endif; ?>
 
                 <label class="field">
                     <span><?= h(app_text('auto.k_a76a99a18c25')) ?></span>
@@ -2264,6 +2276,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
             </form>
         </section>
 
+        <?php if (!$leadChatOnly): ?>
         <section class="panel">
             <h2><?= h(app_text('auto.k_238615f19976')) ?></h2>
             <?php
@@ -2333,9 +2346,13 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <div class="empty-state"><?= h(app_text('auto.k_06fe678de6fe')) ?></div>
             <?php endif; ?>
         </section>
+        <?php endif; ?>
     <?php endif; ?>
 <?php endif; ?>
-<?php $showList = !($moduleKey === 'users' && $action === 'edit'); ?>
+<?php if ($moduleKey === 'leads'): ?>
+    <?= render_lead_media_modal() ?>
+<?php endif; ?>
+<?php $showList = !($moduleKey === 'users' && $action === 'edit') && !$leadChatOnly; ?>
 <?php if ($showList): ?>
     <?php if ($moduleKey === 'users'): ?>
         <section class="panel">

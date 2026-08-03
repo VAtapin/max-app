@@ -1410,7 +1410,12 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
                 <?php if ($canEdit || $canDelete): ?>
                     <div class="lead-card-actions">
                         <?php if ($canEdit): ?>
-                            <a class="button" href="crud.php?module=leads&action=edit&id=<?= (int)$row['id'] ?>">Открыть чат</a>
+                            <a
+                                class="button"
+                                href="crud.php?module=leads&amp;action=edit&amp;id=<?= (int)$row['id'] ?>&amp;chat_only=1"
+                                target="_blank"
+                                rel="noopener"
+                            >Открыть чат</a>
                         <?php endif; ?>
                         <?php if ($canDelete): ?>
                             <form method="post" onsubmit="return confirm('<?= h(app_text('auto.k_112417195434', ['id' => (int)$row['id']])) ?>');">
