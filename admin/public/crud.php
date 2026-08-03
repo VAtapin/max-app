@@ -2218,6 +2218,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
             </form>
         </section>
     <?php endif; ?>
+<?php endif; ?>
 <?php if ($moduleKey === 'leads' && $action === 'edit' && $editRow): ?>
         <section class="panel">
             <h2>Чат с клиентом</h2>
@@ -2348,7 +2349,6 @@ require __DIR__ . '/../app/views/layouts/header.php';
         </section>
         <?php endif; ?>
     <?php endif; ?>
-<?php endif; ?>
 <?php if ($moduleKey === 'leads'): ?>
     <?= render_lead_media_modal() ?>
 <?php endif; ?>
