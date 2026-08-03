@@ -446,6 +446,7 @@ function merge_user_name_variants(array $row): array
 function merge_user_similarity_score(array $target, array $candidate, string $query): array
 {
     $score = 0.0;
+    $queryRank = 0;
     $reasons = [];
     $queryNorm = normalize_merge_text($query);
     $targetNames = merge_user_name_variants($target);
@@ -457,12 +458,14 @@ function merge_user_similarity_score(array $target, array $candidate, string $qu
             . ' ' . normalize_merge_text((string)($candidate['city'] ?? ''));
         if (str_contains($haystack, $queryNorm)) {
             $score += 55;
+            $queryRank = 2;
             $reasons[] = 'найдено по запросу';
         } elseif (strlen($queryNorm) >= 3) {
             foreach ($candidateNames as $candidateName) {
                 similar_text($queryNorm, $candidateName, $percent);
                 if ($percent >= 55) {
                     $score += min(40, $percent * 0.45);
+                    $queryRank = 1;
                     $reasons[] = 'похожее написание запроса';
                     break;
                 }
@@ -527,6 +530,7 @@ function merge_user_similarity_score(array $target, array $candidate, string $qu
 
     return [
         'score' => $score,
+        'query_rank' => $queryRank,
         'reason' => implode(', ', array_values(array_unique($reasons))) ?: 'возможное совпадение',
     ];
 }
@@ -561,10 +565,13 @@ function merge_user_search_results(int $targetUserId, string $query, array $admi
             'meta' => merge_user_meta_label($row),
             'reason' => $match['reason'],
             'score' => round($match['score'], 1),
+            'query_rank' => $match['query_rank'],
         ];
     }
 
-    usort($items, static fn(array $a, array $b): int => ($b['score'] <=> $a['score']) ?: ($b['id'] <=> $a['id']));
+    usort($items, static fn(array $a, array $b): int => ($b['query_rank'] <=> $a['query_rank'])
+        ?: ($b['score'] <=> $a['score'])
+        ?: ($b['id'] <=> $a['id']));
     return array_slice($items, 0, 12);
 }
 

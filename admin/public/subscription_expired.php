@@ -18,7 +18,7 @@ $title = 'Доступ приостановлен';
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Доступ приостановлен — SWPro</title>
-    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/style.css?v=<?= (int)filemtime(__DIR__ . '/assets/css/style.css') ?>">
 </head>
 <body class="login-page">
 <main class="login-card">

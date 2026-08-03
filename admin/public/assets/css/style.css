@@ -582,6 +582,7 @@ button:disabled {
 }
 
 .merge-suggestion {
+    align-items: start;
     background: #ffffff;
     border: 1px solid var(--line);
     border-radius: var(--radius-sm);
@@ -589,9 +590,17 @@ button:disabled {
     cursor: pointer;
     display: grid;
     gap: 4px;
+    justify-items: start;
     padding: 12px;
     text-align: left;
     transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    width: 100%;
+}
+
+.merge-suggestion > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: left;
     width: 100%;
 }
 
