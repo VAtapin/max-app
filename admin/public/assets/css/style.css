@@ -1726,8 +1726,112 @@ button {
         flex-wrap: wrap;
     }
 }
-.result-admin-list,
+.table-scroll {
+    overflow-x: auto;
+}
+
+.results-table-panel {
+    display: grid;
+    gap: 14px;
+}
+
+.results-table th,
+.results-table td {
+    white-space: normal;
+}
+
+.results-table .clickable-row {
+    cursor: pointer;
+}
+
+.results-table .clickable-row:hover {
+    background: #f6fbfa;
+}
+
+.compact-button {
+    min-height: 32px;
+    padding: 6px 10px;
+}
+
+.pagination-current {
+    background: var(--accent);
+    color: #ffffff;
+}
+
+.pagination-gap {
+    color: var(--muted);
+    font-weight: 800;
+    padding: 0 2px;
+}
+
+.admin-modal {
+    border: 0;
+    border-radius: var(--radius-lg);
+    box-shadow: 0 24px 80px rgba(15, 23, 42, 0.24);
+    max-height: min(86vh, 900px);
+    max-width: min(1040px, calc(100vw - 32px));
+    padding: 0;
+    width: 100%;
+}
+
+.admin-modal::backdrop {
+    background: rgba(15, 23, 42, 0.46);
+}
+
+.modal-shell {
+    background: #ffffff;
+    display: grid;
+    max-height: min(86vh, 900px);
+    overflow: hidden;
+}
+
+.modal-head,
+.modal-actions {
+    align-items: flex-start;
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    padding: 18px 22px;
+}
+
+.modal-head {
+    border-bottom: 1px solid var(--line);
+}
+
+.modal-head h2 {
+    margin-bottom: 4px;
+}
+
+.modal-body {
+    max-height: 64vh;
+    overflow: auto;
+    padding: 0 22px 22px;
+}
+
+.modal-actions {
+    border-top: 1px solid var(--line);
+}
+
+.modal-actions form {
+    margin: 0;
+}
+
+.icon-button {
+    background: #eef4f3;
+    border-color: #cfe0df;
+    color: var(--text);
+    font-size: 20px;
+    line-height: 1;
+    min-height: 36px;
+    padding: 5px 12px;
+}
+
 .result-admin-scales {
+    display: grid;
+    gap: 16px;
+}
+
+.result-admin-list {
     display: grid;
     gap: 16px;
 }
@@ -1757,7 +1861,24 @@ button {
 .result-admin-scales > div {
     padding: 14px;
     border: 1px solid var(--line);
+    border-left: 5px solid var(--accent-light);
     border-radius: 8px;
+}
+
+.result-admin-scales > .severity-excellent {
+    border-left-color: #38a169;
+}
+
+.result-admin-scales > .severity-good {
+    border-left-color: #3182ce;
+}
+
+.result-admin-scales > .severity-risk {
+    border-left-color: #d88922;
+}
+
+.result-admin-scales > .severity-critical {
+    border-left-color: #d43f3a;
 }
 
 .result-admin-scales strong,
@@ -1772,6 +1893,11 @@ button {
 
     .result-admin-head > div:last-child {
         justify-items: start;
+    }
+
+    .modal-head,
+    .modal-actions {
+        display: grid;
     }
 }
 .broadcast-preview {
