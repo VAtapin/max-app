@@ -521,15 +521,6 @@ button:disabled {
     white-space: normal;
 }
 
-.access-rules {
-    display: grid;
-    gap: 8px;
-}
-
-.access-rules p {
-    margin: 0;
-}
-
 .form-panel {
     margin-bottom: 18px;
 }

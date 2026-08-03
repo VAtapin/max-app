@@ -2009,12 +2009,4 @@ require __DIR__ . '/../app/views/layouts/header.php';
         <?= $listHtml ?>
     </section>
 <?php endif; ?>
-<section class="panel">
-    <h2><?= h(app_text('auto.k_770fa6d360ac')) ?></h2>
-    <div class="access-rules">
-        <p><strong><?= h(app_text('auto.k_58b681fd4d17')) ?></strong><?= h(app_text('auto.k_15250cf3f350')) ?></p>
-        <p><strong><?= h(app_text('auto.k_674627c4bad0')) ?></strong><?= h(app_text('auto.k_344db6faf528')) ?></p>
-        <p><strong><?= h(app_text('auto.k_839732a73e8e')) ?></strong><?= h(app_text('auto.k_73dde519a420')) ?></p>
-    </div>
-</section>
 <?php require __DIR__ . '/../app/views/layouts/footer.php'; ?>
