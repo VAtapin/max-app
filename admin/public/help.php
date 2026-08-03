@@ -105,6 +105,9 @@ try {
                 $featuredSection = $row;
                 continue;
             }
+            if ((string)$row['title'] === 'Как подключить VK-сообщество') {
+                continue;
+            }
             $faqSections[] = $row;
         }
     }
@@ -135,6 +138,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
     </section>
 <?php endif; ?>
 
+<?= render_vk_connection_guide() ?>
+
 <?php if ($faqSections): ?>
     <section class="help-grid">
         <?php foreach ($faqSections as $section): ?>
@@ -154,8 +159,6 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php else: ?>
     <div class="empty-state"><?= h(app_text('help.empty')) ?></div>
 <?php endif; ?>
-
-<?= render_vk_connection_guide() ?>
 
 <section class="panel form-panel faq-editor">
     <h2><?= h(app_text('help.editor_title')) ?></h2>

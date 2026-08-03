@@ -11,140 +11,111 @@ function integration_guide_callback_url(): string
     return ($publicUrl !== '' ? $publicUrl : 'https://swpro.ru') . '/api/vk_callback.php';
 }
 
-function render_vk_connection_guide(bool $compact = false): string
+function render_vk_connection_help_link(): string
+{
+    ob_start();
+    ?>
+    <section class="panel integration-help-link">
+        <div>
+            <span class="eyebrow">VK</span>
+            <h2>Инструкция по подключению сообщества</h2>
+            <p>Пошаговая настройка сообщений, ключа доступа и Callback API вынесена в раздел помощи.</p>
+        </div>
+        <a class="button secondary-button" href="help.php#vk-connection-guide">Открыть инструкцию</a>
+    </section>
+    <?php
+    return trim((string)ob_get_clean());
+}
+
+function render_vk_connection_guide(): string
 {
     $callbackUrl = integration_guide_callback_url();
     $greetingText = 'Здравствуйте! Здесь можно пройти чек-ап и получить ответ консультанта. Нажмите «Начать» или откройте приложение SWPro';
-    $className = 'panel vk-guide' . ($compact ? ' vk-guide-compact' : '');
+    $steps = [
+        [
+            'title' => 'Откройте управление сообщества',
+            'text' => 'На странице сообщества нажмите «Управление».',
+            'image' => '/admin/uploads/help/vk-community-page.png',
+            'alt' => 'Страница VK-сообщества с пунктом Управление',
+        ],
+        [
+            'title' => 'Включите сообщения и приветствие',
+            'text' => 'В разделе «Сообщения» включите сообщения сообщества и вставьте приветственный текст.',
+            'image' => '/admin/uploads/help/vk-messages.png',
+            'alt' => 'Настройки сообщений VK-сообщества',
+        ],
+        [
+            'title' => 'Включите настройки для бота',
+            'text' => 'Включите возможности ботов и кнопку «Начать».',
+            'image' => '/admin/uploads/help/vk-bot-settings.png',
+            'alt' => 'Настройки для бота в VK',
+        ],
+        [
+            'title' => 'Создайте ключ доступа',
+            'text' => 'Откройте «Дополнительно» → «Работа с API» → «Ключи доступа» и нажмите «Создать ключ».',
+            'image' => '/admin/uploads/help/vk-api-keys.png',
+            'alt' => 'Раздел ключей доступа VK API',
+        ],
+        [
+            'title' => 'Выберите права ключа',
+            'text' => 'Отметьте права для сообщений, фотографий, документов, историй, стены и управления сообществом.',
+            'image' => '/admin/uploads/help/vk-api-key-rights.png',
+            'alt' => 'Окно выбора прав ключа доступа VK',
+        ],
+        [
+            'title' => 'Отметьте события Callback API',
+            'text' => 'На вкладке «Типы событий» отметьте пять событий: входящее сообщение, действие с сообщением, разрешение, запрет и прочитанность.',
+            'image' => '/admin/uploads/help/vk-callback-events.png',
+            'alt' => 'Типы событий Callback API в VK',
+        ],
+    ];
 
     ob_start();
     ?>
-    <section class="<?= h($className) ?>">
+    <section class="panel vk-guide" id="vk-connection-guide">
         <div class="vk-guide-head">
             <div>
                 <span class="eyebrow">VK</span>
                 <h2>Как подключить сообщество VK</h2>
-                <p>Подключение нужно, чтобы SWPro принимал входящие сообщения из сообщества и отправлял ответы клиентам от имени этого сообщества.</p>
+                <p>Настройка нужна, чтобы SWPro получал сообщения из VK и отправлял ответы клиентам от имени сообщества.</p>
             </div>
             <div class="vk-guide-note">
-                Ключ доступа и секретный ключ не публикуйте в чатах и инструкциях. Если ключ уже показали посторонним, удалите его в VK и создайте новый.
+                Не публикуйте ключ доступа и секретный ключ. Если ключ уже показывали посторонним, удалите его в VK и создайте новый.
             </div>
         </div>
 
-        <div class="vk-guide-steps">
-            <article class="vk-guide-step">
-                <div class="vk-guide-step-title">
-                    <span>1</span>
-                    <h3>Откройте управление</h3>
-                </div>
-                <p>Войдите в свое VK-сообщество и нажмите <strong>Управление</strong> в правом меню.</p>
-                <div class="vk-guide-shot">
-                    <div class="vk-shot-top">Страница сообщества</div>
-                    <div class="vk-shot-cover">Обложка сообщества</div>
-                    <div class="vk-shot-row is-highlight">Управление</div>
-                    <div class="vk-shot-row">Сообщения</div>
-                    <div class="vk-shot-row">Статистика</div>
-                </div>
-            </article>
-
-            <article class="vk-guide-step">
-                <div class="vk-guide-step-title">
-                    <span>2</span>
-                    <h3>Включите сообщения</h3>
-                </div>
-                <p>Перейдите в <strong>Сообщения</strong>, включите сообщения сообщества и поставьте приветствие.</p>
-                <div class="vk-guide-copy"><?= h($greetingText) ?></div>
-                <div class="vk-guide-shot">
-                    <div class="vk-shot-top">Управление · Сообщения</div>
-                    <div class="vk-shot-field"><b>Сообщения сообщества</b><strong>Включены</strong></div>
-                    <div class="vk-shot-field is-highlight"><b>Приветствие</b><span>Текст приветствия SWPro</span></div>
-                    <div class="vk-shot-button">Сохранить</div>
-                </div>
-            </article>
-
-            <article class="vk-guide-step">
-                <div class="vk-guide-step-title">
-                    <span>3</span>
-                    <h3>Настройте бота</h3>
-                </div>
-                <p>В разделе <strong>Настройки для бота</strong> включите возможности ботов и кнопку <strong>Начать</strong>.</p>
-                <div class="vk-guide-shot">
-                    <div class="vk-shot-top">Сообщения · Настройки для бота</div>
-                    <div class="vk-shot-field"><b>Возможности ботов</b><strong>Включены</strong></div>
-                    <div class="vk-shot-check is-highlight">Добавить кнопку «Начать»</div>
-                    <div class="vk-shot-check">Разрешить добавлять сообщество в чаты</div>
-                </div>
-            </article>
-
-            <article class="vk-guide-step">
-                <div class="vk-guide-step-title">
-                    <span>4</span>
-                    <h3>Создайте ключ доступа</h3>
-                </div>
-                <p>Откройте <strong>Дополнительно → Работа с API → Ключи доступа</strong> и нажмите <strong>Создать ключ</strong>.</p>
-                <div class="vk-guide-shot">
-                    <div class="vk-shot-tabs">
-                        <span class="is-active">Ключи доступа</span>
-                        <span>Callback API</span>
-                        <span>Long Poll API</span>
-                    </div>
-                    <div class="vk-shot-row is-highlight">Создать ключ</div>
-                    <div class="vk-shot-check">Управление сообществом</div>
-                    <div class="vk-shot-check">Сообщения сообщества</div>
-                    <div class="vk-shot-check">Фотографии, документы, истории, стена</div>
-                </div>
-            </article>
-
-            <article class="vk-guide-step">
-                <div class="vk-guide-step-title">
-                    <span>5</span>
-                    <h3>Заполните Callback API</h3>
-                </div>
-                <p>На вкладке <strong>Callback API</strong> укажите адрес сервера, задайте секретный ключ, сохраните и нажмите <strong>Подтвердить</strong>.</p>
-                <div class="vk-guide-shot">
-                    <div class="vk-shot-tabs">
-                        <span>Ключи доступа</span>
-                        <span class="is-active">Callback API</span>
-                        <span>Long Poll API</span>
-                    </div>
-                    <div class="vk-shot-field"><b>Версия API</b><span>5.199</span></div>
-                    <div class="vk-shot-field is-highlight"><b>Адрес</b><code><?= h($callbackUrl) ?></code></div>
-                    <div class="vk-shot-field"><b>group_id</b><code>скопируйте из VK</code></div>
-                    <div class="vk-shot-field"><b>Строка подтверждения</b><code>скопируйте из VK</code></div>
-                    <div class="vk-shot-field is-highlight"><b>Секретный ключ</b><code>одинаковый в VK и SWPro</code></div>
-                </div>
-            </article>
-
-            <article class="vk-guide-step">
-                <div class="vk-guide-step-title">
-                    <span>6</span>
-                    <h3>Отметьте типы событий</h3>
-                </div>
-                <p>В <strong>Callback API → Типы событий</strong> включите пять событий для сообщений.</p>
-                <div class="vk-guide-shot">
-                    <div class="vk-shot-top">Типы событий</div>
-                    <div class="vk-shot-check is-highlight">Входящее сообщение</div>
-                    <div class="vk-shot-check is-muted">Исходящее сообщение</div>
-                    <div class="vk-shot-check is-muted">Редактирование сообщения</div>
-                    <div class="vk-shot-check is-highlight">Действие с сообщением</div>
-                    <div class="vk-shot-check is-highlight">Разрешение на получение</div>
-                    <div class="vk-shot-check is-highlight">Запрет на получение</div>
-                    <div class="vk-shot-check is-muted">Статус набора текста</div>
-                    <div class="vk-shot-check is-highlight">Прочитанность сообщений</div>
-                </div>
-            </article>
+        <div class="vk-guide-inline">
+            <strong>Текст приветствия VK:</strong>
+            <span><?= h($greetingText) ?></span>
         </div>
 
-        <div class="vk-guide-map">
-            <h3>Что вставить в SWPro</h3>
-            <div class="vk-guide-map-grid">
-                <div><b>Платформа</b><span>VK</span></div>
-                <div><b>Название</b><span>Понятное имя подключения, например «Сообщество Марии VK»</span></div>
-                <div><b>ID группы/канала</b><span>Числовой <code>group_id</code> из блока подтверждения Callback API</span></div>
-                <div><b>Ключ доступа</b><span>Ключ из вкладки «Ключи доступа»</span></div>
-                <div><b>Callback: строка подтверждения</b><span>Строка, которую должен вернуть сервер</span></div>
-                <div><b>Callback: секретный ключ</b><span>Секрет, который вы сами придумали и указали в VK</span></div>
-            </div>
+        <ol class="vk-screenshot-list">
+            <?php foreach ($steps as $index => $step): ?>
+                <li class="vk-screenshot-card">
+                    <div class="vk-screenshot-text">
+                        <span><?= $index + 1 ?></span>
+                        <div>
+                            <h3><?= h($step['title']) ?></h3>
+                            <p><?= h($step['text']) ?></p>
+                        </div>
+                    </div>
+                    <a href="<?= h($step['image']) ?>" target="_blank" rel="noopener">
+                        <img src="<?= h($step['image']) ?>" alt="<?= h($step['alt']) ?>" loading="lazy">
+                    </a>
+                </li>
+            <?php endforeach; ?>
+        </ol>
+
+        <div class="vk-guide-fields">
+            <h3>Что потом заполнить в SWPro</h3>
+            <dl>
+                <div><dt>Платформа</dt><dd>VK</dd></div>
+                <div><dt>ID группы/канала</dt><dd>Числовой <code>group_id</code> из Callback API.</dd></div>
+                <div><dt>Ключ доступа</dt><dd>Ключ из вкладки «Ключи доступа».</dd></div>
+                <div><dt>Callback: строка подтверждения</dt><dd>Строка, которую VK просит вернуть серверу.</dd></div>
+                <div><dt>Callback: секретный ключ</dt><dd>Ваш секретный ключ. Он должен совпадать в VK и SWPro.</dd></div>
+                <div><dt>Адрес Callback API</dt><dd><code><?= h($callbackUrl) ?></code></dd></div>
+            </dl>
         </div>
     </section>
     <?php

@@ -3,6 +3,8 @@
 !/admin/uploads/.gitkeep
 !/admin/uploads/content/
 !/admin/uploads/content/*.png
+!/admin/uploads/help/
+!/admin/uploads/help/*.png
 !/admin/uploads/tests/
 !/admin/uploads/tests/*.png
 *.log

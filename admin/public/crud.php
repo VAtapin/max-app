@@ -1985,7 +1985,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <div class="alert"><?= h($error) ?></div>
 <?php endforeach; ?>
 <?php if ($moduleKey === 'integrations'): ?>
-    <?= render_vk_connection_guide(true) ?>
+    <?= render_vk_connection_help_link() ?>
 <?php endif; ?>
 <?php if ($action === 'create' || $action === 'edit'): ?>
     <section class="panel form-panel">
