@@ -219,11 +219,40 @@ a.stat:hover {
     margin-bottom: 6px;
 }
 
-.two-factor-setup,
+.two-factor-connect,
 .two-factor-confirm-form,
 .two-factor-disable-form {
     display: grid;
     gap: 14px;
+}
+
+.two-factor-connect {
+    gap: 18px;
+    margin-inline: auto;
+    max-width: 640px;
+}
+
+.two-factor-connect h2,
+.two-factor-connect-title {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: clamp(32px, 4.2vw, 44px);
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.05;
+    margin: 0;
+}
+
+.two-factor-connect > p,
+.login-card > .cell-muted {
+    color: #667085;
+    font-size: 17px;
+    line-height: 1.55;
+}
+
+.two-factor-recommendation {
+    color: #667085;
+    line-height: 1.5;
+    margin: 0 0 14px;
 }
 
 .two-factor-secret {
@@ -3115,6 +3144,43 @@ button {
     display: grid;
     gap: 12px;
     justify-items: center;
+}
+
+.two-factor-qr-image {
+    background: #ffffff;
+    border: 0;
+    border-radius: 0;
+    display: block;
+    justify-self: center;
+    max-width: min(300px, 100%);
+    width: 280px;
+}
+
+.login-two-factor-qr-image {
+    width: min(270px, 100%);
+}
+
+.two-factor-manual {
+    display: grid;
+    gap: 12px;
+}
+
+.two-factor-manual summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.two-factor-manual p {
+    margin: 8px 0 0;
+}
+
+.two-factor-manual code {
+    background: #f7f3ed;
+    border-radius: 10px;
+    display: block;
+    font-family: Consolas, "Liberation Mono", monospace;
+    overflow-wrap: anywhere;
+    padding: 14px 16px;
 }
 
 @media (max-width: 760px) {

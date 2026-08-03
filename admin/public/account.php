@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
+require_once __DIR__ . '/../app/core/qrcode.php';
 
 $admin = require_auth();
 $title = 'Мои данные';
@@ -138,14 +139,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('account.php?two_factor=setup');
     } elseif ($action === 'confirm_2fa') {
         $secret = (string)($_SESSION['account_2fa_setup_secret'] ?? '');
-        $currentPassword = (string)($_POST['current_password'] ?? '');
         $code = (string)($_POST['code'] ?? '');
 
         if ($secret === '') {
             $errors[] = 'Сначала начните настройку 2FA.';
-        }
-        if (!account_current_password_valid($admin, $currentPassword)) {
-            $errors[] = 'Текущий пароль указан неверно.';
         }
         if ($secret !== '' && !admin_totp_verify($secret, $code)) {
             $errors[] = 'Неверный код 2FA.';
@@ -200,6 +197,7 @@ if ($setupMode && empty($_SESSION['account_2fa_setup_secret'])) {
 }
 $setupSecret = $setupMode ? (string)($_SESSION['account_2fa_setup_secret'] ?? '') : '';
 $setupUri = $setupSecret !== '' ? admin_totp_uri($admin, $setupSecret) : '';
+$setupQr = $setupUri !== '' ? qr_code_svg_data_uri($setupUri) : '';
 $roleLabels = [
     'superadmin' => 'Супер-админ',
     'reseller' => 'Лидер',
@@ -294,7 +292,11 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <div class="two-factor-head">
         <div>
             <h2>Двухфакторная защита</h2>
-            <p class="cell-muted">Код из приложения-аутентификатора запрашивается после пароля.</p>
+            <p class="cell-muted">
+                <?= $isRequired2fa
+                    ? 'Для этой учётной записи 2FA обязательна.'
+                    : 'Не обязательно, но лучше включить: это защищает админку, даже если пароль случайно узнают.' ?>
+            </p>
         </div>
         <span class="badge <?= $isReady2fa ? 'badge-sent' : ($isRequired2fa ? 'badge-new' : '') ?>">
             <?= $isReady2fa ? 'Включена' : ($isRequired2fa ? 'Нужно настроить' : 'Выключена') ?>
@@ -302,33 +304,30 @@ require __DIR__ . '/../app/views/layouts/header.php';
     </div>
 
     <?php if ($setupMode): ?>
-        <div class="two-factor-setup">
-            <div class="two-factor-secret">
-                <span>Секрет</span>
-                <strong><?= h($setupSecret) ?></strong>
-            </div>
-            <label class="field">
-                <span>URI для ручного добавления</span>
-                <textarea rows="3" readonly><?= h($setupUri) ?></textarea>
-            </label>
+        <div class="two-factor-connect">
+            <h2>Подключить приложение-аутентификатор</h2>
+            <p>Откройте Яндекс ID, 2FAS, Aegis, Microsoft Authenticator или другое приложение с поддержкой TOTP и отсканируйте QR-код.</p>
+            <img class="two-factor-qr-image" src="<?= h($setupQr) ?>" alt="QR-код для настройки 2FA">
+            <details class="two-factor-manual">
+                <summary>Не получается отсканировать QR-код</summary>
+                <p>Введите этот секретный ключ вручную:</p>
+                <code><?= h($setupSecret) ?></code>
+            </details>
             <form method="post" class="crud-form two-factor-confirm-form">
                 <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
                 <input type="hidden" name="action" value="confirm_2fa">
-                <label class="field">
-                    <span>Текущий пароль *</span>
-                    <input type="password" name="current_password" autocomplete="current-password">
-                </label>
                 <label class="field">
                     <span>Код из приложения *</span>
                     <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,8}">
                 </label>
                 <div class="form-actions">
-                    <button type="submit">Подтвердить 2FA</button>
+                    <button type="submit">Подтвердить и подключить</button>
                     <a class="button secondary-button" href="account.php">Отмена</a>
                 </div>
             </form>
         </div>
     <?php elseif (!$isReady2fa): ?>
+        <p class="two-factor-recommendation">Рекомендуется подключить приложение-аутентификатор на телефоне. Это займет меньше минуты.</p>
         <form method="post">
             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
             <input type="hidden" name="action" value="start_2fa">

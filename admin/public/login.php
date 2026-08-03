@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../app/core/auth.php';
+require_once __DIR__ . '/../app/core/qrcode.php';
 
 $error = null;
 $step = 'login';
@@ -56,6 +57,7 @@ if ($pending2fa) {
 }
 $setupSecret = $step === 'setup_2fa' && $pendingSetup ? pending_2fa_setup_secret() : '';
 $setupUri = $setupSecret !== '' && $pendingSetup ? admin_totp_uri($pendingSetup, $setupSecret) : '';
+$setupQr = $setupUri !== '' ? qr_code_svg_data_uri($setupUri) : '';
 ?>
 <!doctype html>
 <html lang="ru">
@@ -72,7 +74,9 @@ $setupUri = $setupSecret !== '' && $pendingSetup ? admin_totp_uri($pendingSetup,
 </head>
 <body class="login-page">
     <form method="post" class="login-card">
-        <h1><?= $step === 'login' ? h(app_text('auto.k_53407b712a93')) : 'Подтверждение входа' ?></h1>
+        <?php if ($step !== 'setup_2fa'): ?>
+            <h1><?= $step === 'login' ? h(app_text('auto.k_53407b712a93')) : 'Подтверждение входа' ?></h1>
+        <?php endif; ?>
         <?php if ($error): ?>
             <div class="alert"><?= h($error) ?></div>
         <?php endif; ?>
@@ -85,13 +89,14 @@ $setupUri = $setupSecret !== '' && $pendingSetup ? admin_totp_uri($pendingSetup,
             <button type="submit">Войти</button>
         <?php elseif ($step === 'setup_2fa'): ?>
             <input type="hidden" name="action" value="confirm_2fa_setup">
-            <p class="cell-muted">Для этой учётной записи включена двухфакторная защита. Добавьте секрет в приложение-аутентификатор и введите первый код.</p>
-            <div class="two-factor-secret">
-                <span>Секрет</span>
-                <strong><?= h($setupSecret) ?></strong>
-            </div>
-            <label>URI для ручного добавления</label>
-            <textarea rows="3" readonly><?= h($setupUri) ?></textarea>
+            <h1 class="two-factor-connect-title">Подключить приложение-аутентификатор</h1>
+            <p class="cell-muted">Откройте Яндекс ID, 2FAS, Aegis, Microsoft Authenticator или другое приложение с поддержкой TOTP и отсканируйте QR-код.</p>
+            <img class="two-factor-qr-image login-two-factor-qr-image" src="<?= h($setupQr) ?>" alt="QR-код для настройки 2FA">
+            <details class="two-factor-manual">
+                <summary>Не получается отсканировать QR-код</summary>
+                <p>Введите этот секретный ключ вручную:</p>
+                <code><?= h($setupSecret) ?></code>
+            </details>
             <label>Код 2FA</label>
             <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,8}" required autofocus>
             <button type="submit">Подтвердить и войти</button>
