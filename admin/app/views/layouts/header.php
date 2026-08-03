@@ -56,6 +56,7 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                     'content' => ['Материалы сайта', 'crud.php?module=content'],
                 ],
                 'Настройки' => [
+                    'admin_accounts' => ['Пользователи админки', 'admin_accounts.php'],
                     'integrations' => ['Подключения', 'crud.php?module=integrations'],
                     'legal_documents' => ['Документы', 'crud.php?module=legal_documents'],
                     'legal_settings' => ['Реквизиты документов', 'legal_settings.php'],

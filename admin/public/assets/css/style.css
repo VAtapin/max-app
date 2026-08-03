@@ -177,6 +177,42 @@ a.stat:hover {
     font-family: Consolas, monospace;
 }
 
+.admin-account-form-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-account-form-grid .checkbox-line,
+.admin-account-form-grid [data-role-field] {
+    align-content: end;
+}
+
+.admin-account-form small {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.admin-account-filters input[type="search"] {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    font: inherit;
+    min-height: 42px;
+    min-width: 260px;
+    padding: 9px 10px;
+}
+
+@media (max-width: 760px) {
+    .admin-account-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-account-filters input[type="search"] {
+        min-width: 0;
+        width: 100%;
+    }
+}
+
 h1,
 h2 {
     margin-top: 0;
