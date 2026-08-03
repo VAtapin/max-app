@@ -199,6 +199,28 @@ function lead_response_referral_code(array $lead): ?string
     return null;
 }
 
+function lead_response_account_link_secret(): string
+{
+    $config = app_config();
+    $botToken = (string)($config['integrations']['telegram_bot_token'] ?? getenv('TELEGRAM_BOT_TOKEN') ?: '');
+    $dbPassword = (string)($config['db']['password'] ?? '');
+
+    return hash('sha256', $botToken . '|' . $dbPassword . '|swpro-account-link');
+}
+
+function lead_response_account_link_token(int $endUserId, int $ttlSeconds = 604800): ?string
+{
+    if ($endUserId <= 0) {
+        return null;
+    }
+
+    $expiresAt = time() + $ttlSeconds;
+    $payload = $endUserId . '|' . $expiresAt;
+    $signature = substr(hash_hmac('sha256', $payload, lead_response_account_link_secret()), 0, 20);
+
+    return 'l_' . $endUserId . '_' . $expiresAt . '_' . $signature;
+}
+
 function lead_platform_account_id(array $lead, string $platform): ?string
 {
     $stmt = db()->prepare(
@@ -279,7 +301,7 @@ function test_snippet(?int $testId): ?array
     return $test ?: null;
 }
 
-function mini_app_url(?int $testId = null, ?string $platform = null, ?string $referralCode = null, ?int $materialId = null): string
+function mini_app_url(?int $testId = null, ?string $platform = null, ?string $referralCode = null, ?int $materialId = null, ?int $endUserId = null): string
 {
     $config = app_config();
     $platform = normalize_platform($platform);
@@ -314,6 +336,10 @@ function mini_app_url(?int $testId = null, ?string $platform = null, ?string $re
 
     $configured = $config['integrations']['mini_app_url'] ?? '';
     $url = $configured !== '' ? $configured : (absolute_public_url('/vk-mini-app/') ?: '/vk-mini-app/');
+    $linkToken = $platform !== 'telegram' ? lead_response_account_link_token((int)$endUserId) : null;
+    if ($linkToken !== null) {
+        $params['link_token'] = $linkToken;
+    }
     if ($params) {
         $separator = str_contains($url, '?') ? '&' : '?';
         $url .= $separator . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
@@ -422,20 +448,20 @@ function telegram_buttons(?array $content, ?array $test, ?string $externalUrl, ?
     return $buttons;
 }
 
-function lead_response_social_buttons(?array $content, ?array $test, ?string $externalUrl, ?string $sourcePlatform = null, ?string $referralCode = null): array
+function lead_response_social_buttons(?array $content, ?array $test, ?string $externalUrl, ?string $sourcePlatform = null, ?string $referralCode = null, ?int $endUserId = null): array
 {
     $buttons = [];
     if ($test) {
         $buttons[] = [
             'text' => 'Пройти тест',
-            'url' => mini_app_url((int)$test['id'], $sourcePlatform, $referralCode),
+            'url' => mini_app_url((int)$test['id'], $sourcePlatform, $referralCode, null, $endUserId),
         ];
     }
 
     if ($content) {
         $buttons[] = [
             'text' => 'Открыть материал',
-            'url' => mini_app_url(null, $sourcePlatform, $referralCode, (int)$content['id']),
+            'url' => mini_app_url(null, $sourcePlatform, $referralCode, (int)$content['id'], $endUserId),
         ];
     }
 
@@ -638,7 +664,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
                 $platformUserId,
                 $lead,
                 $text,
-                lead_response_social_buttons($content, $test, $externalUrl, $platform, $referralCode),
+                lead_response_social_buttons($content, $test, $externalUrl, $platform, $referralCode, (int)$lead['end_user_id']),
                 lead_response_media_urls($content, $attachmentPaths, false)
             );
             if (!$result['ok']) {
