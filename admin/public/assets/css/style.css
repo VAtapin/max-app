@@ -3675,17 +3675,24 @@ button {
     }
 
     table.responsive-table tr {
+        gap: 8px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         padding: 9px 10px;
     }
 
     table.responsive-table td {
+        align-content: start;
+        background: #fbfdfd;
+        border: 1px solid #e4ebf0;
+        border-radius: 10px;
         gap: 3px;
         grid-template-columns: 1fr;
-        padding: 7px 0;
+        min-height: 48px;
+        padding: 7px 8px;
     }
 
     table.responsive-table td::before {
-        font-size: 10px;
+        font-size: 9px;
     }
 
     .row-actions,
@@ -3693,6 +3700,32 @@ button {
     .lead-card-actions,
     .lead-ticket .lead-card-actions {
         grid-template-columns: 1fr;
+    }
+
+    table.responsive-table td.row-actions {
+        grid-column: 1 / -1;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        min-height: 0;
+    }
+
+    table.responsive-table td.row-actions::before {
+        grid-column: 1 / -1;
+    }
+
+    table.responsive-table td.row-actions > a,
+    table.responsive-table td.row-actions > form {
+        margin: 0;
+        width: 100%;
+    }
+
+    table.responsive-table td.row-actions .link-button {
+        min-height: 34px;
+        padding: 6px 8px;
+    }
+
+    table.responsive-table .table-thumb {
+        height: 52px;
+        width: 52px;
     }
 }
 
@@ -3714,5 +3747,216 @@ button {
     .button,
     button {
         min-height: 38px;
+    }
+
+    table.responsive-table tr {
+        gap: 7px;
+    }
+
+    table.responsive-table td {
+        min-height: 44px;
+        padding: 6px 7px;
+    }
+}
+
+/* Phone CRUD cards: product/category/material/broadcast lists should feel like cards, not broken tables. */
+@media (max-width: 640px) {
+    table.responsive-table[data-module] tbody {
+        gap: 12px;
+    }
+
+    table.responsive-table[data-module] tr {
+        align-items: start;
+        gap: 7px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: 12px;
+        position: relative;
+    }
+
+    table.responsive-table[data-module] td {
+        background: #fbfdfd;
+        border: 1px solid #e4ebf0;
+        border-radius: 10px;
+        color: #1f2a3d;
+        display: grid;
+        font-size: 13px;
+        gap: 2px;
+        grid-template-columns: 1fr;
+        line-height: 1.25;
+        min-height: 42px;
+        padding: 7px 8px;
+    }
+
+    table.responsive-table[data-module] td::before {
+        color: #617087;
+        font-size: 9px;
+        font-weight: 900;
+        letter-spacing: .04em;
+        line-height: 1.15;
+    }
+
+    table.responsive-table[data-module] td[data-column="id"] {
+        align-items: center;
+        background: #eef6f5;
+        border-color: #cfe0df;
+        border-radius: 999px;
+        color: var(--accent-dark);
+        display: inline-flex;
+        font-size: 12px;
+        font-weight: 900;
+        gap: 3px;
+        justify-self: end;
+        line-height: 1;
+        min-height: 0;
+        padding: 5px 8px;
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        width: auto;
+        z-index: 1;
+    }
+
+    table.responsive-table[data-module] td[data-column="id"]::before {
+        content: "#";
+        font-size: 11px;
+        letter-spacing: 0;
+    }
+
+    table.responsive-table[data-module] td[data-column="title"],
+    table.responsive-table[data-module] td[data-column="name"],
+    table.responsive-table[data-module] td[data-column="display_name"],
+    table.responsive-table[data-module] td[data-column="lead_summary"],
+    table.responsive-table[data-module] td[data-column="user_name"] {
+        background: transparent;
+        border: 0;
+        color: var(--text);
+        font-size: 16px;
+        font-weight: 900;
+        grid-column: 1 / -1;
+        line-height: 1.2;
+        min-height: 0;
+        padding: 0 54px 4px 0;
+    }
+
+    table.responsive-table[data-module] td[data-column="title"]::before,
+    table.responsive-table[data-module] td[data-column="name"]::before,
+    table.responsive-table[data-module] td[data-column="display_name"]::before,
+    table.responsive-table[data-module] td[data-column="lead_summary"]::before,
+    table.responsive-table[data-module] td[data-column="user_name"]::before {
+        display: none;
+    }
+
+    table.responsive-table[data-module] td[data-column="image_preview"] {
+        align-items: start;
+        background: transparent;
+        border: 0;
+        grid-row: span 2;
+        justify-items: start;
+        min-height: 0;
+        padding: 0;
+    }
+
+    table.responsive-table[data-module] td[data-column="image_preview"]::before {
+        display: none;
+    }
+
+    table.responsive-table[data-module] td[data-column="image_preview"] .table-thumb {
+        border-radius: 12px;
+        height: 64px;
+        width: 64px;
+    }
+
+    table.responsive-table[data-module] td[data-column="slug"],
+    table.responsive-table[data-module] td[data-column="media_summary"],
+    table.responsive-table[data-module] td[data-column="contacts"],
+    table.responsive-table[data-module] td[data-column="referral_code"],
+    table.responsive-table[data-module] td[data-column="platform_accounts_summary"],
+    table.responsive-table[data-module] td[data-column="client_profile"],
+    table.responsive-table[data-module] td[data-column="owner_label"],
+    table.responsive-table[data-module] td[data-column="subscription_summary"],
+    table.responsive-table[data-module] td[data-column="billing_summary"] {
+        grid-column: 1 / -1;
+    }
+
+    table.responsive-table[data-module] td[data-column="status"],
+    table.responsive-table[data-module] td[data-column="state"],
+    table.responsive-table[data-module] td[data-column="is_active"],
+    table.responsive-table[data-module] td[data-column="sort_order"],
+    table.responsive-table[data-module] td[data-column="price"],
+    table.responsive-table[data-module] td[data-column="products_count"],
+    table.responsive-table[data-module] td[data-column="questions_count"],
+    table.responsive-table[data-module] td[data-column="scales_count"],
+    table.responsive-table[data-module] td[data-column="platform"],
+    table.responsive-table[data-module] td[data-column="target_type"],
+    table.responsive-table[data-module] td[data-column="audience_type"],
+    table.responsive-table[data-module] td[data-column="content_type"],
+    table.responsive-table[data-module] td[data-column="section_type"],
+    table.responsive-table[data-module] td[data-column="scheduled_at"],
+    table.responsive-table[data-module] td[data-column="publish_at"] {
+        min-height: 38px;
+    }
+
+    table.responsive-table[data-module] td[data-column="actions"] {
+        background: transparent;
+        border: 0;
+        display: grid;
+        gap: 7px;
+        grid-column: 1 / -1;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        min-height: 0;
+        padding: 4px 0 0;
+    }
+
+    table.responsive-table[data-module] td[data-column="actions"]::before {
+        display: none;
+    }
+
+    table.responsive-table[data-module] td[data-column="actions"] > a,
+    table.responsive-table[data-module] td[data-column="actions"] > form {
+        margin: 0;
+        width: 100%;
+    }
+
+    table.responsive-table[data-module] td[data-column="actions"] .link-button {
+        background: #eef6f5;
+        border: 1px solid #cfe0df;
+        border-radius: 10px;
+        color: var(--accent-dark);
+        justify-content: center;
+        min-height: 36px;
+        padding: 7px 8px;
+        width: 100%;
+    }
+
+    table.responsive-table[data-module] td[data-column="actions"] .link-button.danger {
+        background: #fff5f3;
+        border-color: #ffd1cc;
+        color: var(--danger);
+    }
+}
+
+@media (max-width: 420px) {
+    table.responsive-table[data-module] tr {
+        gap: 6px;
+        padding: 10px;
+    }
+
+    table.responsive-table[data-module] td {
+        font-size: 12px;
+        min-height: 38px;
+        padding: 6px 7px;
+    }
+
+    table.responsive-table[data-module] td[data-column="title"],
+    table.responsive-table[data-module] td[data-column="name"],
+    table.responsive-table[data-module] td[data-column="display_name"],
+    table.responsive-table[data-module] td[data-column="lead_summary"],
+    table.responsive-table[data-module] td[data-column="user_name"] {
+        font-size: 15px;
+    }
+
+    table.responsive-table[data-module] td[data-column="image_preview"] .table-thumb {
+        height: 58px;
+        width: 58px;
     }
 }

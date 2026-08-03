@@ -1130,14 +1130,14 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
         <?php if ($moduleKey === 'leads'): ?>
             <?= render_lead_cards($rows, $canEdit, $canDelete) ?>
         <?php else: ?>
-        <table class="data-table">
+        <table class="data-table" data-module="<?= h($moduleKey) ?>">
             <thead>
                 <tr>
-                    <?php foreach ($columns as $label): ?>
-                        <th><?= h($label) ?></th>
+                    <?php foreach ($columns as $key => $label): ?>
+                        <th data-column="<?= h((string)$key) ?>"><?= h($label) ?></th>
                     <?php endforeach; ?>
                     <?php if ($canEdit || $canDelete): ?>
-                        <th><?= h(app_text('auto.k_9978ac34b293')) ?></th>
+                        <th data-column="actions"><?= h(app_text('auto.k_9978ac34b293')) ?></th>
                     <?php endif; ?>
                 </tr>
             </thead>
@@ -1145,10 +1145,10 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
                 <?php foreach ($rows as $row): ?>
                     <tr>
                         <?php foreach ($columns as $key => $label): ?>
-                            <td><?= render_cell($moduleKey, $key, $row) ?></td>
+                            <td data-column="<?= h((string)$key) ?>"><?= render_cell($moduleKey, $key, $row) ?></td>
                         <?php endforeach; ?>
                         <?php if ($canEdit || $canDelete): ?>
-                            <td class="row-actions">
+                            <td class="row-actions" data-column="actions">
                                 <?php if ($canEdit): ?>
                                     <a class="link-button" href="crud.php?module=<?= h($moduleKey) ?>&action=edit&id=<?= (int)$row['id'] ?>"><?= h(crud_action_label($moduleKey)) ?></a>
                                 <?php endif; ?>
