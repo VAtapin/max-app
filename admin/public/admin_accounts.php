@@ -121,6 +121,8 @@ function admin_account_normalized_payload(array $post, ?array $existing, array $
     $telegramId = trim((string)($post['telegram_id'] ?? ''));
     $vkId = trim((string)($post['vk_id'] ?? ''));
     $maxId = trim((string)($post['max_id'] ?? ''));
+    $twoFactorRequired = isset($post['two_factor_required']) ? 1 : 0;
+    $resetTwoFactor = isset($post['reset_two_factor']) ? 1 : 0;
     $resellerId = null;
     $managerId = null;
 
@@ -184,6 +186,8 @@ function admin_account_normalized_payload(array $post, ?array $existing, array $
         'telegram_id' => $telegramId !== '' ? $telegramId : null,
         'vk_id' => $vkId !== '' ? $vkId : null,
         'max_id' => $maxId !== '' ? $maxId : null,
+        'two_factor_required' => $twoFactorRequired,
+        'reset_two_factor' => $resetTwoFactor,
         'password' => $password,
         'is_active' => $isActive,
     ];
@@ -201,6 +205,7 @@ function admin_account_save(array $payload, ?int $id, array $admin): int
         'telegram_id' => $payload['telegram_id'],
         'vk_id' => $payload['vk_id'],
         'max_id' => $payload['max_id'],
+        'two_factor_required' => $payload['two_factor_required'],
         'is_active' => $payload['is_active'],
     ];
 
@@ -210,12 +215,17 @@ function admin_account_save(array $payload, ?int $id, array $admin): int
             $passwordSql = ', password_hash = :password_hash';
             $params['password_hash'] = password_hash($payload['password'], PASSWORD_DEFAULT);
         }
+        $twoFactorSql = '';
+        if ((int)($payload['reset_two_factor'] ?? 0) === 1) {
+            $twoFactorSql = ', two_factor_enabled = 0, two_factor_secret = NULL, two_factor_confirmed_at = NULL';
+        }
         $params['id'] = $id;
         $stmt = db()->prepare(
             'UPDATE admin_users
              SET role = :role, reseller_id = :reseller_id, manager_id = :manager_id,
                  name = :name, email = :email, phone = :phone, telegram_id = :telegram_id,
-                 vk_id = :vk_id, max_id = :max_id, is_active = :is_active' . $passwordSql . '
+                 vk_id = :vk_id, max_id = :max_id, two_factor_required = :two_factor_required,
+                 is_active = :is_active' . $passwordSql . $twoFactorSql . '
              WHERE id = :id'
         );
         $stmt->execute($params);
@@ -227,9 +237,11 @@ function admin_account_save(array $payload, ?int $id, array $admin): int
     $params['password_hash'] = password_hash($payload['password'], PASSWORD_DEFAULT);
     $stmt = db()->prepare(
         'INSERT INTO admin_users (
-            role, reseller_id, manager_id, name, email, phone, telegram_id, vk_id, max_id, password_hash, is_active
+            role, reseller_id, manager_id, name, email, phone, telegram_id, vk_id, max_id,
+            two_factor_required, password_hash, is_active
          ) VALUES (
-            :role, :reseller_id, :manager_id, :name, :email, :phone, :telegram_id, :vk_id, :max_id, :password_hash, :is_active
+            :role, :reseller_id, :manager_id, :name, :email, :phone, :telegram_id, :vk_id, :max_id,
+            :two_factor_required, :password_hash, :is_active
          )'
     );
     $stmt->execute($params);
@@ -459,6 +471,16 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <input type="checkbox" name="is_active" value="1" <?= (int)($editRow['is_active'] ?? 1) === 1 ? 'checked' : '' ?>>
                     <span>Доступ активен</span>
                 </label>
+                <label class="field checkbox-line">
+                    <input type="checkbox" name="two_factor_required" value="1" <?= (int)($editRow['two_factor_required'] ?? 0) === 1 ? 'checked' : '' ?>>
+                    <span>2FA обязательна</span>
+                </label>
+                <?php if ($action === 'edit'): ?>
+                    <label class="field checkbox-line">
+                        <input type="checkbox" name="reset_two_factor" value="1">
+                        <span>Сбросить секрет 2FA</span>
+                    </label>
+                <?php endif; ?>
             </div>
             <div class="form-actions">
                 <button type="submit">Сохранить</button>
@@ -523,6 +545,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <th>Роль</th>
                 <th>Привязка</th>
                 <th>Контакты</th>
+                <th>2FA</th>
                 <th>Статус</th>
                 <th>Создан</th>
                 <th>Действия</th>
@@ -555,6 +578,19 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         <?php if ($account['telegram_id']): ?><br><span class="cell-muted">TG: <?= h((string)$account['telegram_id']) ?></span><?php endif; ?>
                         <?php if ($account['vk_id']): ?><br><span class="cell-muted">VK: <?= h((string)$account['vk_id']) ?></span><?php endif; ?>
                         <?php if ($account['max_id']): ?><br><span class="cell-muted">MAX: <?= h((string)$account['max_id']) ?></span><?php endif; ?>
+                    </td>
+                    <td data-label="2FA">
+                        <?php
+                        $account2faRequired = (int)($account['two_factor_required'] ?? 0) === 1;
+                        $account2faReady = admin_two_factor_ready($account);
+                        ?>
+                        <?php if ($account2faReady): ?>
+                            <span class="badge badge-sent"><?= $account2faRequired ? 'Обязательна' : 'Включена' ?></span>
+                        <?php elseif ($account2faRequired || (int)($account['two_factor_enabled'] ?? 0) === 1): ?>
+                            <span class="badge badge-new">Нужно настроить</span>
+                        <?php else: ?>
+                            <span class="cell-muted">Нет</span>
+                        <?php endif; ?>
                     </td>
                     <td data-label="Статус">
                         <span class="badge <?= (int)$account['is_active'] === 1 ? 'badge-sent' : 'badge-new' ?>">

@@ -38,6 +38,7 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
             $navSections = [
                 'Работа' => [
                     'dashboard' => [app_text('auto.dashboard'), 'index.php'],
+                    'account' => ['Мои данные', 'account.php'],
                     'my_page' => ['Мой мини-сайт', 'my_page.php'],
                 ],
                 'Команда' => [
@@ -105,7 +106,7 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                 </label>
             </div>
             <div class="topbar-user">
-                <span class="user-chip"><?= h($admin['name'] ?? '') ?></span>
+                <a class="user-chip" href="account.php"><?= h($admin['name'] ?? '') ?></a>
                 <a href="logout.php"><?= h(app_text('auto.k_026abb1e0a5e')) ?></a>
             </div>
         </header>

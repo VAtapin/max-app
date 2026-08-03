@@ -202,7 +202,62 @@ a.stat:hover {
     padding: 9px 10px;
 }
 
+.account-grid {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, .65fr);
+}
+
+.two-factor-head {
+    align-items: start;
+    display: flex;
+    gap: 14px;
+    justify-content: space-between;
+}
+
+.two-factor-head h2 {
+    margin-bottom: 6px;
+}
+
+.two-factor-setup,
+.two-factor-confirm-form,
+.two-factor-disable-form {
+    display: grid;
+    gap: 14px;
+}
+
+.two-factor-secret {
+    background: #f8fafc;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    display: grid;
+    gap: 6px;
+    padding: 12px 14px;
+}
+
+.two-factor-secret span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.two-factor-secret strong {
+    font-family: Consolas, monospace;
+    font-size: 18px;
+    overflow-wrap: anywhere;
+}
+
+.login-card textarea {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    font: inherit;
+    padding: 10px 12px;
+    resize: vertical;
+}
+
 @media (max-width: 760px) {
+    .account-grid,
     .admin-account-form-grid {
         grid-template-columns: 1fr;
     }
