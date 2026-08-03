@@ -4,6 +4,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS schema_migrations;
 DROP TABLE IF EXISTS activity_logs;
+DROP TABLE IF EXISTS social_callback_events;
 DROP TABLE IF EXISTS leader_subscriptions;
 DROP TABLE IF EXISTS consultant_notifications;
 DROP TABLE IF EXISTS automation_logs;
@@ -245,6 +246,10 @@ CREATE TABLE platform_accounts (
   first_name VARCHAR(190) NULL,
   last_name VARCHAR(190) NULL,
   display_name VARCHAR(255) NULL,
+  messages_allowed TINYINT(1) NULL,
+  messages_allowed_at DATETIME NULL,
+  messages_denied_at DATETIME NULL,
+  last_inbound_message_at DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_platform_account (platform, platform_user_id),
@@ -683,7 +688,9 @@ CREATE TABLE leads (
   product_id BIGINT UNSIGNED NULL,
   request_type VARCHAR(50) NOT NULL DEFAULT 'consultation',
   source_platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
+  source_message_id VARCHAR(190) NULL,
   message TEXT NULL,
+  attachments_json JSON NULL,
   status ENUM('new', 'contacted', 'interested', 'closed', 'lost') NOT NULL DEFAULT 'new',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -693,6 +700,7 @@ CREATE TABLE leads (
   INDEX idx_leads_product_id (product_id),
   INDEX idx_leads_status (status),
   INDEX idx_leads_source_platform (source_platform),
+  INDEX idx_leads_source_message (source_platform, source_message_id),
   CONSTRAINT fk_leads_user
     FOREIGN KEY (end_user_id) REFERENCES end_users(id)
     ON DELETE CASCADE ON UPDATE CASCADE,
@@ -751,11 +759,29 @@ CREATE TABLE messaging_integrations (
   title VARCHAR(190) NOT NULL,
   external_id VARCHAR(190) NULL,
   access_token TEXT NULL,
+  callback_confirmation_code VARCHAR(190) NULL,
+  callback_secret VARCHAR(190) NULL,
+  callback_last_event_at DATETIME NULL,
+  callback_last_error TEXT NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_messaging_integrations_owner (owner_type, owner_id),
   INDEX idx_messaging_integrations_platform (platform, is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE social_callback_events (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  platform ENUM('VK', 'OK') NOT NULL,
+  external_id VARCHAR(190) NOT NULL,
+  event_id VARCHAR(190) NOT NULL,
+  event_type VARCHAR(100) NOT NULL,
+  payload_json MEDIUMTEXT NULL,
+  processed_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_social_callback_event (platform, external_id, event_id),
+  INDEX idx_social_callback_events_platform (platform, external_id, created_at),
+  INDEX idx_social_callback_events_type (event_type, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE broadcasts (

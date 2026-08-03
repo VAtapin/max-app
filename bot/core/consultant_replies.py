@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import random
+from urllib.parse import quote
 
+import aiohttp
 from bot.core.client_journey import set_client_stage
 from bot.db.mysql import cursor
 
@@ -149,6 +152,199 @@ async def telegram_client_chat_id(end_user_id: int) -> str | None:
         )
         row = await cur.fetchone()
         return str((row or {}).get("platform_user_id") or "").strip() or None
+
+
+def public_base_url() -> str:
+    return os.getenv("SWPRO_PUBLIC_URL", "https://swpro.ru").rstrip("/")
+
+
+def absolute_public_url(path: str | None) -> str | None:
+    value = str(path or "").strip()
+    if not value:
+        return None
+    if value.startswith(("http://", "https://")):
+        return value
+    return f"{public_base_url()}/{value.lstrip('/')}"
+
+
+def social_response_text(message_text: str, attachment_paths: list[str]) -> str:
+    parts = [message_text.strip() or "Консультант отправил вам вложение."]
+    for path in attachment_paths:
+        url = absolute_public_url(path)
+        if url:
+            parts.append(f"Вложение: {url}")
+    return "\n\n".join(part for part in parts if part.strip())
+
+
+async def social_platform_account_id(end_user_id: int, platform: str) -> str | None:
+    async with cursor() as cur:
+        await cur.execute(
+            """
+            SELECT platform_user_id
+            FROM platform_accounts
+            WHERE end_user_id = %s AND platform = %s
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (end_user_id, platform),
+        )
+        row = await cur.fetchone()
+        return str((row or {}).get("platform_user_id") or "").strip() or None
+
+
+async def social_messaging_integration(platform: str, context: dict) -> dict | None:
+    candidates: list[tuple[str, int]] = []
+    if context.get("manager_id"):
+        candidates.append(("manager", int(context["manager_id"])))
+    if context.get("reseller_id"):
+        candidates.append(("reseller", int(context["reseller_id"])))
+
+    async with cursor() as cur:
+        for owner_type, owner_id in candidates:
+            await cur.execute(
+                """
+                SELECT *
+                FROM messaging_integrations
+                WHERE platform = %s
+                  AND owner_type = %s
+                  AND owner_id = %s
+                  AND is_active = 1
+                  AND access_token IS NOT NULL
+                  AND access_token <> ''
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (platform, owner_type, owner_id),
+            )
+            integration = await cur.fetchone()
+            if integration:
+                return integration
+    return None
+
+
+async def vk_messages_allowed(platform_user_id: str) -> tuple[bool, str | None]:
+    async with cursor() as cur:
+        await cur.execute(
+            """
+            SELECT messages_allowed
+            FROM platform_accounts
+            WHERE platform = 'VK' AND platform_user_id = %s
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (platform_user_id,),
+        )
+        row = await cur.fetchone()
+    if row and str(row.get("messages_allowed")) == "0":
+        return False, "Клиент запретил сообщения от VK-сообщества"
+    return True, None
+
+
+async def http_form_post(url: str, payload: dict) -> dict:
+    timeout = aiohttp.ClientTimeout(total=15)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(url, data=payload) as response:
+            try:
+                return await response.json(content_type=None)
+            except Exception:
+                text = await response.text()
+                return {"error": text or f"HTTP {response.status}"}
+
+
+async def http_json_post(url: str, payload: dict) -> dict:
+    timeout = aiohttp.ClientTimeout(total=15)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(url, json=payload) as response:
+            try:
+                return await response.json(content_type=None)
+            except Exception:
+                text = await response.text()
+                return {"error": text or f"HTTP {response.status}"}
+
+
+async def send_vk_community_message(
+    integration: dict,
+    platform_user_id: str,
+    message_text: str,
+) -> tuple[bool, str | None]:
+    user_id = "".join(ch for ch in platform_user_id if ch.isdigit())
+    if not user_id:
+        return False, "VK user_id пустой или неверный"
+
+    allowed, error = await vk_messages_allowed(user_id)
+    if not allowed:
+        return False, error
+
+    token = str(integration.get("access_token") or "").strip()
+    if not token:
+        return False, "В VK-подключении не указан ключ доступа"
+
+    response = await http_form_post(
+        "https://api.vk.com/method/messages.send",
+        {
+            "access_token": token,
+            "v": os.getenv("VK_API_VERSION", "5.199"),
+            "user_id": user_id,
+            "random_id": random.randint(1, 2_147_483_647),
+            "message": message_text,
+        },
+    )
+    if "response" in response:
+        return True, None
+
+    error_data = response.get("error") or response
+    if isinstance(error_data, dict):
+        return False, str(error_data.get("error_msg") or json.dumps(error_data, ensure_ascii=False))
+    return False, str(error_data)
+
+
+async def send_ok_group_message(
+    integration: dict,
+    platform_user_id: str,
+    message_text: str,
+) -> tuple[bool, str | None]:
+    token = str(integration.get("access_token") or "").strip()
+    if not token:
+        return False, "В OK-подключении не указан ключ доступа"
+
+    response = await http_json_post(
+        "https://api.ok.ru/graph/me/messages/?access_token=" + quote(token, safe=""),
+        {
+            "recipient": {"user_id": platform_user_id},
+            "message": {"text": message_text},
+        },
+    )
+    success = response.get("success")
+    if success is True or (isinstance(success, list) and success and success[0] is True):
+        return True, None
+
+    error_data = response.get("error_msg") or response.get("error") or response
+    return False, str(error_data)
+
+
+async def send_social_client_response(
+    context: dict,
+    platform: str,
+    message_text: str,
+    attachment_paths: list[str],
+) -> tuple[bool, str | None]:
+    platform = platform if platform in {"VK", "OK"} else ""
+    if not platform:
+        return False, "Платформа ответа не поддерживается"
+
+    end_user_id = int(context["end_user_id"])
+    platform_user_id = await social_platform_account_id(end_user_id, platform)
+    if not platform_user_id:
+        return False, f"{platform} клиента не подключён"
+
+    integration = await social_messaging_integration(platform, context)
+    if not integration:
+        return False, f"Нет активной интеграции сообщества для {platform}"
+
+    outgoing_text = social_response_text(message_text, attachment_paths)
+    if platform == "VK":
+        return await send_vk_community_message(integration, platform_user_id, outgoing_text)
+    return await send_ok_group_message(integration, platform_user_id, outgoing_text)
 
 
 async def finish_telegram_lead_response(

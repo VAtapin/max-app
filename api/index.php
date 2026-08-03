@@ -11,6 +11,7 @@ json_response([
         'GET|POST /api/onboarding.php',
         'GET|POST /api/notifications.php',
         'GET /api/messaging_config.php',
+        'POST /api/vk_callback.php',
         'GET /api/telegram_oidc_start.php',
         'GET /api/telegram_oidc_callback.php',
         'GET /api/telegram_oidc_session.php',

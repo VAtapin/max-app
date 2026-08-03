@@ -26,6 +26,7 @@ from bot.core.consultant_replies import (
     consultant_reply_context,
     create_telegram_lead_response,
     finish_telegram_lead_response,
+    send_social_client_response,
     telegram_client_chat_id,
     telegram_reply_already_saved,
 )
@@ -110,6 +111,22 @@ def consultant_reply_attachment(message: Message) -> tuple[str, str] | None:
         return message.photo[-1].file_id, "jpg"
     if message.video:
         return message.video.file_id, "mp4"
+    if message.voice:
+        return message.voice.file_id, "ogg"
+    if message.audio:
+        suffix = Path(message.audio.file_name or "").suffix.lower()
+        audio_allowed = {
+            ".mp3": "mp3",
+            ".ogg": "ogg",
+            ".oga": "ogg",
+            ".m4a": "m4a",
+        }
+        if suffix in audio_allowed:
+            return message.audio.file_id, audio_allowed[suffix]
+        if str(message.audio.mime_type or "").lower() in {"audio/mpeg", "audio/mp3"}:
+            return message.audio.file_id, "mp3"
+        if str(message.audio.mime_type or "").lower() in {"audio/ogg", "audio/opus"}:
+            return message.audio.file_id, "ogg"
     if message.document:
         suffix = Path(message.document.file_name or "").suffix.lower()
         allowed = {
@@ -119,6 +136,10 @@ def consultant_reply_attachment(message: Message) -> tuple[str, str] | None:
             ".webp": "webp",
             ".pdf": "pdf",
             ".mp4": "mp4",
+            ".mp3": "mp3",
+            ".ogg": "ogg",
+            ".oga": "ogg",
+            ".m4a": "m4a",
         }
         if suffix in allowed:
             return message.document.file_id, allowed[suffix]
@@ -151,11 +172,11 @@ async def consultant_notification_reply(
 
     message_text = (message.text or message.caption or "").strip()
     has_supported_attachment = consultant_reply_attachment(message) is not None
-    if message.document and not has_supported_attachment:
-        await message.answer("Поддерживаются документы JPG, PNG, WEBP, PDF и MP4.")
+    if (message.document or message.audio) and not has_supported_attachment:
+        await message.answer("Поддерживаются JPG, PNG, WEBP, PDF, MP4, MP3, OGG и M4A.")
         return
     if not message_text and not has_supported_attachment:
-        await message.answer("Ответьте текстом, фотографией, видео MP4 или документом PDF.")
+        await message.answer("Ответьте текстом, фотографией, видео, голосовым, аудио или документом PDF.")
         return
 
     try:
@@ -199,6 +220,13 @@ async def consultant_notification_reply(
             except Exception as exc:
                 delivery_ok = False
                 delivery_error = str(exc)[:500]
+    elif source_platform in {"VK", "OK"}:
+        delivery_ok, delivery_error = await send_social_client_response(
+            consultant_notification,
+            source_platform,
+            message_text,
+            attachment_paths,
+        )
 
     await finish_telegram_lead_response(
         response_id,
@@ -212,7 +240,7 @@ async def consultant_notification_reply(
         destination = (
             "Telegram"
             if source_platform == "telegram"
-            else f"{platform_display_name(source_platform)} Mini App"
+            else platform_display_name(source_platform)
         )
         await message.answer(f"Ответ отправлен клиенту: {destination}.")
     else:

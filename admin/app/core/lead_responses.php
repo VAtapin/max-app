@@ -87,6 +87,11 @@ function save_single_response_attachment(array $file, array &$errors): ?string
         'image/webp',
         'application/pdf',
         'video/mp4',
+        'audio/mpeg',
+        'audio/ogg',
+        'audio/mp4',
+        'audio/x-m4a',
+        'audio/webm',
     ];
 
     if ($maxBytes > 0 && (int)$file['size'] > $maxBytes) {
@@ -107,6 +112,11 @@ function save_single_response_attachment(array $file, array &$errors): ?string
         'image/webp' => 'webp',
         'application/pdf' => 'pdf',
         'video/mp4' => 'mp4',
+        'audio/mpeg' => 'mp3',
+        'audio/ogg' => 'ogg',
+        'audio/mp4' => 'm4a',
+        'audio/x-m4a' => 'm4a',
+        'audio/webm' => 'webm',
         default => null,
     };
     if (!$extension) {
@@ -422,6 +432,8 @@ function telegram_media_method(string $path): ?array
     return match ($extension) {
         'jpg', 'jpeg', 'png', 'webp' => ['method' => 'sendPhoto', 'field' => 'photo'],
         'mp4' => ['method' => 'sendVideo', 'field' => 'video'],
+        'mp3', 'm4a' => ['method' => 'sendAudio', 'field' => 'audio'],
+        'ogg', 'oga' => ['method' => 'sendVoice', 'field' => 'voice'],
         'pdf' => ['method' => 'sendDocument', 'field' => 'document'],
         default => ['method' => 'sendDocument', 'field' => 'document'],
     };

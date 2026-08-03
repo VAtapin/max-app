@@ -72,6 +72,11 @@ return [
             'image/webp',
             'application/pdf',
             'video/mp4',
+            'audio/mpeg',
+            'audio/ogg',
+            'audio/mp4',
+            'audio/x-m4a',
+            'audio/webm',
         ],
     ],
     'integrations' => [

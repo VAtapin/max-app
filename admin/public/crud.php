@@ -199,7 +199,7 @@ $modules = [
     'integrations' => [
         'title' => app_text('integrations.title'),
         'table' => 'messaging_integrations',
-        'columns' => ['id', 'owner_type', 'owner_id', 'platform', 'title', 'external_id', 'is_active'],
+        'columns' => ['id', 'owner_type', 'owner_id', 'platform', 'title', 'external_id', 'callback_last_event_at', 'is_active'],
         'fields' => [
             'owner_type' => ['label' => app_text('integrations.owner_type'), 'type' => 'select', 'options' => ['reseller', 'manager'], 'required' => true],
             'owner_id' => ['label' => app_text('integrations.owner_id'), 'type' => 'number', 'required' => true],
@@ -207,6 +207,10 @@ $modules = [
             'title' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
             'external_id' => ['label' => app_text('integrations.external_id')],
             'access_token' => ['label' => app_text('integrations.access_token'), 'type' => 'textarea'],
+            'callback_confirmation_code' => ['label' => app_text('integrations.callback_confirmation_code')],
+            'callback_secret' => ['label' => app_text('integrations.callback_secret')],
+            'callback_last_event_at' => ['label' => app_text('integrations.callback_last_event_at'), 'readonly' => true],
+            'callback_last_error' => ['label' => app_text('integrations.callback_last_error'), 'type' => 'textarea', 'readonly' => true],
             'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
         ],
     ],
@@ -853,6 +857,9 @@ function collect_payload(array $fields): array
 {
     $payload = [];
     foreach ($fields as $name => $field) {
+        if (!empty($field['readonly'])) {
+            continue;
+        }
         $type = $field['type'] ?? 'text';
         if ($type === 'file') {
             $current = trim((string)($_POST[$name . '_current'] ?? ''));
@@ -1988,7 +1995,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <label class="field">
                     <span><?= h($field['label'] ?? $name) ?><?= ($field['required'] ?? false) ? ' *' : '' ?></span>
                     <?php if ($type === 'textarea'): ?>
-                        <textarea name="<?= h($name) ?>" rows="4"><?= h((string)$value) ?></textarea>
+                        <textarea name="<?= h($name) ?>" rows="4" <?= !empty($field['readonly']) ? 'readonly' : '' ?>><?= h((string)$value) ?></textarea>
                     <?php elseif ($type === 'select'): ?>
                         <select name="<?= h($name) ?>">
                             <?php if ($field['nullable'] ?? false): ?>
@@ -2032,6 +2039,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                             value="<?= h($inputValue) ?>"
                             <?= isset($field['step']) ? 'step="' . h($field['step']) . '"' : '' ?>
                             <?= isset($field['min']) ? 'min="' . h((string)$field['min']) . '"' : '' ?>
+                            <?= !empty($field['readonly']) ? 'readonly' : '' ?>
                         >
                     <?php endif; ?>
                 </label>

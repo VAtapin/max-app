@@ -119,6 +119,20 @@ function send_vk_community_message(array $integration, string $platformUserId, s
         return ['ok' => false, 'error' => 'VK user_id is empty or invalid'];
     }
 
+    $permissionStmt = db()->prepare(
+        'SELECT messages_allowed
+         FROM platform_accounts
+         WHERE platform = "VK"
+           AND platform_user_id = :platform_user_id
+         ORDER BY id DESC
+         LIMIT 1'
+    );
+    $permissionStmt->execute(['platform_user_id' => $userId]);
+    $messagesAllowed = $permissionStmt->fetchColumn();
+    if ($messagesAllowed !== false && (string)$messagesAllowed === '0') {
+        return ['ok' => false, 'error' => 'Клиент запретил сообщения от VK-сообщества'];
+    }
+
     $token = trim((string)($integration['access_token'] ?? ''));
     if ($token === '') {
         return ['ok' => false, 'error' => 'VK community token is missing'];

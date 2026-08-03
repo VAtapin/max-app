@@ -195,6 +195,7 @@ function crud_display_columns(string $moduleKey): array
             'owner_label' => app_text('integrations.owner'),
             'platform' => app_text('auto.k_89009febe5c6'),
             'external_id' => app_text('integrations.external_id'),
+            'callback_last_event_at' => app_text('integrations.callback_last_event_at'),
             'state' => app_text('auto.k_f7f293b5c58c'),
         ],
         'legal_documents' => [
@@ -552,7 +553,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     if ($moduleKey === 'integrations') {
         [$where, $params] = integration_scope_condition($admin);
         return [
-            "SELECT id, title, CONCAT(owner_type, ' #', owner_id) AS owner_label, platform, external_id, IF(is_active = 1, 'active', 'inactive') AS state
+            "SELECT id, title, CONCAT(owner_type, ' #', owner_id) AS owner_label, platform, external_id, callback_last_event_at, IF(is_active = 1, 'active', 'inactive') AS state
              FROM messaging_integrations
              $where
              ORDER BY id DESC
