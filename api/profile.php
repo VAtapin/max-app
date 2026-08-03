@@ -2,7 +2,6 @@
 
 require __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/../admin/app/core/consultant_profiles.php';
-require_once __DIR__ . '/../admin/app/core/material_cloner.php';
 
 function profile_by_slug(string $slug): ?array
 {
@@ -31,9 +30,6 @@ $user = null;
 
 if (!$profile) {
     $user = require_platform_user();
-    if (!empty($user['manager_id'])) {
-        clone_reseller_materials_for_manager((int)$user['manager_id'], isset($user['reseller_id']) ? (int)$user['reseller_id'] : null);
-    }
     $profile = profile_for_user($user);
 }
 

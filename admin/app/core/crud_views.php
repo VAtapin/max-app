@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/content_ownership.php';
+
 function crud_create_enabled(string $moduleKey): bool
 {
     return !in_array($moduleKey, ['users', 'platform_accounts', 'leads'], true);
@@ -168,6 +170,7 @@ function crud_display_columns(string $moduleKey): array
         'broadcasts' => [
             'id' => 'ID',
             'title' => app_text('auto.k_38090ead89f2'),
+            'owner_label' => app_text('integrations.owner'),
             'audience_type' => 'Получатели',
             'platform' => app_text('auto.k_89009febe5c6'),
             'target_type' => app_text('auto.k_e9476ab1820b'),
@@ -455,7 +458,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     }
 
     if ($moduleKey === 'categories') {
-        [$where, $params] = owner_scope_condition($admin, 'c');
+        [$where, $params] = owner_scope_condition($admin, 'c', 'categories');
         return [
             "SELECT c.id, c.title, c.slug, c.sort_order,
                     IF(c.is_active = 1, 'active', 'inactive') AS state,
@@ -471,7 +474,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     }
 
     if ($moduleKey === 'products') {
-        [$where, $params] = owner_scope_condition($admin, 'p');
+        [$where, $params] = owner_scope_condition($admin, 'p', 'products');
         return [
             "SELECT p.id, p.title, c.title AS category_title, p.image_path, p.document_path, p.video_url, p.purchase_url, p.price, p.sort_order,
                     IF(p.is_active = 1, 'active', 'inactive') AS state
@@ -485,7 +488,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     }
 
     if ($moduleKey === 'tests') {
-        [$where, $params] = owner_scope_condition($admin, 't');
+        [$where, $params] = owner_scope_condition($admin, 't', 'tests');
         return [
             "SELECT t.id, t.title, t.scoring_type, c.title AS category_title, t.sort_order,
                     IF(t.is_active = 1, 'active', 'inactive') AS state,
@@ -504,9 +507,20 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     }
 
     if ($moduleKey === 'broadcasts') {
-        [$where, $params] = scope_where_for_module($moduleKey, $admin);
+        [$where, $params] = owned_content_scope_condition('broadcasts', $admin, 'b');
         return [
-            "SELECT id, title, audience_type, platform, target_type, scheduled_at, status FROM broadcasts $where ORDER BY id DESC LIMIT 100",
+            "SELECT b.id, b.title, b.audience_type, b.platform, b.target_type, b.scheduled_at, b.status,
+                    CASE
+                        WHEN b.owner_type = 'reseller' THEN CONCAT('Лидер: ', COALESCE(r.name, CONCAT('#', b.owner_id)))
+                        WHEN b.owner_type = 'manager' THEN CONCAT('Консультант: ', COALESCE(m.name, CONCAT('#', b.owner_id)))
+                        ELSE 'Шаблон супер-админа'
+                    END AS owner_label
+             FROM broadcasts b
+             LEFT JOIN resellers r ON r.id = b.owner_id AND b.owner_type = 'reseller'
+             LEFT JOIN managers m ON m.id = b.owner_id AND b.owner_type = 'manager'
+             $where
+             ORDER BY b.id DESC
+             LIMIT 100",
             $params,
         ];
     }

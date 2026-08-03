@@ -2,6 +2,10 @@
 
 function build_recommendations(int $endUserId, int $testSessionId): array
 {
+    $userStmt = db()->prepare('SELECT * FROM end_users WHERE id = :id LIMIT 1');
+    $userStmt->execute(['id' => $endUserId]);
+    $user = $userStmt->fetch() ?: [];
+
     $scoresStmt = db()->prepare(
         'SELECT
             ta.category_id,
@@ -26,14 +30,28 @@ function build_recommendations(int $endUserId, int $testSessionId): array
         $productId = $item['product_id'] ? (int)$item['product_id'] : null;
 
         if (!$productId && $item['category_id']) {
+            [$ownerWhere, $ownerParams] = client_owner_scope($user, 'p', 'products');
+            $categoryStmt = db()->prepare('SELECT source_category_id FROM product_categories WHERE id = :id LIMIT 1');
+            $categoryStmt->execute(['id' => (int)$item['category_id']]);
+            $sourceCategoryId = $categoryStmt->fetchColumn();
             $productStmt = db()->prepare(
-                'SELECT id
-                 FROM products
-                 WHERE category_id = :category_id AND is_active = 1
-                 ORDER BY sort_order, id
-                 LIMIT 1'
+                "SELECT p.id
+                 FROM products p
+                 LEFT JOIN product_categories pc ON pc.id = p.category_id
+                 WHERE (p.category_id = :category_id OR pc.source_category_id = :category_id_clone" . ($sourceCategoryId ? " OR p.category_id = :source_category_id" : "") . ")
+                   AND p.is_active = 1
+                   AND $ownerWhere
+                 ORDER BY p.sort_order, p.id
+                 LIMIT 1"
             );
-            $productStmt->execute(['category_id' => (int)$item['category_id']]);
+            $productParams = [
+                'category_id' => (int)$item['category_id'],
+                'category_id_clone' => (int)$item['category_id'],
+            ] + $ownerParams;
+            if ($sourceCategoryId) {
+                $productParams['source_category_id'] = (int)$sourceCategoryId;
+            }
+            $productStmt->execute($productParams);
             $productId = $productStmt->fetchColumn() ?: null;
         }
 

@@ -1,12 +1,23 @@
 <?php
 
-function test_builder_options(string $table, string $labelColumn): array
+require_once __DIR__ . '/content_ownership.php';
+
+function test_builder_options(string $table, string $labelColumn, ?array $admin = null): array
 {
     if (!in_array($table, ['products', 'product_categories'], true)) {
         return [];
     }
 
-    $stmt = db()->query("SELECT id, {$labelColumn} AS label FROM {$table} ORDER BY id DESC LIMIT 500");
+    if ($labelColumn !== 'title') {
+        return [];
+    }
+
+    $moduleKey = $table === 'products' ? 'products' : 'categories';
+    $alias = $table === 'products' ? 'p' : 'c';
+    [$where, $params] = $admin ? owned_content_scope_condition($moduleKey, $admin, $alias) : ['', []];
+
+    $stmt = db()->prepare("SELECT {$alias}.id, {$alias}.{$labelColumn} AS label FROM {$table} {$alias} {$where} ORDER BY {$alias}.id DESC LIMIT 500");
+    $stmt->execute($params);
     return $stmt->fetchAll();
 }
 
@@ -802,15 +813,15 @@ function render_test_matrix_preview(array $questions, array $scales): string
     return trim(ob_get_clean());
 }
 
-function render_test_builder(int $testId): string
+function render_test_builder(int $testId, array $admin): string
 {
     $test = test_builder_test($testId);
     $isMultiscale = ($test['scoring_type'] ?? 'single') === 'multiscale';
     $questions = test_builder_questions($testId);
     $results = test_builder_results($testId);
     $scales = $isMultiscale ? test_builder_scales($testId) : [];
-    $products = test_builder_options('products', 'title');
-    $categories = test_builder_options('product_categories', 'title');
+    $products = test_builder_options('products', 'title', $admin);
+    $categories = test_builder_options('product_categories', 'title', $admin);
     $answersCount = array_sum(array_map(static fn(array $question): int => count($question['answers'] ?? []), $questions));
 
     ob_start();

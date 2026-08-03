@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/content_ownership.php';
+
 function consultant_owner_from_admin(array $admin): ?array
 {
     if ($admin['role'] === 'manager' && !empty($admin['manager_id'])) {
@@ -320,24 +322,42 @@ function consultant_profile_payload(array $profile): array
 {
     $profileId = (int)$profile['id'];
     $blocks = consultant_blocks($profileId);
+    $ownerAdmin = $profile['owner_type'] === 'reseller'
+        ? [
+            'role' => 'reseller',
+            'reseller_id' => (int)$profile['owner_id'],
+            'manager_id' => null,
+        ]
+        : [
+            'role' => 'manager',
+            'manager_id' => (int)$profile['owner_id'],
+            'reseller_id' => owned_content_manager_reseller_id((int)$profile['owner_id']),
+        ];
+
+    [$productWhere, $productParams] = owned_content_scope_condition('products', $ownerAdmin, 'p');
+    $productWhere = $productWhere ? ' AND ' . preg_replace('/^WHERE\s+/i', '', $productWhere) : '';
+    [$testWhere, $testParams] = owned_content_scope_condition('tests', $ownerAdmin, 't');
+    $testWhere = $testWhere ? ' AND ' . preg_replace('/^WHERE\s+/i', '', $testWhere) : '';
+    [$materialWhere, $materialParams] = owned_content_scope_condition('content', $ownerAdmin, 'c');
+    $materialWhere = $materialWhere ? ' AND ' . preg_replace('/^WHERE\s+/i', '', $materialWhere) : '';
 
     $products = db()->prepare(
         'SELECT p.id, p.title, p.short_description, p.full_description, p.image_path, p.document_path, p.video_url, p.purchase_url, p.price, pp.sort_order
          FROM profile_products pp
          JOIN products p ON p.id = pp.product_id
-         WHERE pp.profile_id = :profile_id AND p.is_active = 1
+         WHERE pp.profile_id = :profile_id AND p.is_active = 1' . $productWhere . '
          ORDER BY pp.sort_order, p.sort_order, p.id'
     );
-    $products->execute(['profile_id' => $profileId]);
+    $products->execute(['profile_id' => $profileId] + $productParams);
 
     $tests = db()->prepare(
         'SELECT t.id, t.title, t.description, pt.sort_order
          FROM profile_tests pt
          JOIN tests t ON t.id = pt.test_id
-         WHERE pt.profile_id = :profile_id AND t.is_active = 1
+         WHERE pt.profile_id = :profile_id AND t.is_active = 1' . $testWhere . '
          ORDER BY pt.sort_order, t.sort_order, t.id'
     );
-    $tests->execute(['profile_id' => $profileId]);
+    $tests->execute(['profile_id' => $profileId] + $testParams);
 
     $materials = db()->prepare(
         'SELECT c.id, c.title, c.short_text, c.full_text, c.image_path, c.video_url, c.attachment_path,
@@ -346,15 +366,10 @@ function consultant_profile_payload(array $profile): array
          JOIN content_posts c ON c.id = pm.content_post_id
          WHERE pm.profile_id = :profile_id
            AND c.status = "published"
-           AND c.owner_type = :owner_type
-           AND c.owner_id = :owner_id
+           ' . $materialWhere . '
          ORDER BY pm.sort_order, c.publish_at DESC, c.id DESC'
     );
-    $materials->execute([
-        'profile_id' => $profileId,
-        'owner_type' => $profile['owner_type'],
-        'owner_id' => (int)$profile['owner_id'],
-    ]);
+    $materials->execute(['profile_id' => $profileId] + $materialParams);
 
     $reviews = db()->prepare(
         'SELECT client_name, client_photo_path, review_text, rating

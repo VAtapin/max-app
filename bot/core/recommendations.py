@@ -1,9 +1,12 @@
 from bot.core.i18n import tr
+from bot.core.content_scope import user_content_scope
 from bot.db.mysql import cursor
 
 
 async def build_recommendations(end_user_id: int, test_session_id: int) -> list[dict]:
     async with cursor() as cur:
+        await cur.execute("SELECT * FROM end_users WHERE id = %s LIMIT 1", (end_user_id,))
+        user = await cur.fetchone()
         await cur.execute(
             """
             SELECT
@@ -28,14 +31,31 @@ async def build_recommendations(end_user_id: int, test_session_id: int) -> list[
         for item in scores:
             product_id = item["product_id"]
             if not product_id and item["category_id"]:
+                scope_sql, scope_params = user_content_scope("products", user, "p")
                 await cur.execute(
-                    """
-                    SELECT id FROM products
-                    WHERE category_id = %s AND is_active = 1
-                    ORDER BY sort_order, id
+                    "SELECT source_category_id FROM product_categories WHERE id = %s LIMIT 1",
+                    (item["category_id"],),
+                )
+                category = await cur.fetchone()
+                source_category_id = category.get("source_category_id") if category else None
+                category_sql = "(p.category_id = %s OR pc.source_category_id = %s"
+                category_params = [item["category_id"], item["category_id"]]
+                if source_category_id:
+                    category_sql += " OR p.category_id = %s"
+                    category_params.append(source_category_id)
+                category_sql += ")"
+                await cur.execute(
+                    f"""
+                    SELECT p.id
+                    FROM products p
+                    LEFT JOIN product_categories pc ON pc.id = p.category_id
+                    WHERE {category_sql}
+                      AND p.is_active = 1
+                      AND {scope_sql}
+                    ORDER BY p.sort_order, p.id
                     LIMIT 1
                     """,
-                    (item["category_id"],),
+                    (*category_params, *scope_params),
                 )
                 product = await cur.fetchone()
                 product_id = product["id"] if product else None

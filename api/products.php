@@ -3,7 +3,7 @@
 require __DIR__ . '/bootstrap.php';
 
 if (isset($_GET['id'])) {
-    $ownerWhere = 'p.owner_type IS NULL';
+    $ownerWhere = 'p.owner_type IS NULL AND p.is_deleted = 0';
     $ownerParams = [];
     if (isset($_GET['platform'], $_GET['platform_user_id'])) {
         $user = require_platform_user();
@@ -21,7 +21,7 @@ if (isset($_GET['id'])) {
 }
 
 $categoryId = $_GET['category_id'] ?? null;
-$ownerWhere = 'p.owner_type IS NULL';
+$ownerWhere = 'p.owner_type IS NULL AND p.is_deleted = 0';
 $params = [];
 if (isset($_GET['platform'], $_GET['platform_user_id'])) {
     $user = require_platform_user();
@@ -34,8 +34,17 @@ $sql = "SELECT p.id, p.category_id, p.title, p.slug, p.short_description, p.full
         LEFT JOIN product_categories c ON c.id = p.category_id
         WHERE p.is_active = 1 AND $ownerWhere";
 if ($categoryId) {
-    $sql .= ' AND p.category_id = :category_id';
+    $categoryStmt = db()->prepare('SELECT source_category_id FROM product_categories WHERE id = :id LIMIT 1');
+    $categoryStmt->execute(['id' => (int)$categoryId]);
+    $sourceCategoryId = $categoryStmt->fetchColumn();
+    $sql .= ' AND (p.category_id = :category_id OR c.source_category_id = :category_id_clone'
+        . ($sourceCategoryId ? ' OR p.category_id = :source_category_id' : '')
+        . ')';
     $params['category_id'] = (int)$categoryId;
+    $params['category_id_clone'] = (int)$categoryId;
+    if ($sourceCategoryId) {
+        $params['source_category_id'] = (int)$sourceCategoryId;
+    }
 }
 $sql .= ' ORDER BY p.sort_order, p.title';
 

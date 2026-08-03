@@ -3,7 +3,7 @@
 require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
 require_once __DIR__ . '/../app/core/consultant_profiles.php';
-require_once __DIR__ . '/../app/core/material_cloner.php';
+require_once __DIR__ . '/../app/core/content_ownership.php';
 
 $admin = require_auth();
 if (!can_manage('my_page', $admin)) {
@@ -17,10 +17,6 @@ if (!$owner) {
     exit(app_text('consultant_profile.owner_not_found'));
 }
 
-if ($owner['owner_type'] === 'manager') {
-    clone_reseller_materials_for_manager((int)$owner['owner_id']);
-}
-
 $profile = ensure_consultant_profile($owner['owner_type'], $owner['owner_id']);
 $title = app_text('consultant_profile.menu');
 $errors = [];
@@ -31,29 +27,57 @@ function profile_owner_query(array $owner): string
     return 'owner_type=' . urlencode($owner['owner_type']) . '&owner_id=' . (int)$owner['owner_id'];
 }
 
+function profile_owner_admin(array $owner): array
+{
+    if ($owner['owner_type'] === 'reseller') {
+        return [
+            'role' => 'reseller',
+            'reseller_id' => (int)$owner['owner_id'],
+            'manager_id' => null,
+        ];
+    }
+
+    return [
+        'role' => 'manager',
+        'manager_id' => (int)$owner['owner_id'],
+        'reseller_id' => owned_content_manager_reseller_id((int)$owner['owner_id']),
+    ];
+}
+
 function profile_select_options(string $source, array $owner): array
 {
+    $ownerAdmin = profile_owner_admin($owner);
+
     if ($source === 'materials') {
+        [$where, $params] = owned_content_scope_condition('content', $ownerAdmin, 'cp');
+        $where = $where ? $where . ' AND cp.status <> "hidden"' : 'WHERE cp.status <> "hidden"';
         $stmt = db()->prepare(
             'SELECT id, title AS label
-             FROM content_posts
-             WHERE status <> "hidden"
-               AND owner_type = :owner_type
-               AND owner_id = :owner_id
+             FROM content_posts cp
+             ' . $where . '
              ORDER BY COALESCE(publish_at, created_at) DESC, title'
         );
-        $stmt->execute([
-            'owner_type' => $owner['owner_type'],
-            'owner_id' => (int)$owner['owner_id'],
-        ]);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
-    return match ($source) {
-        'products' => db()->query('SELECT id, title AS label FROM products WHERE is_active = 1 ORDER BY sort_order, title')->fetchAll(),
-        'tests' => db()->query('SELECT id, title AS label FROM tests WHERE is_active = 1 ORDER BY sort_order, title')->fetchAll(),
-        default => [],
-    };
+    if ($source === 'products') {
+        [$where, $params] = owned_content_scope_condition('products', $ownerAdmin, 'p');
+        $where = $where ? $where . ' AND p.is_active = 1' : 'WHERE p.is_active = 1';
+        $stmt = db()->prepare('SELECT p.id, p.title AS label FROM products p ' . $where . ' ORDER BY p.sort_order, p.title');
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    if ($source === 'tests') {
+        [$where, $params] = owned_content_scope_condition('tests', $ownerAdmin, 't');
+        $where = $where ? $where . ' AND t.is_active = 1' : 'WHERE t.is_active = 1';
+        $stmt = db()->prepare('SELECT t.id, t.title AS label FROM tests t ' . $where . ' ORDER BY t.sort_order, t.title');
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    return [];
 }
 
 function about_section_titles(array $blocks): array

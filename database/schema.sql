@@ -277,10 +277,14 @@ CREATE TABLE product_categories (
   description TEXT NULL,
   owner_type ENUM('superadmin', 'reseller', 'manager') NULL,
   owner_id BIGINT UNSIGNED NULL,
+  source_category_id BIGINT UNSIGNED NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
   sort_order INT NOT NULL DEFAULT 100,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_product_categories_source_category_id (source_category_id),
+  UNIQUE KEY uq_product_categories_owner_source_clone (owner_type, owner_id, source_category_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE products (
@@ -288,6 +292,8 @@ CREATE TABLE products (
   category_id BIGINT UNSIGNED NULL,
   owner_type ENUM('superadmin', 'reseller', 'manager') NULL,
   owner_id BIGINT UNSIGNED NULL,
+  source_product_id BIGINT UNSIGNED NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
   title VARCHAR(190) NOT NULL,
   slug VARCHAR(190) NOT NULL UNIQUE,
   short_description TEXT NULL,
@@ -306,6 +312,8 @@ CREATE TABLE products (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_products_category_id (category_id),
+  INDEX idx_products_source_product_id (source_product_id),
+  UNIQUE KEY uq_products_owner_source_clone (owner_type, owner_id, source_product_id),
   CONSTRAINT fk_products_category
     FOREIGN KEY (category_id) REFERENCES product_categories(id)
     ON DELETE SET NULL ON UPDATE CASCADE
@@ -363,11 +371,15 @@ CREATE TABLE tests (
   intro_video_url VARCHAR(255) NULL,
   owner_type ENUM('superadmin', 'reseller', 'manager') NULL,
   owner_id BIGINT UNSIGNED NULL,
+  source_test_id BIGINT UNSIGNED NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   sort_order INT NOT NULL DEFAULT 100,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_tests_category_id (category_id),
+  INDEX idx_tests_source_test_id (source_test_id),
+  UNIQUE KEY uq_tests_owner_source_clone (owner_type, owner_id, source_test_id),
   CONSTRAINT fk_tests_category
     FOREIGN KEY (category_id) REFERENCES product_categories(id)
     ON DELETE SET NULL ON UPDATE CASCADE
@@ -626,6 +638,7 @@ CREATE TABLE content_posts (
   publish_at DATETIME NULL,
   created_by BIGINT UNSIGNED NULL,
   source_content_post_id BIGINT UNSIGNED NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_content_category_id (category_id),
@@ -747,6 +760,10 @@ CREATE TABLE messaging_integrations (
 
 CREATE TABLE broadcasts (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  owner_type ENUM('superadmin', 'reseller', 'manager') NULL,
+  owner_id BIGINT UNSIGNED NULL,
+  source_broadcast_id BIGINT UNSIGNED NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
   title VARCHAR(190) NOT NULL,
   message_text TEXT NULL,
   audience_type ENUM('clients', 'consultants') NOT NULL DEFAULT 'clients',
@@ -764,6 +781,9 @@ CREATE TABLE broadcasts (
   created_by BIGINT UNSIGNED NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_broadcasts_owner (owner_type, owner_id),
+  INDEX idx_broadcasts_source_broadcast_id (source_broadcast_id),
+  UNIQUE KEY uq_broadcasts_owner_source_clone (owner_type, owner_id, source_broadcast_id),
   INDEX idx_broadcasts_target_reseller_id (target_reseller_id),
   INDEX idx_broadcasts_target_manager_id (target_manager_id),
   INDEX idx_broadcasts_platform (platform),

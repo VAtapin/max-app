@@ -1,15 +1,11 @@
 <?php
 
 require __DIR__ . '/bootstrap.php';
-require_once __DIR__ . '/../admin/app/core/material_cloner.php';
 
 $ownerWhere = '1 = 0';
 $ownerParams = [];
 if (isset($_GET['platform'], $_GET['platform_user_id'])) {
     $user = require_platform_user();
-    if (!empty($user['manager_id'])) {
-        clone_reseller_materials_for_manager((int)$user['manager_id'], isset($user['reseller_id']) ? (int)$user['reseller_id'] : null);
-    }
     [$ownerWhere, $ownerParams] = client_material_owner_scope($user, 'c');
 }
 

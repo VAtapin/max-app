@@ -65,13 +65,31 @@ function add_result_recommendation(int $endUserId, int $sessionId, ?array $resul
 
     $productId = $result['product_id'] ? (int)$result['product_id'] : null;
     if (!$productId && !empty($result['category_id'])) {
+        $userStmt = db()->prepare('SELECT * FROM end_users WHERE id = :id LIMIT 1');
+        $userStmt->execute(['id' => $endUserId]);
+        $user = $userStmt->fetch() ?: [];
+        [$ownerWhere, $ownerParams] = client_owner_scope($user, 'p', 'products');
+        $categoryStmt = db()->prepare('SELECT source_category_id FROM product_categories WHERE id = :id LIMIT 1');
+        $categoryStmt->execute(['id' => (int)$result['category_id']]);
+        $sourceCategoryId = $categoryStmt->fetchColumn();
         $productStmt = db()->prepare(
-            'SELECT id FROM products
-             WHERE category_id = :category_id AND is_active = 1
-             ORDER BY sort_order, id
-             LIMIT 1'
+            "SELECT p.id
+             FROM products p
+             LEFT JOIN product_categories pc ON pc.id = p.category_id
+             WHERE (p.category_id = :category_id OR pc.source_category_id = :category_id_clone" . ($sourceCategoryId ? " OR p.category_id = :source_category_id" : "") . ")
+               AND p.is_active = 1
+               AND $ownerWhere
+             ORDER BY p.sort_order, p.id
+             LIMIT 1"
         );
-        $productStmt->execute(['category_id' => (int)$result['category_id']]);
+        $productParams = [
+            'category_id' => (int)$result['category_id'],
+            'category_id_clone' => (int)$result['category_id'],
+        ] + $ownerParams;
+        if ($sourceCategoryId) {
+            $productParams['source_category_id'] = (int)$sourceCategoryId;
+        }
+        $productStmt->execute($productParams);
         $productId = $productStmt->fetchColumn() ?: null;
     }
 
@@ -924,7 +942,7 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
 
 if (isset($_GET['id'])) {
     $user = null;
-    $ownerWhere = 't.owner_type IS NULL';
+    $ownerWhere = 't.owner_type IS NULL AND t.is_deleted = 0';
     $ownerParams = [];
     if (isset($_GET['platform'], $_GET['platform_user_id'])) {
         $user = require_platform_user();
@@ -986,7 +1004,7 @@ if (isset($_GET['id'])) {
 }
 
 $user = null;
-$ownerWhere = 't.owner_type IS NULL';
+$ownerWhere = 't.owner_type IS NULL AND t.is_deleted = 0';
 $ownerParams = [];
 if (isset($_GET['platform'], $_GET['platform_user_id'])) {
     $user = require_platform_user();

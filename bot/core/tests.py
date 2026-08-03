@@ -1,24 +1,31 @@
 from bot.core.i18n import tr
+from bot.core.content_scope import user_content_scope
 from bot.db.mysql import cursor
 from bot.core.client_journey import set_client_stage
 
 
-async def list_tests() -> list[dict]:
+async def list_tests(user: dict | None = None) -> list[dict]:
+    scope_sql, params = user_content_scope("tests", user, "t")
     async with cursor() as cur:
         await cur.execute(
-            """
-            SELECT id, title, description, scoring_type, emoji, intro_text
-            FROM tests
-            WHERE is_active = 1
-            ORDER BY sort_order, title
-            """
+            f"""
+            SELECT t.id, t.title, t.description, t.scoring_type, t.emoji, t.intro_text
+            FROM tests t
+            WHERE t.is_active = 1 AND {scope_sql}
+            ORDER BY t.sort_order, t.title
+            """,
+            params,
         )
         return await cur.fetchall()
 
 
-async def get_test(test_id: int, gender: str | None = None) -> dict | None:
+async def get_test(test_id: int, gender: str | None = None, user: dict | None = None) -> dict | None:
+    scope_sql, params = user_content_scope("tests", user, "t")
     async with cursor() as cur:
-        await cur.execute("SELECT * FROM tests WHERE id = %s AND is_active = 1 LIMIT 1", (test_id,))
+        await cur.execute(
+            f"SELECT t.* FROM tests t WHERE t.id = %s AND t.is_active = 1 AND {scope_sql} LIMIT 1",
+            (test_id, *params),
+        )
         test = await cur.fetchone()
         if not test:
             return None

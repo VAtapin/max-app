@@ -7,7 +7,7 @@ require_once __DIR__ . '/../app/core/lead_responses.php';
 require_once __DIR__ . '/../app/core/test_admin.php';
 require_once __DIR__ . '/../app/core/broadcast_runner.php';
 require_once __DIR__ . '/../app/core/client_journey.php';
-require_once __DIR__ . '/../app/core/material_cloner.php';
+require_once __DIR__ . '/../app/core/content_ownership.php';
 
 $admin = require_auth();
 
@@ -239,13 +239,6 @@ if (!isset($modules[$moduleKey]) || !can_manage($moduleKey, $admin)) {
 $module = $modules[$moduleKey];
 $title = $module['title'];
 
-if ($admin['role'] === 'manager') {
-    clone_reseller_materials_for_manager(
-        (int)$admin['manager_id'],
-        isset($admin['reseller_id']) ? (int)$admin['reseller_id'] : null
-    );
-}
-
 function scope_where_for_module(string $moduleKey, array $admin): array
 {
     if ($moduleKey === 'users') {
@@ -271,30 +264,12 @@ function scope_where_for_module(string $moduleKey, array $admin): array
         return ['WHERE reseller_id = :scope_reseller_id', ['scope_reseller_id' => $admin['reseller_id']]];
     }
 
-    if ($moduleKey === 'broadcasts') {
-        if ($admin['role'] === 'superadmin') {
-            return ['', []];
-        }
-        if ($admin['role'] === 'reseller') {
-            return [
-                'WHERE (target_reseller_id = :scope_reseller_id
-                    OR target_manager_id IN (
-                        SELECT id FROM managers WHERE reseller_id = :scope_reseller_team_id
-                    ))',
-                [
-                    'scope_reseller_id' => $admin['reseller_id'],
-                    'scope_reseller_team_id' => $admin['reseller_id'],
-                ],
-            ];
-        }
-        return [
-            'WHERE target_manager_id = :scope_manager_id',
-            ['scope_manager_id' => $admin['manager_id']],
-        ];
-    }
-
     if (in_array($moduleKey, owned_modules(), true)) {
         return owner_scope_condition($admin, '', $moduleKey);
+    }
+
+    if ($moduleKey === 'broadcasts') {
+        return owned_content_scope_condition('broadcasts', $admin);
     }
 
     if ($moduleKey === 'integrations') {
@@ -325,35 +300,34 @@ function owned_modules(): array
 
 function owner_scope_condition(array $admin, string $alias = '', string $moduleKey = ''): array
 {
+    if ($moduleKey !== '' && owned_content_config($moduleKey)) {
+        return owned_content_scope_condition($moduleKey, $admin, $alias);
+    }
+
     $prefix = $alias !== '' ? $alias . '.' : '';
     if ($admin['role'] === 'superadmin') {
         return ['', []];
     }
 
-    if ($moduleKey === 'content') {
-        if ($admin['role'] === 'reseller') {
-            return [
-                'WHERE ' . $prefix . 'owner_type = "reseller" AND ' . $prefix . 'owner_id = :owner_reseller_id',
-                ['owner_reseller_id' => $admin['reseller_id']],
-            ];
-        }
-
-        return [
-            'WHERE ' . $prefix . 'owner_type = "manager" AND ' . $prefix . 'owner_id = :owner_manager_id',
-            ['owner_manager_id' => $admin['manager_id']],
-        ];
-    }
-
     if ($admin['role'] === 'reseller') {
         return [
-            'WHERE (' . $prefix . 'owner_type IS NULL OR (' . $prefix . 'owner_type = "reseller" AND ' . $prefix . 'owner_id = :owner_reseller_id) OR (' . $prefix . 'owner_type = "manager" AND ' . $prefix . 'owner_id IN (SELECT id FROM managers WHERE reseller_id = :owner_reseller_id_sub)))',
-            ['owner_reseller_id' => $admin['reseller_id'], 'owner_reseller_id_sub' => $admin['reseller_id']],
+            'WHERE (' . $prefix . 'owner_type IS NULL OR (' . $prefix . 'owner_type = "reseller" AND ' . $prefix . 'owner_id = :owner_reseller_id))',
+            ['owner_reseller_id' => $admin['reseller_id']],
         ];
     }
 
+    $parts = [$prefix . 'owner_type IS NULL'];
+    $params = [];
+    if (!empty($admin['reseller_id'])) {
+        $parts[] = '(' . $prefix . 'owner_type = "reseller" AND ' . $prefix . 'owner_id = :owner_reseller_id)';
+        $params['owner_reseller_id'] = $admin['reseller_id'];
+    }
+    $parts[] = '(' . $prefix . 'owner_type = "manager" AND ' . $prefix . 'owner_id = :owner_manager_id)';
+    $params['owner_manager_id'] = $admin['manager_id'];
+
     return [
-        'WHERE (' . $prefix . 'owner_type IS NULL OR (' . $prefix . 'owner_type = "manager" AND ' . $prefix . 'owner_id = :owner_manager_id))',
-        ['owner_manager_id' => $admin['manager_id']],
+        'WHERE (' . implode(' OR ', $parts) . ')',
+        $params,
     ];
 }
 
@@ -764,7 +738,17 @@ function select_options(string $source, array $admin): array
             'tests' => 'tests',
             default => '',
         };
-        [$where, $params] = scope_where_for_module($moduleForSource, $admin);
+        $alias = match ($source) {
+            'products' => 'p',
+            'product_categories' => 'pc',
+            'content_posts' => 'cp',
+            'tests' => 't',
+            default => 'item',
+        };
+        [$where, $params] = owned_content_scope_condition($moduleForSource, $admin, $alias);
+        $stmt = db()->prepare("SELECT {$alias}.id, {$alias}.{$item['label']} AS label FROM {$item['table']} {$alias} $where ORDER BY {$alias}.id DESC LIMIT 500");
+        $stmt->execute($params);
+        return $stmt->fetchAll();
     }
 
     $stmt = db()->prepare("SELECT id, {$item['label']} AS label FROM {$item['table']} $where ORDER BY id DESC LIMIT 500");
@@ -1227,11 +1211,15 @@ function apply_role_defaults(string $moduleKey, array $payload, array $admin): a
     if ($moduleKey === 'broadcasts') {
         $payload['created_by'] = $admin['id'];
         if ($admin['role'] === 'manager') {
+            $payload['owner_type'] = 'manager';
+            $payload['owner_id'] = $admin['manager_id'];
             $payload['audience_type'] = 'clients';
             $payload['target_type'] = 'manager';
             $payload['target_manager_id'] = $admin['manager_id'];
             $payload['target_reseller_id'] = $admin['reseller_id'];
         } elseif ($admin['role'] === 'reseller') {
+            $payload['owner_type'] = 'reseller';
+            $payload['owner_id'] = $admin['reseller_id'];
             $payload['target_type'] = 'reseller';
             $payload['target_reseller_id'] = $admin['reseller_id'];
             $payload['target_manager_id'] = null;
@@ -1368,13 +1356,22 @@ function sync_user_assignment_from_lead(int $leadId, array $leadBefore, array $p
 
 function detach_owner_content(string $ownerType, int $ownerId): void
 {
-    foreach (['product_categories', 'products', 'tests', 'content_posts'] as $table) {
+    $updates = [
+        'product_categories' => ['column' => 'is_active', 'value' => 0],
+        'products' => ['column' => 'is_active', 'value' => 0],
+        'tests' => ['column' => 'is_active', 'value' => 0],
+        'content_posts' => ['column' => 'status', 'value' => 'hidden'],
+        'broadcasts' => ['column' => 'status', 'value' => 'cancelled'],
+    ];
+
+    foreach ($updates as $table => $update) {
         $stmt = db()->prepare(
             "UPDATE {$table}
-             SET owner_type = NULL, owner_id = NULL
+             SET {$update['column']} = :inactive_value
              WHERE owner_type = :owner_type AND owner_id = :owner_id"
         );
         $stmt->execute([
+            'inactive_value' => $update['value'],
             'owner_type' => $ownerType,
             'owner_id' => $ownerId,
         ]);
@@ -1403,6 +1400,12 @@ function delete_crud_record(string $moduleKey, array $module, int $id, array $ad
             $stmt = $pdo->prepare('DELETE FROM end_users WHERE id = :id');
             $stmt->execute(['id' => $id]);
             log_activity('admin', (int)$admin['id'], 'delete_end_users', 'end_users', $id);
+            $pdo->commit();
+            return;
+        }
+
+        if (owned_content_delete_for_admin($moduleKey, $id, $admin)) {
+            log_activity('admin', (int)$admin['id'], 'hide_owned_' . $module['table'], $module['table'], $id);
             $pdo->commit();
             return;
         }
@@ -1771,6 +1774,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
+            $postId = owned_content_editable_id('broadcasts', $postId, $admin);
             $result = run_broadcast($postId);
             redirect('crud.php?module=broadcasts&success=broadcast_sent&sent=' . (int)$result['sent'] . '&failed=' . (int)$result['failed']);
         } catch (Throwable $e) {
@@ -1779,11 +1783,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if ($moduleKey === 'tests' && $postId && handle_test_builder_action($postAction, $postId, $admin, $errors)) {
+    if ($moduleKey === 'tests' && $postId && str_starts_with($postAction, 'test_')) {
         if (!scoped_row_exists($moduleKey, $module, $postId, $admin)) {
             http_response_code(404);
             exit('Record not found');
         }
+        $editablePostId = owned_content_editable_id('tests', $postId, $admin);
+        if ($editablePostId !== $postId) {
+            redirect('crud.php?module=tests&action=edit&id=' . $editablePostId . '&success=personal_copy');
+        }
+        handle_test_builder_action($postAction, $postId, $admin, $errors);
         if (!$errors) {
             redirect('crud.php?module=tests&action=edit&id=' . $postId . '&success=saved');
         }
@@ -1839,6 +1848,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit('Record not found');
     }
 
+    if ($postId && owned_content_config($moduleKey)) {
+        $postId = owned_content_editable_id($moduleKey, $postId, $admin);
+        $id = $postId;
+    }
+
     $payload = collect_payload($formFields);
     $payload = normalize_module_payload($moduleKey, $payload);
     $payload = apply_file_uploads($moduleKey, $formFields, $payload, $errors);
@@ -1885,6 +1899,12 @@ if ($action === 'edit' && $id) {
     if (!scoped_row_exists($moduleKey, $module, $id, $admin)) {
         http_response_code(404);
         exit('Record not found');
+    }
+    if (owned_content_config($moduleKey) && $admin['role'] !== 'superadmin') {
+        $editableId = owned_content_editable_id($moduleKey, $id, $admin);
+        if ($editableId !== $id) {
+            redirect('crud.php?module=' . urlencode($moduleKey) . '&action=edit&id=' . $editableId . '&success=personal_copy');
+        }
     }
     $stmt = db()->prepare("SELECT * FROM {$module['table']} WHERE id = :id LIMIT 1");
     $stmt->execute(['id' => $id]);
@@ -1935,6 +1955,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <div class="notice success"><?= h(app_text('auto.k_0184f257cbfc')) ?></div>
 <?php elseif ($success === 'merged'): ?>
     <div class="notice success"><?= h(app_text('user_merge.success')) ?></div>
+<?php elseif ($success === 'personal_copy'): ?>
+    <div class="notice success"><?= h(app_text('content_ownership.personal_copy')) ?></div>
 <?php elseif ($success === 'broadcast_sent'): ?>
     <div class="notice success"><?= h(app_text('broadcasts.run_success', [
         'sent' => (int)($_GET['sent'] ?? 0),
@@ -2067,7 +2089,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
         </form>
     </section>
     <?php if ($moduleKey === 'tests' && $action === 'edit' && $editRow): ?>
-        <?= render_test_builder((int)$editRow['id']) ?>
+        <?= render_test_builder((int)$editRow['id'], $admin) ?>
     <?php endif; ?>
     <?php if ($moduleKey === 'users' && $action === 'edit' && $editRow): ?>
         <?php $consentStatus = client_onboarding_status($editRow); ?>

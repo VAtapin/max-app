@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../admin/app/core/db.php';
 require_once __DIR__ . '/../admin/app/core/helpers.php';
+require_once __DIR__ . '/../admin/app/core/content_ownership.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -830,41 +831,19 @@ function verify_platform_auth(string $platform, string $platformUserId, ?string 
 }
 
 
-function client_owner_scope(array $user, string $alias = ''): array
+function client_owner_scope(array $user, string $alias = '', ?string $moduleKey = null): array
 {
-    $prefix = $alias !== '' ? $alias . '.' : '';
-    $parts = [$prefix . 'owner_type IS NULL'];
-    $params = [];
+    $moduleKey ??= match ($alias) {
+        'p' => 'products',
+        't' => 'tests',
+        'c', 'pc' => 'categories',
+        default => '',
+    };
 
-    if (!empty($user['reseller_id'])) {
-        $parts[] = '(' . $prefix . 'owner_type = "reseller" AND ' . $prefix . 'owner_id = :client_reseller_id)';
-        $params['client_reseller_id'] = (int)$user['reseller_id'];
-    }
-    if (!empty($user['manager_id'])) {
-        $parts[] = '(' . $prefix . 'owner_type = "manager" AND ' . $prefix . 'owner_id = :client_manager_id)';
-        $params['client_manager_id'] = (int)$user['manager_id'];
-    }
-
-    return ['(' . implode(' OR ', $parts) . ')', $params];
+    return owned_content_client_scope_condition($moduleKey, $user, $alias);
 }
 
 function client_material_owner_scope(array $user, string $alias = ''): array
 {
-    $prefix = $alias !== '' ? $alias . '.' : '';
-
-    if (!empty($user['manager_id'])) {
-        return [
-            $prefix . 'owner_type = "manager" AND ' . $prefix . 'owner_id = :client_manager_id',
-            ['client_manager_id' => (int)$user['manager_id']],
-        ];
-    }
-
-    if (!empty($user['reseller_id'])) {
-        return [
-            $prefix . 'owner_type = "reseller" AND ' . $prefix . 'owner_id = :client_reseller_id',
-            ['client_reseller_id' => (int)$user['reseller_id']],
-        ];
-    }
-
-    return ['1 = 0', []];
+    return owned_content_client_scope_condition('content', $user, $alias);
 }

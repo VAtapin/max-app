@@ -305,7 +305,7 @@ def public_base_url() -> str:
 
 
 async def show_main_menu(message: Message, user: dict) -> None:
-    tests = await list_tests()
+    tests = await list_tests(user)
     await message.answer(
         "Выберите нужный раздел:",
         reply_markup=main_menu_keyboard(user_referral_code(user), diagnosis_test_id(tests)),
@@ -754,7 +754,7 @@ async def start_test(
     reset: bool = False,
     force_resume: bool = False,
 ) -> None:
-    test = await get_test(test_id, user.get("gender"))
+    test = await get_test(test_id, user.get("gender"), user)
     if not test or not test.get("questions"):
         await message.answer(tr("tests.no_questions"))
         return
@@ -1084,7 +1084,7 @@ async def tests_command(message: Message, state: FSMContext) -> None:
     user = await resolve_user(message)
     if not await continue_onboarding(message, state, user):
         return
-    tests = await list_tests()
+    tests = await list_tests(user)
     if not tests:
         await message.answer(tr("tests.empty"))
         return
@@ -1095,8 +1095,8 @@ async def tests_command(message: Message, state: FSMContext) -> None:
 
 @router.message(Command("products"))
 async def products_command(message: Message) -> None:
-    await resolve_user(message)
-    products = await list_products()
+    user = await resolve_user(message)
+    products = await list_products(user=user)
     if not products:
         await message.answer(tr("products.empty"))
         return
