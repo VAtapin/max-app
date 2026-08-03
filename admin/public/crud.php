@@ -1869,7 +1869,11 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <p><strong>Анкета:</strong> <?= $consentStatus['profile_complete'] ? 'заполнена' : 'не завершена' ?></p>
             <p><strong>Обязательные согласия:</strong> <?= $consentStatus['missing_consents'] ? 'не подтверждены полностью' : 'подтверждены' ?></p>
             <p><strong>Информационные рассылки:</strong> <?= $consentStatus['marketing_consent'] ? 'разрешены' : 'не разрешены' ?></p>
-            <a class="button secondary-button" href="results.php?user_id=<?= (int)$editRow['id'] ?>">Результаты чек-апов</a>
+            <a
+                class="button secondary-button"
+                href="results.php?user_id=<?= (int)$editRow['id'] ?>"
+                data-admin-modal-url="results.php?user_id=<?= (int)$editRow['id'] ?>&modal=1"
+            >Результаты чек-апов</a>
         </section>
 
         <section class="panel form-panel">

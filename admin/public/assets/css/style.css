@@ -1844,6 +1844,16 @@ button {
     gap: 16px;
 }
 
+.result-admin-card {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 16px;
+}
+
+.result-admin-card + .result-admin-card {
+    margin-top: 4px;
+}
+
 .result-admin-head {
     display: flex;
     align-items: flex-start;

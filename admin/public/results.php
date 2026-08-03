@@ -22,6 +22,7 @@ if ($admin['role'] === 'reseller') {
 }
 
 $userId = (int)($_GET['user_id'] ?? 0);
+$isModalRequest = ($_GET['modal'] ?? '') === '1';
 if ($userId > 0) {
     $where[] = 'eu.id = :user_id';
     $params['user_id'] = $userId;
@@ -147,8 +148,74 @@ function result_top_scale_label(array $scales): string
     return (string)$top['title'] . ': ' . (int)$top['score'] . ' · ' . ((string)($top['result_title'] ?: 'Результат'));
 }
 
+function render_result_detail_body(array $session, array $scales): string
+{
+    ob_start();
+    ?>
+    <div class="result-admin-summary"><?= nl2br(h((string)$session['result_summary'])) ?></div>
+    <?php if ($scales): ?>
+        <div class="result-admin-scales">
+            <?php foreach ($scales as $scale): ?>
+                <div class="severity-<?= h((string)($scale['severity'] ?: 'neutral')) ?>">
+                    <strong><?= h((string)$scale['title']) ?></strong>
+                    <span><?= (int)$scale['score'] ?> · <?= h((string)($scale['result_title'] ?: 'Результат')) ?></span>
+                    <?php if ($scale['summary_text']): ?><p><?= h((string)$scale['summary_text']) ?></p><?php endif; ?>
+                    <?php if ($scale['advice_text']): ?><p><?= h((string)$scale['advice_text']) ?></p><?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+    <?php
+    return trim(ob_get_clean());
+}
+
 $sessionIds = array_map(static fn(array $session): int => (int)$session['id'], $sessions);
 $scalesBySession = result_scale_items_for_sessions($sessionIds);
+
+if ($isModalRequest) {
+    ?>
+    <div class="modal-shell">
+        <div class="modal-head">
+            <div>
+                <span class="eyebrow">Результаты чек-апов</span>
+                <h2><?= $sessions ? h(result_client_name($sessions[0])) : 'Результаты клиента' ?></h2>
+                <p class="cell-muted">Найдено записей: <?= (int)$totalRows ?></p>
+            </div>
+            <form method="dialog"><button class="icon-button" aria-label="Закрыть">&times;</button></form>
+        </div>
+        <div class="modal-body">
+            <?php if (!$sessions): ?>
+                <div class="empty-state">Завершённых чек-апов пока нет.</div>
+            <?php else: ?>
+                <div class="result-admin-list">
+                    <?php foreach ($sessions as $session): ?>
+                        <?php
+                        $sessionId = (int)$session['id'];
+                        $scales = $scalesBySession[$sessionId] ?? [];
+                        ?>
+                        <article class="result-admin-card">
+                            <div class="result-admin-head">
+                                <div>
+                                    <span class="eyebrow"><?= h((string)$session['test_title']) ?></span>
+                                    <h3><?= h((string)$session['completed_at']) ?></h3>
+                                    <p class="cell-muted"><?= h(result_client_profile_line($session)) ?></p>
+                                </div>
+                                <span class="badge badge-sent"><?= h(result_top_scale_label($scales)) ?></span>
+                            </div>
+                            <?= render_result_detail_body($session, $scales) ?>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+        <div class="modal-actions">
+            <a class="button secondary-button" href="results.php?user_id=<?= (int)$userId ?>">Открыть отдельной страницей</a>
+            <form method="dialog"><button type="submit" class="secondary-button">Закрыть</button></form>
+        </div>
+    </div>
+    <?php
+    exit;
+}
 
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
@@ -253,19 +320,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <form method="dialog"><button class="icon-button" aria-label="Закрыть">&times;</button></form>
                 </div>
                 <div class="modal-body">
-                    <div class="result-admin-summary"><?= nl2br(h((string)$session['result_summary'])) ?></div>
-                    <?php if ($scales): ?>
-                        <div class="result-admin-scales">
-                            <?php foreach ($scales as $scale): ?>
-                                <div class="severity-<?= h((string)($scale['severity'] ?: 'neutral')) ?>">
-                                    <strong><?= h((string)$scale['title']) ?></strong>
-                                    <span><?= (int)$scale['score'] ?> · <?= h((string)($scale['result_title'] ?: 'Результат')) ?></span>
-                                    <?php if ($scale['summary_text']): ?><p><?= h((string)$scale['summary_text']) ?></p><?php endif; ?>
-                                    <?php if ($scale['advice_text']): ?><p><?= h((string)$scale['advice_text']) ?></p><?php endif; ?>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php endif; ?>
+                    <?= render_result_detail_body($session, $scales) ?>
                 </div>
                 <div class="modal-actions">
                     <a class="button secondary-button" href="crud.php?module=users&action=edit&id=<?= (int)$session['end_user_id'] ?>">Карточка клиента</a>
@@ -275,30 +330,4 @@ require __DIR__ . '/../app/views/layouts/header.php';
         </dialog>
     <?php endforeach; ?>
 <?php endif; ?>
-
-<script>
-document.querySelectorAll('[data-result-modal]').forEach((element) => {
-    element.addEventListener('click', (event) => {
-        if (event.target instanceof HTMLAnchorElement) {
-            return;
-        }
-        if (element instanceof HTMLButtonElement) {
-            event.stopPropagation();
-        }
-        const modalId = element.dataset.resultModal;
-        const modal = modalId ? document.getElementById(modalId) : null;
-        if (modal && typeof modal.showModal === 'function' && !modal.open) {
-            modal.showModal();
-        }
-    });
-});
-
-document.querySelectorAll('.admin-modal').forEach((modal) => {
-    modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
-            modal.close();
-        }
-    });
-});
-</script>
 <?php require __DIR__ . '/../app/views/layouts/footer.php'; ?>
