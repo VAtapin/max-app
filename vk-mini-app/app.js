@@ -11,6 +11,8 @@ const state = {
     activeTest: null,
     initialTestId: null,
     initialMaterialId: null,
+    bridgeLaunchParams: new URLSearchParams(),
+    bridgeLocationSubscribed: false,
     i18n: {},
     consultantProfile: null,
     consultantProfilePromise: null,
@@ -25,6 +27,52 @@ const state = {
 const page = document.querySelector('#page');
 const tabs = document.querySelectorAll('.tabs button');
 const homeLink = document.querySelector('#home-link');
+
+function decodeRouteValue(value) {
+    let decoded = String(value || '').trim();
+    for (let index = 0; index < 2; index += 1) {
+        try {
+            const next = decodeURIComponent(decoded);
+            if (next === decoded) break;
+            decoded = next;
+        } catch (_) {
+            break;
+        }
+    }
+    return decoded.replace(/^#/, '');
+}
+
+function routeParamsFromValue(value) {
+    let raw = decodeRouteValue(value);
+    if (!raw) {
+        return new URLSearchParams();
+    }
+
+    try {
+        const parsedUrl = new URL(raw);
+        raw = parsedUrl.search || parsedUrl.hash.replace(/^#/, '');
+    } catch (_) {
+        // Not a full URL, keep parsing as a route fragment.
+    }
+
+    if (raw.startsWith('/')) {
+        const questionIndex = raw.indexOf('?');
+        raw = questionIndex >= 0 ? raw.slice(questionIndex + 1) : raw.slice(1);
+    }
+    if (raw.includes('?')) {
+        raw = raw.slice(raw.indexOf('?') + 1);
+    }
+
+    return raw.includes('=') || raw.includes('&') ? new URLSearchParams(raw) : new URLSearchParams();
+}
+
+function mergeRouteParams(params, value) {
+    routeParamsFromValue(value).forEach((routeValue, routeKey) => {
+        if (!params.has(routeKey)) {
+            params.set(routeKey, routeValue);
+        }
+    });
+}
 
 function hashLaunchParams() {
     let hash = window.location.hash.replace(/^#/, '');
@@ -42,12 +90,24 @@ function launchParams() {
             params.set(key, value);
         }
     });
+    state.bridgeLaunchParams.forEach((value, key) => {
+        if (!params.has(key)) {
+            params.set(key, value);
+        }
+    });
+    ['startapp', 'start_param', 'vk_ref', 'vk_start_param', 'location', 'route', 'payload'].forEach((key) => {
+        if (params.has(key)) {
+            mergeRouteParams(params, params.get(key));
+        }
+    });
     return params;
 }
 
 function getReferralCode() {
     const params = launchParams();
-    return params.get('ref') || params.get('startapp') || null;
+    const startApp = normalizeReferralCodeInput(params.get('startapp') || '');
+    const vkRef = normalizeReferralCodeInput(params.get('vk_ref') || '');
+    return params.get('ref') || (startApp && !startApp.includes('=') ? startApp : null) || (vkRef.startsWith('SWPRO_') ? vkRef : null);
 }
 
 function normalizeReferralCodeInput(value) {
@@ -60,6 +120,10 @@ function applyInitialRoute() {
     const pageName = params.get('page');
     const testId = Number(params.get('test_id') || 0);
     const materialId = Number(params.get('material_id') || 0);
+    if (pageName || testId > 0 || materialId > 0) {
+        state.initialTestId = null;
+        state.initialMaterialId = null;
+    }
     if (['home', 'tests', 'cashback', 'contact', 'cooperation'].includes(pageName || '')) {
         state.page = pageName;
     }
@@ -68,8 +132,20 @@ function applyInitialRoute() {
         state.initialTestId = testId;
     }
     if (materialId > 0) {
-        state.page = 'home';
+        state.page = 'material';
         state.initialMaterialId = materialId;
+    }
+}
+
+function applyBridgeLocation(value) {
+    const location = decodeRouteValue(value);
+    if (!location) {
+        return;
+    }
+    state.bridgeLaunchParams.set('location', location);
+    applyInitialRoute();
+    if (state.user && state.onboarding?.complete) {
+        render();
     }
 }
 
@@ -304,8 +380,34 @@ async function initVk() {
 
     await withTimeout(loadVkBridge(), 1200);
     if (window.vkBridge) {
+        if (!state.bridgeLocationSubscribed) {
+            state.bridgeLocationSubscribed = true;
+            vkBridge.subscribe((event) => {
+                const type = event?.detail?.type || '';
+                if (type === 'VKWebAppLocationChanged' || type === 'VKWebAppChangeFragment') {
+                    applyBridgeLocation(event?.detail?.data?.location || '');
+                }
+            });
+        }
         try {
             await withTimeout(vkBridge.send('VKWebAppInit'), 1000);
+        } catch (_) {
+            // VK moderation can open the app with launch params before bridge init is ready.
+        }
+        try {
+            const launch = await withTimeout(vkBridge.send('VKWebAppGetLaunchParams'), 1000);
+            if (launch && typeof launch === 'object') {
+                Object.entries(launch).forEach(([key, value]) => {
+                    if (value !== null && value !== undefined && value !== '') {
+                        state.bridgeLaunchParams.set(key, String(value));
+                    }
+                });
+                applyInitialRoute();
+            }
+        } catch (_) {
+            // URL search/hash params are enough when launch params are not available.
+        }
+        try {
             const user = await withTimeout(vkBridge.send('VKWebAppGetUserInfo'), 1500);
             if (user && user.id) {
                 return user;
@@ -1397,7 +1499,7 @@ async function renderContactPage() {
         ['ok', 'OK', profile.ok_url],
     ].filter(([key, , value]) => value && !(isVkOkContext() && key === 'telegram'));
     page.innerHTML = `
-        <section class="panel feature-page">
+        <section class="panel feature-page contact-page">
             <span class="eyebrow">Ваш консультант</span>
             <h2>${escapeHtml(profile.display_name || 'Связаться с консультантом')}</h2>
             <p class="muted">Напишите сообщение здесь или выберите удобный способ связи.</p>
@@ -1414,7 +1516,7 @@ async function renderContactPage() {
             <button class="primary" data-action="contact">Написать консультанту</button>
         </section>
         ${renderMessagingPermissionCard()}
-        <section class="panel" id="lead-history">
+        <section class="panel contact-page" id="lead-history">
             <div class="empty">${escapeHtml(ui('common.loading'))}</div>
         </section>
     `;
