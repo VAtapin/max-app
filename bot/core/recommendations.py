@@ -1,4 +1,3 @@
-from bot.core.messages import MEDICAL_DISCLAIMER
 from bot.core.i18n import tr
 from bot.db.mysql import cursor
 
@@ -53,7 +52,7 @@ async def build_recommendations(end_user_id: int, test_session_id: int) -> list[
                     product_id,
                     item["category_id"],
                     item["tag_id"],
-                    tr("recommendation.reason", disclaimer=MEDICAL_DISCLAIMER),
+                    tr("recommendation.reason"),
                     item["score"],
                 ),
             )

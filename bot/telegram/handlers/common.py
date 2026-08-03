@@ -31,7 +31,6 @@ from bot.core.consultant_replies import (
 )
 from bot.core.leads import create_lead
 from bot.core.materials import get_material, list_materials
-from bot.core.messages import MEDICAL_DISCLAIMER
 from bot.core.products import list_products
 from bot.core.recommendations import list_recommendations
 from bot.core.tests import (
@@ -644,8 +643,7 @@ async def send_test_result_message(
         f"<b>{html.escape(str(result['title']))}</b>"
         f"{score_line}\n\n"
         f"{html.escape(str(result['summary']))}"
-        f"{scale_text}\n\n"
-        f"{html.escape(MEDICAL_DISCLAIMER)}"
+        f"{scale_text}"
     )
     if replace_current:
         try:
@@ -1078,7 +1076,7 @@ async def menu_callback(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(Command("help"))
 async def help_command(message: Message) -> None:
-    await message.answer(tr("help.text", disclaimer=MEDICAL_DISCLAIMER), reply_markup=ReplyKeyboardRemove())
+    await message.answer(tr("help.text"), reply_markup=ReplyKeyboardRemove())
 
 
 @router.message(Command("tests"))
@@ -1109,7 +1107,7 @@ async def products_command(message: Message) -> None:
         if item.get("short_description"):
             line += f"\n{html.escape(str(item['short_description']))}"
         lines.append(line)
-    await message.answer("\n\n".join(lines) + "\n\n" + html.escape(MEDICAL_DISCLAIMER), parse_mode="HTML")
+    await message.answer("\n\n".join(lines), parse_mode="HTML")
 
 
 @router.message(Command("materials"))
@@ -1143,7 +1141,7 @@ async def recommendations_command(message: Message) -> None:
         await message.answer(tr("recommendations.empty"))
         return
     text = "\n\n".join(format_recommendation(item) for item in recommendations[:10])
-    await message.answer(text + "\n\n" + html.escape(MEDICAL_DISCLAIMER), parse_mode="HTML")
+    await message.answer(text, parse_mode="HTML")
 
 
 @router.message(Command("profile"))

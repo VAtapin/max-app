@@ -43,7 +43,7 @@ function test_result_for_score(int $testId, int $totalScore): ?array
 function build_result_summary(?array $result): string
 {
     if (!$result) {
-        return app_text('auto.k_2a2863ee4b8f') . medical_disclaimer();
+        return app_text('auto.k_2a2863ee4b8f');
     }
 
     $parts = [$result['title']];
@@ -53,7 +53,6 @@ function build_result_summary(?array $result): string
     if (!empty($result['advice_text'])) {
         $parts[] = $result['advice_text'];
     }
-    $parts[] = medical_disclaimer();
 
     return implode("\n\n", array_filter($parts));
 }
@@ -209,7 +208,6 @@ function build_scale_result_summary(array $scaleResults): string
         $parts[] = $item['title'] . ': ' . $result['title'] . ' (' . $item['score'] . '). ' . trim((string)($result['summary_text'] ?? ''));
     }
     $parts[] = 'Чтобы получить персональный разбор и подобрать программу под ваши цели, отправьте результат консультанту.';
-    $parts[] = medical_disclaimer();
 
     return implode("\n\n", array_filter($parts));
 }

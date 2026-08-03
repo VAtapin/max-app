@@ -43,7 +43,7 @@ if (!$recommendations) {
     );
     $fallbackStmt->execute($ownerParams);
     $fallback = $fallbackStmt->fetchAll();
-    json_response(['recommendations' => $fallback, 'disclaimer' => medical_disclaimer()]);
+    json_response(['recommendations' => $fallback]);
 }
 
-json_response(['recommendations' => $recommendations, 'disclaimer' => medical_disclaimer()]);
+json_response(['recommendations' => $recommendations]);

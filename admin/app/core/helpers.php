@@ -111,8 +111,3 @@ function target_label(?string $value): string
 {
     return t_choice('targets', $value);
 }
-
-function medical_disclaimer(): string
-{
-    return app_text('auto.k_468e990acb20');
-}

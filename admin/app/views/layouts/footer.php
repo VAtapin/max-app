@@ -1,4 +1,3 @@
-            <p class="disclaimer"><?= h(medical_disclaimer()) ?></p>
         </section>
     </main>
 </div>

@@ -500,12 +500,6 @@ button.compact {
     padding: 10px 12px;
 }
 
-.disclaimer {
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 1.45;
-    margin: 16px 0 0;
-}
 
 .empty {
     color: var(--muted);
@@ -1678,12 +1672,6 @@ button.secondary,
     font-weight: 900;
 }
 
-.disclaimer {
-    background: rgba(255, 255, 255, 0.72);
-    border: 1px solid var(--line);
-    border-radius: 18px;
-    padding: 12px;
-}
 
 @media (min-width: 480px) {
     .hero-actions {

@@ -16,5 +16,4 @@ json_response([
     'user' => $user,
     'platform_accounts' => $stmt->fetchAll(),
     'onboarding' => client_onboarding_status($user),
-    'disclaimer' => medical_disclaimer(),
 ]);

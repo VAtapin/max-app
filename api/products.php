@@ -17,7 +17,7 @@ if (isset($_GET['id'])) {
     );
     $stmt->execute(['id' => (int)$_GET['id']] + $ownerParams);
     $product = $stmt->fetch();
-    $product ? json_response(['product' => $product, 'disclaimer' => medical_disclaimer()]) : json_response(['error' => 'not found'], 404);
+    $product ? json_response(['product' => $product]) : json_response(['error' => 'not found'], 404);
 }
 
 $categoryId = $_GET['category_id'] ?? null;

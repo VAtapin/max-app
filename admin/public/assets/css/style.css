@@ -605,11 +605,6 @@ button:disabled {
     gap: 10px;
 }
 
-.disclaimer {
-    color: var(--muted);
-    font-size: 13px;
-    margin-top: 20px;
-}
 
 .login-page {
     display: grid;
@@ -1682,12 +1677,6 @@ button {
     border-radius: var(--radius-lg);
 }
 
-.disclaimer {
-    background: rgba(255, 255, 255, 0.7);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 12px 14px;
-}
 
 @media (max-width: 1000px) {
     .app-shell {
