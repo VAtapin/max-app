@@ -79,8 +79,6 @@ function crud_form_fields(string $moduleKey, array $fields): array
     if ($moduleKey === 'leads') {
         return array_intersect_key($fields, array_flip([
             'manager_id',
-            'reseller_id',
-            'product_id',
             'message',
             'status',
         ]));
@@ -384,7 +382,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
         $baseWhere = $where ?: 'WHERE 1=1';
         $baseWhere = append_lead_filter_sql($baseWhere, $filters, $params);
         return [
-            "SELECT l.id, l.end_user_id, l.status, l.source_platform, l.message, l.created_at,
+            "SELECT l.id, l.end_user_id, l.status, l.source_platform, l.request_type, l.message, l.attachments_json, l.created_at,
                     CONCAT_WS(' ', NULLIF(eu.first_name, ''), NULLIF(eu.last_name, '')) AS full_name,
                     eu.username AS user_username,
                     eu.platform AS user_platform,
@@ -924,6 +922,67 @@ function lead_decode_attachments(?string $json): array
     return array_values(array_filter($decoded, 'is_array'));
 }
 
+function lead_attachment_type_from_label(string $label, string $url): string
+{
+    $label = mb_strtolower($label, 'UTF-8');
+
+    if (str_contains($label, 'фото') || preg_match('/\.(png|jpe?g|webp|gif)(?:[?#]|$)/i', $url)) {
+        return 'photo';
+    }
+
+    if (str_contains($label, 'стик')) {
+        return 'sticker';
+    }
+
+    if (str_contains($label, 'голос') || str_contains($label, 'аудио') || preg_match('/\.(mp3|ogg|wav|m4a)(?:[?#]|$)/i', $url)) {
+        return 'audio';
+    }
+
+    if (str_contains($label, 'видео') || preg_match('/\.(mp4|webm|mov)(?:[?#]|$)/i', $url)) {
+        return 'video';
+    }
+
+    if (str_contains($label, 'документ')) {
+        return 'doc';
+    }
+
+    return 'link';
+}
+
+function lead_parse_attachments_from_message(string $message): array
+{
+    if (!preg_match_all('/•\s*([^:\r\n]+):\s*(https?:\/\/[^\s\r\n]+)/u', $message, $matches, PREG_SET_ORDER)) {
+        return [];
+    }
+
+    $items = [];
+    foreach ($matches as $match) {
+        $label = trim((string)$match[1]);
+        $url = trim((string)$match[2]);
+        if ($url === '') {
+            continue;
+        }
+
+        $items[] = [
+            'type' => lead_attachment_type_from_label($label, $url),
+            'title' => $label !== '' ? $label : 'Вложение',
+            'url' => $url,
+        ];
+    }
+
+    return $items;
+}
+
+function lead_attachment_items(?string $json, string $message = ''): array
+{
+    $items = lead_decode_attachments($json);
+    if ($items) {
+        return $items;
+    }
+
+    return lead_parse_attachments_from_message($message);
+}
+
 function lead_attachment_payload(array $item): array
 {
     $type = (string)($item['type'] ?? '');
@@ -1031,9 +1090,9 @@ function render_lead_attachment(array $item): string
     return '<span class="lead-attachment lead-attachment-static"><span class="lead-attachment-icon">•</span><span>' . h($label) . '</span></span>';
 }
 
-function render_lead_attachments(?string $json): string
+function render_lead_attachments(?string $json, string $message = '', string $extraClass = ''): string
 {
-    $items = lead_decode_attachments($json);
+    $items = lead_attachment_items($json, $message);
     if (!$items) {
         return '';
     }
@@ -1043,7 +1102,54 @@ function render_lead_attachments(?string $json): string
         $html .= render_lead_attachment($item);
     }
 
-    return '<div class="lead-attachments">' . $html . '</div>';
+    $class = trim('lead-attachments ' . $extraClass);
+    return '<div class="' . h($class) . '">' . $html . '</div>';
+}
+
+function lead_attachment_type_from_url(string $url): string
+{
+    $path = strtolower((string)(parse_url($url, PHP_URL_PATH) ?: $url));
+
+    if (preg_match('/\.(png|jpe?g|webp|gif)$/i', $path)) {
+        return 'photo';
+    }
+
+    if (preg_match('/\.(mp3|ogg|wav|m4a|webm)$/i', $path)) {
+        return 'audio';
+    }
+
+    if (preg_match('/\.(mp4|mov|m4v)$/i', $path)) {
+        return 'video';
+    }
+
+    return 'doc';
+}
+
+function render_lead_file_attachments(array $paths, string $extraClass = ''): string
+{
+    $html = '';
+    foreach ($paths as $index => $path) {
+        $url = trim((string)$path);
+        if ($url === '') {
+            continue;
+        }
+
+        $html .= render_lead_attachment([
+            'type' => lead_attachment_type_from_url($url),
+            'title' => app_text('lead_response.lead_file_numbered', [
+                'index' => $index + 1,
+                'total' => count($paths),
+            ]),
+            'url' => $url,
+        ]);
+    }
+
+    if ($html === '') {
+        return '';
+    }
+
+    $class = trim('lead-attachments ' . $extraClass);
+    return '<div class="' . h($class) . '">' . $html . '</div>';
 }
 
 function render_lead_media_modal(): string
@@ -1051,45 +1157,250 @@ function render_lead_media_modal(): string
     return '<dialog class="admin-modal lead-media-modal" id="lead-media-modal"><div class="modal-shell lead-media-shell"><div class="modal-head"><div><span class="eyebrow">Вложение</span><h2 data-lead-media-title>Просмотр</h2></div><form method="dialog"><button class="icon-button" aria-label="Закрыть">&times;</button></form></div><div class="modal-body lead-media-body" data-lead-media-body></div></div></dialog>';
 }
 
+function lead_group_key(array $row): string
+{
+    $userId = (int)($row['end_user_id'] ?? 0);
+    if ($userId > 0) {
+        return 'user:' . $userId;
+    }
+
+    return 'lead:' . (int)($row['id'] ?? 0);
+}
+
+function lead_group_rows(array $rows): array
+{
+    $groups = [];
+
+    foreach ($rows as $row) {
+        $key = lead_group_key($row);
+        if (!isset($groups[$key])) {
+            $groups[$key] = [
+                'latest' => $row,
+                'items' => [],
+                'platforms' => [],
+                'response_count' => 0,
+                'latest_response' => null,
+            ];
+        }
+
+        $platform = normalize_platform((string)($row['source_platform'] ?? ''));
+        if ($platform !== '') {
+            $groups[$key]['platforms'][$platform] = true;
+        }
+
+        $groups[$key]['items'][] = $row;
+        $groups[$key]['response_count'] += (int)($row['response_count'] ?? 0);
+
+        if (!empty($row['last_response_at'])) {
+            $latestResponse = $groups[$key]['latest_response'];
+            if (!$latestResponse || strcmp((string)$row['last_response_at'], (string)($latestResponse['last_response_at'] ?? '')) > 0) {
+                $groups[$key]['latest_response'] = $row;
+            }
+        }
+    }
+
+    return array_values($groups);
+}
+
+function lead_snippet(string $text, int $limit = 180): string
+{
+    $text = trim($text);
+    if ($text === '') {
+        return app_text('auto.k_503360e76342');
+    }
+
+    return mb_strlen($text, 'UTF-8') > $limit
+        ? mb_substr($text, 0, $limit, 'UTF-8') . '...'
+        : $text;
+}
+
+function lead_conversation_items(int $endUserId): array
+{
+    if ($endUserId <= 0) {
+        return [];
+    }
+
+    $leadStmt = db()->prepare(
+        'SELECT id, source_platform, status, message, attachments_json, created_at
+         FROM leads
+         WHERE end_user_id = :end_user_id
+         ORDER BY id DESC
+         LIMIT 80'
+    );
+    $leadStmt->execute(['end_user_id' => $endUserId]);
+
+    $items = [];
+    foreach ($leadStmt->fetchAll() as $lead) {
+        $items[] = [
+            'kind' => 'incoming',
+            'sort_id' => (int)$lead['id'],
+            'platform' => (string)($lead['source_platform'] ?? ''),
+            'status' => (string)($lead['status'] ?? 'new'),
+            'created_at' => (string)($lead['created_at'] ?? ''),
+            'message' => (string)($lead['message'] ?? ''),
+            'attachments_json' => $lead['attachments_json'] ?? null,
+            'attachment_path' => null,
+            'content_title' => null,
+            'content_id' => null,
+            'test_title' => null,
+            'test_id' => null,
+            'actor_name' => 'Клиент',
+        ];
+    }
+
+    $responseStmt = db()->prepare(
+        'SELECT lr.id, lr.platform, lr.status, lr.message_text, lr.attachment_path, lr.created_at,
+                au.name AS admin_name, cp.title AS content_title, lr.content_post_id, t.title AS test_title, lr.test_id
+         FROM lead_responses lr
+         INNER JOIN leads l ON l.id = lr.lead_id
+         LEFT JOIN admin_users au ON au.id = lr.admin_user_id
+         LEFT JOIN content_posts cp ON cp.id = lr.content_post_id
+         LEFT JOIN tests t ON t.id = lr.test_id
+         WHERE l.end_user_id = :end_user_id
+         ORDER BY lr.id DESC
+         LIMIT 80'
+    );
+    $responseStmt->execute(['end_user_id' => $endUserId]);
+
+    foreach ($responseStmt->fetchAll() as $response) {
+        $items[] = [
+            'kind' => 'outgoing',
+            'sort_id' => (int)$response['id'],
+            'platform' => (string)($response['platform'] ?? ''),
+            'status' => (string)($response['status'] ?? 'pending'),
+            'created_at' => (string)($response['created_at'] ?? ''),
+            'message' => (string)($response['message_text'] ?? ''),
+            'attachments_json' => null,
+            'attachment_path' => $response['attachment_path'] ?? null,
+            'content_title' => $response['content_title'] ?? null,
+            'content_id' => $response['content_post_id'] ?? null,
+            'test_title' => $response['test_title'] ?? null,
+            'test_id' => $response['test_id'] ?? null,
+            'actor_name' => (string)($response['admin_name'] ?? 'Консультант'),
+        ];
+    }
+
+    usort($items, static function (array $a, array $b): int {
+        $timeCompare = strcmp((string)$a['created_at'], (string)$b['created_at']);
+        if ($timeCompare !== 0) {
+            return $timeCompare;
+        }
+
+        return (int)$a['sort_id'] <=> (int)$b['sort_id'];
+    });
+
+    return $items;
+}
+
+function render_lead_conversation(int $endUserId): string
+{
+    $items = lead_conversation_items($endUserId);
+    if (!$items) {
+        return '<div class="empty-state">Сообщений пока нет.</div>';
+    }
+
+    ob_start();
+    ?>
+    <div class="lead-conversation">
+        <?php foreach ($items as $item): ?>
+            <?php
+            $isOutgoing = $item['kind'] === 'outgoing';
+            $status = $isOutgoing ? status_label((string)$item['status']) : status_label((string)$item['status']);
+            $message = lead_display_message((string)$item['message']);
+            $attachments = $isOutgoing
+                ? render_lead_file_attachments(lead_response_attachment_paths($item['attachment_path'] ?? null), 'lead-conversation-attachments')
+                : render_lead_attachments($item['attachments_json'] ?? null, (string)$item['message'], 'lead-conversation-attachments');
+            ?>
+            <article class="lead-conversation-item <?= $isOutgoing ? 'lead-conversation-outgoing' : 'lead-conversation-incoming' ?>">
+                <div class="lead-conversation-meta">
+                    <strong><?= h($isOutgoing ? (string)$item['actor_name'] : 'Клиент') ?></strong>
+                    <?= render_platform_badge((string)$item['platform']) ?>
+                    <span class="<?= h(status_badge_class($status)) ?>"><?= h($status) ?></span>
+                    <span class="cell-muted"><?= h((string)$item['created_at']) ?></span>
+                </div>
+                <?php if ($message !== ''): ?>
+                    <div class="lead-response-message"><?= nl2br(h($message)) ?></div>
+                <?php endif; ?>
+                <?= $attachments ?>
+                <?php if ($isOutgoing && (($item['content_title'] ?? '') || ($item['test_title'] ?? ''))): ?>
+                    <div class="lead-response-resources">
+                        <?php if ($item['content_title'] ?? ''): ?>
+                            <a href="crud.php?module=content&amp;action=edit&amp;id=<?= (int)$item['content_id'] ?>"><?= h(app_text('lead_response.open_material')) ?>: <?= h((string)$item['content_title']) ?></a>
+                        <?php endif; ?>
+                        <?php if ($item['test_title'] ?? ''): ?>
+                            <a href="crud.php?module=tests&amp;action=edit&amp;id=<?= (int)$item['test_id'] ?>"><?= h(app_text('lead_response.pass_test')) ?>: <?= h((string)$item['test_title']) ?></a>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+            </article>
+        <?php endforeach; ?>
+    </div>
+    <?php
+    return trim(ob_get_clean());
+}
+
 function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
 {
+    $groups = lead_group_rows($rows);
+
     ob_start();
     ?>
     <div class="lead-card-list">
-        <?php foreach ($rows as $row): ?>
+        <?php foreach ($groups as $group): ?>
             <?php
+            $row = $group['latest'];
+            $items = array_slice($group['items'], 0, 3);
             $status = status_label((string)($row['status'] ?? 'new'));
-            $response = crud_cell_value('leads', 'response_summary', $row);
+            $responseRow = $group['latest_response'] ?? $row;
+            $response = crud_cell_value('leads', 'response_summary', $responseRow);
             $responseFirstLine = strtok($response, "\n") ?: $response;
             $responseRest = trim(substr($response, strlen($responseFirstLine)));
-            $message = lead_display_message((string)($row['message'] ?? '')) ?: app_text('auto.k_503360e76342');
-            $attachments = render_lead_attachments($row['attachments_json'] ?? null);
             $user = crud_cell_value('leads', 'user_name', $row);
-            $responseCount = (int)($row['response_count'] ?? 0);
-            $lastResponseText = trim((string)($row['last_response_text'] ?? ''));
+            $responseCount = (int)$group['response_count'];
+            $lastResponseText = trim((string)($responseRow['last_response_text'] ?? ''));
             $lastResponseText = mb_strlen($lastResponseText, 'UTF-8') > 180 ? mb_substr($lastResponseText, 0, 180, 'UTF-8') . '...' : $lastResponseText;
+            $threadCount = count($group['items']);
             ?>
             <article class="lead-card lead-ticket">
                 <div class="lead-ticket-main">
                     <div class="lead-card-top">
                         <span class="<?= h(status_badge_class($status)) ?>"><?= h($status) ?></span>
-                        <?= render_platform_badge((string)($row['source_platform'] ?? '')) ?>
+                        <?php foreach (array_keys($group['platforms']) as $platform): ?>
+                            <?= render_platform_badge((string)$platform) ?>
+                        <?php endforeach; ?>
                         <span class="badge"><?= h(lead_request_type_label((string)($row['request_type'] ?? 'consultation'))) ?></span>
-                        <span class="cell-muted">#<?= (int)$row['id'] ?> · <?= h((string)($row['created_at'] ?? '')) ?></span>
+                        <span class="cell-muted">Последнее: #<?= (int)$row['id'] ?> · <?= h((string)($row['created_at'] ?? '')) ?></span>
                     </div>
                     <h3><?= h($user) ?></h3>
-                    <p class="lead-card-message"><?= nl2br(h($message)) ?></p>
-                    <?= $attachments ?>
+                    <div class="lead-chat-preview">
+                        <?php foreach ($items as $item): ?>
+                            <?php
+                            $itemStatus = status_label((string)($item['status'] ?? 'new'));
+                            $message = lead_snippet(lead_display_message((string)($item['message'] ?? '')));
+                            $attachments = render_lead_attachments($item['attachments_json'] ?? null, (string)($item['message'] ?? ''), 'lead-attachments-compact');
+                            ?>
+                            <div class="lead-chat-row">
+                                <div class="lead-chat-row-head">
+                                    <span class="cell-muted">#<?= (int)$item['id'] ?> · <?= h((string)($item['created_at'] ?? '')) ?></span>
+                                    <span class="<?= h(status_badge_class($itemStatus)) ?>"><?= h($itemStatus) ?></span>
+                                </div>
+                                <p class="lead-card-message"><?= nl2br(h($message)) ?></p>
+                                <?= $attachments ?>
+                            </div>
+                        <?php endforeach; ?>
+                        <?php if ($threadCount > count($items)): ?>
+                            <div class="cell-muted">Еще обращений: <?= (int)($threadCount - count($items)) ?></div>
+                        <?php endif; ?>
+                    </div>
                     <?php if ($lastResponseText !== ''): ?>
                         <span class="lead-last-response"><?= nl2br(h($lastResponseText)) ?></span>
                     <?php endif; ?>
                 </div>
                 <div class="lead-ticket-side">
                     <div class="lead-compact-meta">
-                        <span><b><?= h(app_text('auto.k_82a9ca014bb8')) ?></b><?= h((string)($row['product_title'] ?: app_text('auto.k_1b93795b9768'))) ?></span>
                         <span><b><?= h(app_text('auto.k_8d98911527e4')) ?></b><?= h((string)($row['manager_name'] ?: app_text('auto.k_1b93795b9768'))) ?></span>
-                        <span><b><?= h(app_text('auto.k_86469fea3a4a')) ?></b><?= h((string)($row['reseller_name'] ?: app_text('auto.k_1b93795b9768'))) ?></span>
                         <span><b><?= h(app_text('auto.k_e9d7bdd83831')) ?></b><span class="<?= h(status_badge_class($responseFirstLine)) ?>"><?= h($responseFirstLine) ?></span></span>
+                        <span><b>Обращений</b><?= (int)$threadCount ?></span>
                         <span><b><?= h(app_text('lead_response.count_label')) ?></b><?= $responseCount ?></span>
                         <?php if ($responseRest !== ''): ?>
                             <span class="lead-response-note"><b><?= h(app_text('auto.k_f7f293b5c58c')) ?></b><?= nl2br(h($responseRest)) ?></span>
@@ -1099,7 +1410,7 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
                 <?php if ($canEdit || $canDelete): ?>
                     <div class="lead-card-actions">
                         <?php if ($canEdit): ?>
-                            <a class="button" href="crud.php?module=leads&action=edit&id=<?= (int)$row['id'] ?>"><?= h(crud_action_label('leads')) ?></a>
+                            <a class="button" href="crud.php?module=leads&action=edit&id=<?= (int)$row['id'] ?>">Открыть чат</a>
                         <?php endif; ?>
                         <?php if ($canDelete): ?>
                             <form method="post" onsubmit="return confirm('<?= h(app_text('auto.k_112417195434', ['id' => (int)$row['id']])) ?>');">

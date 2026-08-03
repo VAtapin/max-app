@@ -529,11 +529,7 @@ function vk_callback_handle_message_new(array $payload, array $integration): voi
     }
 
     $attachments = vk_callback_normalize_attachments(is_array($message['attachments'] ?? null) ? $message['attachments'] : []);
-    $attachmentText = vk_callback_attachment_text($attachments);
     $leadMessage = $text !== '' ? $text : 'Клиент отправил вложение без текста.';
-    if ($attachmentText !== '') {
-        $leadMessage .= "\n\nВложения VK:\n" . $attachmentText;
-    }
 
     $leadId = create_lead_for_user($user, [
         'platform' => 'VK',

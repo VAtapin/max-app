@@ -1998,6 +1998,19 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <?php
                 $type = $field['type'] ?? 'text';
                 $value = $editRow[$name] ?? ($field['default'] ?? '');
+                if ($moduleKey === 'leads' && $action === 'edit' && $name === 'message') {
+                    $leadAttachments = render_lead_attachments(
+                        $editRow['attachments_json'] ?? null,
+                        (string)($editRow['message'] ?? ''),
+                        'lead-edit-attachments-list'
+                    );
+                    if ($leadAttachments !== '') {
+                        echo '<div class="field lead-edit-attachments"><span>Вложения клиента</span>' . $leadAttachments . '</div>';
+                    }
+                    if (!empty($editRow['attachments_json'])) {
+                        $value = lead_display_message((string)$value);
+                    }
+                }
                 ?>
                 <label class="field">
                     <span><?= h($field['label'] ?? $name) ?><?= ($field['required'] ?? false) ? ' *' : '' ?></span>
@@ -2197,6 +2210,12 @@ require __DIR__ . '/../app/views/layouts/header.php';
         </section>
     <?php endif; ?>
     <?php if ($moduleKey === 'leads' && $action === 'edit' && $editRow): ?>
+        <section class="panel">
+            <h2>Чат с клиентом</h2>
+            <?= render_lead_conversation((int)($editRow['end_user_id'] ?? 0)) ?>
+        </section>
+    <?php endif; ?>
+    <?php if ($moduleKey === 'leads' && $action === 'edit' && $editRow): ?>
         <section class="panel form-panel">
             <h2><?= h(app_text('auto.k_e33268c4b97d')) ?></h2>
             <form method="post" class="crud-form" enctype="multipart/form-data">
@@ -2231,7 +2250,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 
                 <label class="field">
                     <span><?= h(app_text('auto.k_4012dea6eccf')) ?></span>
-                    <input type="file" name="response_attachments[]" accept="image/*,application/pdf,video/mp4" multiple>
+                    <input type="file" name="response_attachments[]" accept="image/*,application/pdf,video/mp4,audio/*" multiple>
                 </label>
 
                 <label class="field">
@@ -2293,14 +2312,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
                                             <?= h(app_text('lead_response.pass_test')) ?>: <?= h($response['test_title']) ?>
                                         </a>
                                     <?php endif; ?>
-                                    <?php foreach ($attachments as $fileIndex => $attachmentPath): ?>
-                                        <a href="<?= h($attachmentPath) ?>" target="_blank" rel="noopener">
-                                            <?= h(app_text('lead_response.lead_file_numbered', [
-                                                'index' => $fileIndex + 1,
-                                                'total' => count($attachments),
-                                            ])) ?>
-                                        </a>
-                                    <?php endforeach; ?>
+                                    <?php if ($attachments): ?>
+                                        <?= render_lead_file_attachments($attachments, 'lead-response-attachments') ?>
+                                    <?php endif; ?>
                                     <?php if ($response['external_url'] ?? ''): ?>
                                         <a href="<?= h($response['external_url']) ?>" target="_blank" rel="noopener">
                                             <?= h(app_text('lead_response.open_link')) ?>

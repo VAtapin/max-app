@@ -4166,3 +4166,194 @@ button {
         font-size: 12px;
     }
 }
+
+/* Compact lead inbox */
+.toolbar h1 {
+    font-size: clamp(26px, 2.35vw, 34px);
+    line-height: 1.12;
+}
+
+.panel > h2,
+.form-panel > h2 {
+    font-size: clamp(22px, 1.65vw, 27px);
+    line-height: 1.18;
+    margin-bottom: 18px;
+}
+
+.lead-card-list {
+    gap: 10px;
+}
+
+.lead-card.lead-ticket {
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) minmax(230px, .36fr) auto;
+    padding: 12px 16px;
+}
+
+.lead-ticket-main,
+.lead-ticket-side {
+    min-width: 0;
+}
+
+.lead-ticket .lead-card-top {
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.lead-ticket h3 {
+    font-size: 19px;
+    line-height: 1.2;
+    margin-bottom: 8px;
+}
+
+.lead-chat-preview {
+    display: grid;
+    gap: 7px;
+}
+
+.lead-chat-row {
+    background: #fbfdfe;
+    border: 1px solid #e4ebf0;
+    border-radius: 12px;
+    padding: 8px 10px;
+}
+
+.lead-chat-row-head {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+
+.lead-ticket .lead-card-message {
+    -webkit-line-clamp: 3;
+    font-size: 14px;
+    line-height: 1.35;
+}
+
+.lead-attachments-compact {
+    gap: 6px;
+    margin-top: 7px;
+}
+
+.lead-attachments-compact .lead-attachment {
+    border-radius: 10px;
+    font-size: 12px;
+    min-height: 34px;
+    padding: 4px 7px;
+}
+
+.lead-attachments-compact .lead-attachment-thumb {
+    height: 40px;
+    width: 40px;
+}
+
+.lead-edit-attachments {
+    background: #fbfdfe;
+    border: 1px solid #dbe7ee;
+    border-radius: 14px;
+    padding: 12px;
+}
+
+.lead-edit-attachments > span {
+    color: var(--muted);
+    display: block;
+    font-size: 12px;
+    font-weight: 900;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+}
+
+.lead-conversation {
+    display: grid;
+    gap: 10px;
+}
+
+.lead-conversation-item {
+    border: 1px solid #dbe7ee;
+    border-radius: 14px;
+    max-width: min(820px, 100%);
+    padding: 11px 13px;
+}
+
+.lead-conversation-incoming {
+    background: #ffffff;
+    justify-self: start;
+}
+
+.lead-conversation-outgoing {
+    background: #eef8f6;
+    justify-self: end;
+}
+
+.lead-conversation-meta {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-bottom: 7px;
+}
+
+.lead-conversation-meta strong {
+    font-size: 14px;
+}
+
+.lead-conversation-attachments,
+.lead-response-attachments {
+    margin-top: 8px;
+}
+
+.lead-response-resources .lead-response-attachments {
+    flex-basis: 100%;
+}
+
+@media (max-width: 1280px) {
+    .lead-card.lead-ticket {
+        grid-template-columns: minmax(0, 1fr) minmax(220px, .42fr);
+    }
+}
+
+@media (max-width: 860px) {
+    .lead-card.lead-ticket {
+        grid-template-columns: 1fr;
+    }
+
+    .lead-compact-meta {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .toolbar h1 {
+        font-size: 23px;
+    }
+
+    .panel > h2,
+    .form-panel > h2 {
+        font-size: 20px;
+    }
+
+    .lead-card.lead-ticket {
+        gap: 9px;
+        padding: 10px;
+    }
+
+    .lead-ticket h3 {
+        font-size: 17px;
+    }
+
+    .lead-chat-row {
+        padding: 8px;
+    }
+
+    .lead-compact-meta {
+        grid-template-columns: 1fr;
+    }
+
+    .lead-conversation-item {
+        justify-self: stretch;
+        padding: 10px;
+    }
+}
