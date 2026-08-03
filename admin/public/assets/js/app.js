@@ -122,6 +122,7 @@ function initAdminRemoteModals(root = document) {
                 initAdminResultModals(modal);
                 initAdminRemoteModals(modal);
                 initUserMergeSearch(modal);
+                initResponsiveTables(modal);
             } catch (error) {
                 modal.innerHTML = `
                     <div class="modal-shell">
@@ -348,6 +349,37 @@ function initLeadMediaModal(root = document) {
     });
 }
 
+function initResponsiveTables(root = document) {
+    root.querySelectorAll('table').forEach((table) => {
+        if (table.dataset.responsiveTableBound === '1') {
+            return;
+        }
+
+        const headerCells = Array.from(table.querySelectorAll('thead th'));
+        if (!headerCells.length) {
+            return;
+        }
+
+        const headers = headerCells.map((header, index) => {
+            const label = header.textContent.trim();
+            return label || (index === headerCells.length - 1 ? 'Действия' : 'Данные');
+        });
+
+        table.dataset.responsiveTableBound = '1';
+        table.classList.add('responsive-table');
+        table.querySelectorAll('tbody tr').forEach((row) => {
+            let headerIndex = 0;
+            row.querySelectorAll('td').forEach((cell) => {
+                const colspan = Math.max(1, Number(cell.getAttribute('colspan') || 1));
+                if (!cell.dataset.label) {
+                    cell.dataset.label = headers[headerIndex] || headers[headers.length - 1] || 'Данные';
+                }
+                headerIndex += colspan;
+            });
+        });
+    });
+}
+
 document.querySelectorAll('button[disabled]').forEach((button) => {
     button.title = '';
 });
@@ -357,3 +389,4 @@ initAdminModalBackdrop();
 initAdminRemoteModals();
 initUserMergeSearch();
 initLeadMediaModal();
+initResponsiveTables();
