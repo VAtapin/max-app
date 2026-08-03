@@ -407,9 +407,6 @@ function initImagePreviewModal(root = document) {
             imageNode.src = url;
             imageNode.alt = trigger.dataset.imageTitle || 'Скриншот';
             frame.appendChild(imageNode);
-            trigger.querySelectorAll('.vk-shot-marker').forEach((marker) => {
-                frame.appendChild(marker.cloneNode(true));
-            });
             bodyNode.appendChild(frame);
         }
         if (typeof modal.showModal === 'function' && !modal.open) {

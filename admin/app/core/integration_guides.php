@@ -35,61 +35,38 @@ function render_vk_connection_guide(): string
         [
             'title' => 'Откройте управление сообщества',
             'text' => 'На странице сообщества нажмите «Управление».',
-            'image' => '/admin/uploads/help/vk-community-page.png',
+            'image' => '/admin/uploads/help/vk-community-page-marked.png',
             'alt' => 'Страница VK-сообщества с пунктом Управление',
-            'markers' => [
-                ['label' => 'Управление', 'x' => 72, 'y' => 45],
-            ],
         ],
         [
             'title' => 'Включите сообщения и приветствие',
             'text' => 'В управлении откройте пункт «Сообщения». Проверьте, что сообщения сообщества включены, и вставьте приветственный текст.',
-            'image' => '/admin/uploads/help/vk-messages.png',
+            'image' => '/admin/uploads/help/vk-messages-marked.png',
             'alt' => 'Настройки сообщений VK-сообщества',
-            'markers' => [
-                ['label' => 'Сообщения', 'x' => 79, 'y' => 61],
-                ['label' => 'Приветствие', 'x' => 47, 'y' => 28],
-            ],
         ],
         [
             'title' => 'Включите настройки для бота',
             'text' => 'В этом же разделе «Сообщения» откройте «Настройки для бота». Включите возможности ботов, поставьте галочку «Добавить кнопку „Начать“» и сохраните.',
-            'image' => '/admin/uploads/help/vk-bot-settings.png',
+            'image' => '/admin/uploads/help/vk-bot-settings-marked.png',
             'alt' => 'Настройки для бота в VK',
-            'markers' => [
-                ['label' => 'Настройки для бота', 'x' => 78, 'y' => 56],
-                ['label' => 'Кнопка «Начать»', 'x' => 48, 'y' => 31],
-            ],
         ],
         [
             'title' => 'Создайте ключ доступа',
             'text' => 'Откройте «Дополнительно» → «Работа с API» → «Ключи доступа» и нажмите «Создать ключ».',
-            'image' => '/admin/uploads/help/vk-api-keys.png',
+            'image' => '/admin/uploads/help/vk-api-keys-marked.png',
             'alt' => 'Раздел ключей доступа VK API',
-            'markers' => [
-                ['label' => 'Работа с API', 'x' => 78, 'y' => 46],
-                ['label' => 'Создать ключ', 'x' => 59, 'y' => 11],
-            ],
         ],
         [
             'title' => 'Выберите права ключа',
             'text' => 'В окне создания ключа отметьте доступ к управлению сообществом, сообщениям, фотографиям, документам, историям и стене. Затем нажмите «Создать».',
-            'image' => '/admin/uploads/help/vk-api-key-rights.png',
+            'image' => '/admin/uploads/help/vk-api-key-rights-marked.png',
             'alt' => 'Окно выбора прав ключа доступа VK',
-            'markers' => [
-                ['label' => 'Права доступа', 'x' => 33, 'y' => 42],
-                ['label' => 'Создать', 'x' => 76, 'y' => 89],
-            ],
         ],
         [
             'title' => 'Отметьте события Callback API',
             'text' => 'В Callback API укажите адрес сервера и секретный ключ, подтвердите сервер. Затем во вкладке «Типы событий» отметьте входящее сообщение, действие с сообщением, разрешение, запрет и прочитанность.',
-            'image' => '/admin/uploads/help/vk-callback-events.png',
+            'image' => '/admin/uploads/help/vk-callback-events-marked.png',
             'alt' => 'Типы событий Callback API в VK',
-            'markers' => [
-                ['label' => 'Типы событий', 'x' => 35, 'y' => 19],
-                ['label' => '5 галочек', 'x' => 37, 'y' => 38],
-            ],
         ],
     ];
 
@@ -130,12 +107,6 @@ function render_vk_connection_guide(): string
                         data-image-title="<?= h($step['title']) ?>"
                     >
                         <img src="<?= h($step['image']) ?>" alt="<?= h($step['alt']) ?>" loading="lazy">
-                        <?php foreach ($step['markers'] ?? [] as $marker): ?>
-                            <span
-                                class="vk-shot-marker"
-                                style="--marker-x: <?= (float)$marker['x'] ?>%; --marker-y: <?= (float)$marker['y'] ?>%;"
-                            ><?= h($marker['label']) ?></span>
-                        <?php endforeach; ?>
                     </button>
                 </li>
             <?php endforeach; ?>
