@@ -397,9 +397,20 @@ function vk_callback_attachment_url(array $attachment): string
         usort($sizes, static fn(array $a, array $b): int => (((int)($b['width'] ?? 0) * (int)($b['height'] ?? 0)) <=> ((int)($a['width'] ?? 0) * (int)($a['height'] ?? 0))));
         return (string)($sizes[0]['url'] ?? '');
     }
+    if ($type === 'sticker') {
+        $images = is_array($payload['images'] ?? null) ? $payload['images'] : [];
+        if (!$images && is_array($payload['images_with_background'] ?? null)) {
+            $images = $payload['images_with_background'];
+        }
+        usort($images, static fn(array $a, array $b): int => (((int)($b['width'] ?? 0) * (int)($b['height'] ?? 0)) <=> ((int)($a['width'] ?? 0) * (int)($a['height'] ?? 0))));
+        return (string)($images[0]['url'] ?? '');
+    }
     if ($type === 'video' && !empty($payload['owner_id']) && !empty($payload['id'])) {
         $url = 'https://vk.com/video' . $payload['owner_id'] . '_' . $payload['id'];
         return !empty($payload['access_key']) ? $url . '_' . $payload['access_key'] : $url;
+    }
+    if ($type === 'audio') {
+        return (string)($payload['url'] ?? '');
     }
     if ($type === 'audio_message') {
         return (string)($payload['link_mp3'] ?? $payload['link_ogg'] ?? '');

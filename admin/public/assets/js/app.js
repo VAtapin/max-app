@@ -275,6 +275,79 @@ function initUserMergeSearch(root = document) {
     });
 }
 
+function initLeadMediaModal(root = document) {
+    const modal = document.getElementById('lead-media-modal');
+    if (!modal || modal.dataset.leadMediaBound === '1') {
+        return;
+    }
+
+    modal.dataset.leadMediaBound = '1';
+    const titleNode = modal.querySelector('[data-lead-media-title]');
+    const bodyNode = modal.querySelector('[data-lead-media-body]');
+
+    const openExternalLink = (url, label = 'Открыть вложение') => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'lead-media-link-state';
+        const link = document.createElement('a');
+        link.className = 'button';
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = label;
+        wrapper.appendChild(link);
+        bodyNode.appendChild(wrapper);
+    };
+
+    root.addEventListener('click', (event) => {
+        const trigger = event.target.closest('[data-lead-media]');
+        if (!trigger || !bodyNode) {
+            return;
+        }
+
+        event.preventDefault();
+        const url = trigger.dataset.mediaUrl || '';
+        const type = trigger.dataset.mediaType || 'link';
+        const title = trigger.dataset.mediaTitle || 'Вложение';
+        if (!url) {
+            return;
+        }
+
+        if (titleNode) {
+            titleNode.textContent = title;
+        }
+        bodyNode.replaceChildren();
+
+        if (type === 'image') {
+            const image = document.createElement('img');
+            image.src = url;
+            image.alt = title;
+            image.loading = 'eager';
+            bodyNode.appendChild(image);
+        } else if (type === 'audio') {
+            const audio = document.createElement('audio');
+            audio.controls = true;
+            audio.autoplay = true;
+            audio.src = url;
+            bodyNode.appendChild(audio);
+            openExternalLink(url, 'Открыть аудио');
+        } else if (type === 'video' && /\.(mp4|webm|ogg)(\?|#|$)/i.test(url)) {
+            const video = document.createElement('video');
+            video.controls = true;
+            video.autoplay = true;
+            video.src = url;
+            bodyNode.appendChild(video);
+        } else if (type === 'video') {
+            openExternalLink(url, 'Открыть видео');
+        } else {
+            openExternalLink(url);
+        }
+
+        if (typeof modal.showModal === 'function' && !modal.open) {
+            modal.showModal();
+        }
+    });
+}
+
 document.querySelectorAll('button[disabled]').forEach((button) => {
     button.title = '';
 });
@@ -283,3 +356,4 @@ initAdminResultModals();
 initAdminModalBackdrop();
 initAdminRemoteModals();
 initUserMergeSearch();
+initLeadMediaModal();

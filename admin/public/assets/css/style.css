@@ -2750,3 +2750,128 @@ button {
         width: auto;
     }
 }
+
+/* VK lead attachments */
+.lead-attachments {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.lead-attachment {
+    align-items: center;
+    background: #f8fafc;
+    border: 1px solid #dbe7ee;
+    border-radius: 12px;
+    color: var(--text);
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    gap: 8px;
+    max-width: 100%;
+    min-height: 42px;
+    overflow: hidden;
+    padding: 6px 9px;
+    text-decoration: none;
+}
+
+.lead-attachment:hover {
+    background: #eef8f6;
+    border-color: #bfdbd7;
+}
+
+.lead-attachment-static {
+    cursor: default;
+}
+
+.lead-attachment-thumb {
+    background: #ffffff;
+    border-radius: 10px;
+    display: inline-grid;
+    height: 54px;
+    overflow: hidden;
+    place-items: center;
+    width: 54px;
+}
+
+.lead-attachment-thumb img {
+    display: block;
+    height: 100%;
+    object-fit: cover;
+    width: 100%;
+}
+
+.lead-attachment-icon {
+    align-items: center;
+    background: #e6f4f1;
+    border-radius: 999px;
+    color: var(--accent);
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 18px;
+    font-weight: 900;
+    height: 30px;
+    justify-content: center;
+    line-height: 1;
+    width: 30px;
+}
+
+.lead-media-modal {
+    max-width: min(720px, calc(100vw - 28px));
+}
+
+.lead-media-shell {
+    max-height: min(86vh, 760px);
+}
+
+.lead-media-body {
+    align-items: center;
+    display: grid;
+    justify-items: center;
+    min-height: 220px;
+    padding-top: 22px;
+}
+
+.lead-media-body img,
+.lead-media-body video {
+    border-radius: 14px;
+    display: block;
+    max-height: 64vh;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+.lead-media-body audio {
+    width: min(100%, 520px);
+}
+
+.lead-media-link-state {
+    display: grid;
+    gap: 12px;
+    justify-items: center;
+}
+
+@media (max-width: 760px) {
+    .lead-attachments {
+        gap: 7px;
+    }
+
+    .lead-attachment {
+        flex: 1 1 calc(50% - 7px);
+        justify-content: center;
+        min-width: 0;
+    }
+
+    .lead-attachment-image {
+        flex: 0 1 auto;
+    }
+
+    .lead-media-body {
+        min-height: 180px;
+        padding: 16px;
+    }
+}

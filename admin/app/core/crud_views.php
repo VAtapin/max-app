@@ -899,6 +899,158 @@ function render_lead_pagination(int $rowCount): string
     return trim(ob_get_clean());
 }
 
+function lead_display_message(string $message): string
+{
+    $message = trim($message);
+    if ($message === '') {
+        return '';
+    }
+
+    $cleaned = preg_replace('/(?:\R{2,})?Вложения VK:\R(?:•[^\R]*(?:\R|$))+/u', '', $message);
+    return trim($cleaned ?? $message);
+}
+
+function lead_decode_attachments(?string $json): array
+{
+    if (!$json) {
+        return [];
+    }
+
+    $decoded = json_decode($json, true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+
+    return array_values(array_filter($decoded, 'is_array'));
+}
+
+function lead_attachment_payload(array $item): array
+{
+    $type = (string)($item['type'] ?? '');
+    $raw = is_array($item['raw'] ?? null) ? $item['raw'] : $item;
+
+    return is_array($raw[$type] ?? null) ? $raw[$type] : [];
+}
+
+function lead_best_image_url(array $images): string
+{
+    usort($images, static fn(array $a, array $b): int => (((int)($b['width'] ?? 0) * (int)($b['height'] ?? 0)) <=> ((int)($a['width'] ?? 0) * (int)($a['height'] ?? 0))));
+
+    foreach ($images as $image) {
+        if (!empty($image['url'])) {
+            return (string)$image['url'];
+        }
+    }
+
+    return '';
+}
+
+function lead_attachment_url(array $item): string
+{
+    $url = trim((string)($item['url'] ?? ''));
+    if ($url !== '') {
+        return $url;
+    }
+
+    $type = (string)($item['type'] ?? '');
+    $payload = lead_attachment_payload($item);
+
+    if ($type === 'photo') {
+        return lead_best_image_url(is_array($payload['sizes'] ?? null) ? $payload['sizes'] : []);
+    }
+
+    if ($type === 'sticker') {
+        $images = is_array($payload['images'] ?? null) ? $payload['images'] : [];
+        if (!$images && is_array($payload['images_with_background'] ?? null)) {
+            $images = $payload['images_with_background'];
+        }
+
+        return lead_best_image_url($images);
+    }
+
+    if ($type === 'audio_message') {
+        return trim((string)($payload['link_mp3'] ?? $payload['link_ogg'] ?? ''));
+    }
+
+    if ($type === 'audio') {
+        return trim((string)($payload['url'] ?? ''));
+    }
+
+    if ($type === 'video' && !empty($payload['owner_id']) && !empty($payload['id'])) {
+        $videoUrl = 'https://vk.com/video' . $payload['owner_id'] . '_' . $payload['id'];
+        return !empty($payload['access_key']) ? $videoUrl . '_' . $payload['access_key'] : $videoUrl;
+    }
+
+    return trim((string)($payload['url'] ?? ''));
+}
+
+function lead_attachment_kind(array $item): string
+{
+    return match ((string)($item['type'] ?? '')) {
+        'photo', 'sticker' => 'image',
+        'audio', 'audio_message' => 'audio',
+        'video' => 'video',
+        'doc', 'link' => 'link',
+        default => lead_attachment_url($item) !== '' ? 'link' : 'unknown',
+    };
+}
+
+function lead_attachment_short_label(array $item): string
+{
+    return match ((string)($item['type'] ?? '')) {
+        'photo' => 'Фото',
+        'sticker' => 'Стикер',
+        'audio', 'audio_message' => 'Аудио',
+        'video' => 'Видео',
+        'doc' => 'Документ',
+        'link' => 'Ссылка',
+        default => 'Вложение',
+    };
+}
+
+function render_lead_attachment(array $item): string
+{
+    $kind = lead_attachment_kind($item);
+    $url = lead_attachment_url($item);
+    $title = trim((string)($item['title'] ?? '')) ?: lead_attachment_short_label($item);
+    $label = lead_attachment_short_label($item);
+
+    if ($kind === 'image' && $url !== '') {
+        return '<button type="button" class="lead-attachment lead-attachment-image" data-lead-media data-media-type="image" data-media-url="' . h($url) . '" data-media-title="' . h($title) . '"><span class="lead-attachment-thumb"><img src="' . h($url) . '" alt="' . h($label) . '" loading="lazy"></span><span>' . h($label) . '</span></button>';
+    }
+
+    if (in_array($kind, ['audio', 'video'], true) && $url !== '') {
+        $icon = $kind === 'audio' ? '♪' : '▶';
+        return '<button type="button" class="lead-attachment lead-attachment-icon-tile" data-lead-media data-media-type="' . h($kind) . '" data-media-url="' . h($url) . '" data-media-title="' . h($title) . '"><span class="lead-attachment-icon">' . h($icon) . '</span><span>' . h($label) . '</span></button>';
+    }
+
+    if ($url !== '') {
+        return '<a class="lead-attachment lead-attachment-icon-tile" href="' . h($url) . '" target="_blank" rel="noopener"><span class="lead-attachment-icon">↗</span><span>' . h($label) . '</span></a>';
+    }
+
+    return '<span class="lead-attachment lead-attachment-static"><span class="lead-attachment-icon">•</span><span>' . h($label) . '</span></span>';
+}
+
+function render_lead_attachments(?string $json): string
+{
+    $items = lead_decode_attachments($json);
+    if (!$items) {
+        return '';
+    }
+
+    $html = '';
+    foreach ($items as $item) {
+        $html .= render_lead_attachment($item);
+    }
+
+    return '<div class="lead-attachments">' . $html . '</div>';
+}
+
+function render_lead_media_modal(): string
+{
+    return '<dialog class="admin-modal lead-media-modal" id="lead-media-modal"><div class="modal-shell lead-media-shell"><div class="modal-head"><div><span class="eyebrow">Вложение</span><h2 data-lead-media-title>Просмотр</h2></div><form method="dialog"><button class="icon-button" aria-label="Закрыть">&times;</button></form></div><div class="modal-body lead-media-body" data-lead-media-body></div></div></dialog>';
+}
+
 function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
 {
     ob_start();
@@ -910,7 +1062,8 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
             $response = crud_cell_value('leads', 'response_summary', $row);
             $responseFirstLine = strtok($response, "\n") ?: $response;
             $responseRest = trim(substr($response, strlen($responseFirstLine)));
-            $message = trim((string)($row['message'] ?? '')) ?: app_text('auto.k_503360e76342');
+            $message = lead_display_message((string)($row['message'] ?? '')) ?: app_text('auto.k_503360e76342');
+            $attachments = render_lead_attachments($row['attachments_json'] ?? null);
             $user = crud_cell_value('leads', 'user_name', $row);
             $responseCount = (int)($row['response_count'] ?? 0);
             $lastResponseText = trim((string)($row['last_response_text'] ?? ''));
@@ -926,6 +1079,7 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
                     </div>
                     <h3><?= h($user) ?></h3>
                     <p class="lead-card-message"><?= nl2br(h($message)) ?></p>
+                    <?= $attachments ?>
                     <?php if ($lastResponseText !== ''): ?>
                         <span class="lead-last-response"><?= nl2br(h($lastResponseText)) ?></span>
                     <?php endif; ?>
@@ -1026,6 +1180,7 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
     <?php endif; ?>
     <?php if ($moduleKey === 'leads'): ?>
         <?= render_lead_pagination(count($rows)) ?>
+        <?= render_lead_media_modal() ?>
     <?php endif; ?>
     <?php
     return trim(ob_get_clean());
