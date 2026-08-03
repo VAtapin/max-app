@@ -14,10 +14,15 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
 </head>
 <body>
 <div class="app-shell">
+    <input type="checkbox" id="mobile-nav-toggle" class="mobile-nav-toggle" aria-hidden="true">
+    <label class="mobile-nav-backdrop" for="mobile-nav-toggle" aria-label="Закрыть меню"></label>
     <aside class="sidebar">
         <div class="brand">
-            <span><?= h($config['app']['name']) ?></span>
-            <small>SWPro</small>
+            <div>
+                <span><?= h($config['app']['name']) ?></span>
+                <small>SWPro</small>
+            </div>
+            <label class="mobile-nav-close" for="mobile-nav-toggle" aria-label="Закрыть меню">×</label>
         </div>
         <nav>
             <?php
@@ -78,9 +83,16 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
     </aside>
     <main class="main">
         <header class="topbar">
-            <div class="topbar-title">
-                <span><?= h($title ?? app_text('auto.dashboard')) ?></span>
-                <small><?= h($config['app']['name']) ?></small>
+            <div class="topbar-title-row">
+                <label class="mobile-menu-button" for="mobile-nav-toggle" aria-label="Открыть меню">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </label>
+                <div class="topbar-title">
+                    <span><?= h($title ?? app_text('auto.dashboard')) ?></span>
+                    <small><?= h($config['app']['name']) ?></small>
+                </div>
             </div>
             <div class="topbar-user">
                 <span class="user-chip"><?= h($admin['name'] ?? '') ?></span>

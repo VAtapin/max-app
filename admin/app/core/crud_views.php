@@ -916,8 +916,8 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
             $lastResponseText = trim((string)($row['last_response_text'] ?? ''));
             $lastResponseText = mb_strlen($lastResponseText, 'UTF-8') > 180 ? mb_substr($lastResponseText, 0, 180, 'UTF-8') . '...' : $lastResponseText;
             ?>
-            <article class="lead-card">
-                <div class="lead-card-main">
+            <article class="lead-card lead-ticket">
+                <div class="lead-ticket-main">
                     <div class="lead-card-top">
                         <span class="<?= h(status_badge_class($status)) ?>"><?= h($status) ?></span>
                         <?= render_platform_badge((string)($row['source_platform'] ?? '')) ?>
@@ -926,17 +926,19 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
                     </div>
                     <h3><?= h($user) ?></h3>
                     <p class="lead-card-message"><?= nl2br(h($message)) ?></p>
-                    <div class="lead-card-meta">
-                        <span><?= h(app_text('auto.k_82a9ca014bb8')) ?>: <?= h((string)($row['product_title'] ?: app_text('auto.k_1b93795b9768'))) ?></span>
-                        <span><?= h(app_text('auto.k_8d98911527e4')) ?>: <?= h((string)($row['manager_name'] ?: app_text('auto.k_1b93795b9768'))) ?></span>
-                        <span><?= h(app_text('auto.k_86469fea3a4a')) ?>: <?= h((string)($row['reseller_name'] ?: app_text('auto.k_1b93795b9768'))) ?></span>
-                        <span><?= h(app_text('auto.k_e9d7bdd83831')) ?>: <span class="<?= h(status_badge_class($responseFirstLine)) ?>"><?= h($responseFirstLine) ?></span></span>
-                        <span><?= h(app_text('lead_response.count_label')) ?>: <?= $responseCount ?></span>
+                    <?php if ($lastResponseText !== ''): ?>
+                        <span class="lead-last-response"><?= nl2br(h($lastResponseText)) ?></span>
+                    <?php endif; ?>
+                </div>
+                <div class="lead-ticket-side">
+                    <div class="lead-compact-meta">
+                        <span><b><?= h(app_text('auto.k_82a9ca014bb8')) ?></b><?= h((string)($row['product_title'] ?: app_text('auto.k_1b93795b9768'))) ?></span>
+                        <span><b><?= h(app_text('auto.k_8d98911527e4')) ?></b><?= h((string)($row['manager_name'] ?: app_text('auto.k_1b93795b9768'))) ?></span>
+                        <span><b><?= h(app_text('auto.k_86469fea3a4a')) ?></b><?= h((string)($row['reseller_name'] ?: app_text('auto.k_1b93795b9768'))) ?></span>
+                        <span><b><?= h(app_text('auto.k_e9d7bdd83831')) ?></b><span class="<?= h(status_badge_class($responseFirstLine)) ?>"><?= h($responseFirstLine) ?></span></span>
+                        <span><b><?= h(app_text('lead_response.count_label')) ?></b><?= $responseCount ?></span>
                         <?php if ($responseRest !== ''): ?>
-                            <span class="cell-muted"><?= nl2br(h($responseRest)) ?></span>
-                        <?php endif; ?>
-                        <?php if ($lastResponseText !== ''): ?>
-                            <span class="lead-last-response"><?= nl2br(h($lastResponseText)) ?></span>
+                            <span class="lead-response-note"><b><?= h(app_text('auto.k_f7f293b5c58c')) ?></b><?= nl2br(h($responseRest)) ?></span>
                         <?php endif; ?>
                     </div>
                 </div>
