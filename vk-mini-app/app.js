@@ -10,6 +10,7 @@ const state = {
     page: 'home',
     activeTest: null,
     initialTestId: null,
+    initialMaterialId: null,
     i18n: {},
     consultantProfile: null,
     consultantProfilePromise: null,
@@ -55,15 +56,20 @@ function normalizeReferralCodeInput(value) {
 }
 
 function applyInitialRoute() {
-    const search = new URLSearchParams(window.location.search);
-    const pageName = search.get('page');
-    const testId = Number(search.get('test_id') || 0);
+    const params = launchParams();
+    const pageName = params.get('page');
+    const testId = Number(params.get('test_id') || 0);
+    const materialId = Number(params.get('material_id') || 0);
     if (['home', 'tests', 'cashback', 'contact', 'cooperation'].includes(pageName || '')) {
         state.page = pageName;
     }
     if (testId > 0) {
         state.page = 'tests';
         state.initialTestId = testId;
+    }
+    if (materialId > 0) {
+        state.page = 'home';
+        state.initialMaterialId = materialId;
     }
 }
 
@@ -382,6 +388,7 @@ function telegramOidcStartUrl() {
     if (linkToken) params.set('link_token', linkToken);
     if (state.page && state.page !== 'home') params.set('return_page', state.page);
     if (state.initialTestId) params.set('test_id', String(state.initialTestId));
+    if (state.initialMaterialId) params.set('material_id', String(state.initialMaterialId));
     return `${API_BASE}/telegram_oidc_start.php${params.toString() ? `?${params}` : ''}`;
 }
 
@@ -2212,6 +2219,13 @@ async function render() {
     });
     page.innerHTML = `<div class="empty">${escapeHtml(ui('common.loading'))}</div>`;
     try {
+        if (state.initialMaterialId) {
+            const materialId = state.initialMaterialId;
+            state.initialMaterialId = null;
+            await renderMaterialDetail(materialId);
+            prefetchConsultantProfile();
+            return;
+        }
         if (state.page === 'home') {
             if (!state.consultantProfile) {
                 renderHome();

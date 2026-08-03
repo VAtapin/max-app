@@ -159,7 +159,7 @@ function lead_context(int $leadId): ?array
 {
     $stmt = db()->prepare(
         'SELECT l.*, eu.id AS end_user_id, eu.platform AS user_platform, eu.platform_user_id, eu.username,
-                eu.first_name, eu.last_name
+                eu.first_name, eu.last_name, eu.referral_code_used
          FROM leads l
          INNER JOIN end_users eu ON eu.id = l.end_user_id
          WHERE l.id = :id
@@ -169,6 +169,34 @@ function lead_context(int $leadId): ?array
     $lead = $stmt->fetch();
 
     return $lead ?: null;
+}
+
+function lead_response_referral_code(array $lead): ?string
+{
+    $code = trim((string)($lead['referral_code_used'] ?? ''));
+    if ($code !== '') {
+        return $code;
+    }
+
+    if (!empty($lead['manager_id'])) {
+        $stmt = db()->prepare('SELECT referral_code FROM managers WHERE id = :id AND is_active = 1 LIMIT 1');
+        $stmt->execute(['id' => (int)$lead['manager_id']]);
+        $code = trim((string)$stmt->fetchColumn());
+        if ($code !== '') {
+            return $code;
+        }
+    }
+
+    if (!empty($lead['reseller_id'])) {
+        $stmt = db()->prepare('SELECT referral_code FROM resellers WHERE id = :id AND is_active = 1 LIMIT 1');
+        $stmt->execute(['id' => (int)$lead['reseller_id']]);
+        $code = trim((string)$stmt->fetchColumn());
+        if ($code !== '') {
+            return $code;
+        }
+    }
+
+    return null;
 }
 
 function lead_platform_account_id(array $lead, string $platform): ?string
@@ -251,13 +279,44 @@ function test_snippet(?int $testId): ?array
     return $test ?: null;
 }
 
-function mini_app_url(?int $testId = null): string
+function mini_app_url(?int $testId = null, ?string $platform = null, ?string $referralCode = null, ?int $materialId = null): string
 {
-    $configured = app_config()['integrations']['mini_app_url'] ?? '';
-    $url = $configured !== '' ? $configured : (absolute_public_url('/vk-mini-app/') ?: '/vk-mini-app/');
+    $config = app_config();
+    $platform = normalize_platform($platform);
+    $referralCode = trim((string)$referralCode);
+    $params = [];
+    if ($referralCode !== '') {
+        $params['ref'] = $referralCode;
+    }
     if ($testId) {
+        $params['page'] = 'tests';
+        $params['test_id'] = $testId;
+    } elseif ($materialId) {
+        $params['page'] = 'home';
+        $params['material_id'] = $materialId;
+    }
+
+    if ($platform === 'VK') {
+        $vkAppId = preg_replace('/\D+/', '', (string)($config['integrations']['vk_app_id'] ?? '')) ?: '';
+        if ($vkAppId !== '') {
+            $query = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+            return 'https://vk.ru/app' . $vkAppId . ($query !== '' ? '#' . $query : '');
+        }
+    }
+
+    if ($platform === 'OK') {
+        $okAppId = preg_replace('/\D+/', '', (string)($config['integrations']['ok_app_id'] ?? '')) ?: '';
+        if ($okAppId !== '') {
+            $query = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+            return 'https://ok.ru/app/' . $okAppId . ($query !== '' ? '?' . $query : '');
+        }
+    }
+
+    $configured = $config['integrations']['mini_app_url'] ?? '';
+    $url = $configured !== '' ? $configured : (absolute_public_url('/vk-mini-app/') ?: '/vk-mini-app/');
+    if ($params) {
         $separator = str_contains($url, '?') ? '&' : '?';
-        $url .= $separator . 'page=tests&test_id=' . $testId;
+        $url .= $separator . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
     }
 
     return $url;
@@ -320,13 +379,20 @@ function telegram_api_request(string $method, array $payload): array
     ];
 }
 
-function telegram_buttons(?array $content, ?array $test, ?string $externalUrl): array
+function telegram_buttons(?array $content, ?array $test, ?string $externalUrl, ?string $referralCode = null): array
 {
     $buttons = [];
     if ($test) {
         $buttons[] = [[
             'text' => app_text('lead_response.pass_test'),
-            'web_app' => ['url' => mini_app_url((int)$test['id'])],
+            'web_app' => ['url' => mini_app_url((int)$test['id'], 'telegram', $referralCode)],
+        ]];
+    }
+
+    if ($content) {
+        $buttons[] = [[
+            'text' => app_text('lead_response.open_material'),
+            'web_app' => ['url' => mini_app_url(null, 'telegram', $referralCode, (int)$content['id'])],
         ]];
     }
 
@@ -356,13 +422,20 @@ function telegram_buttons(?array $content, ?array $test, ?string $externalUrl): 
     return $buttons;
 }
 
-function lead_response_social_buttons(?array $content, ?array $test, ?string $externalUrl): array
+function lead_response_social_buttons(?array $content, ?array $test, ?string $externalUrl, ?string $sourcePlatform = null, ?string $referralCode = null): array
 {
     $buttons = [];
     if ($test) {
         $buttons[] = [
             'text' => 'Пройти тест',
-            'url' => mini_app_url((int)$test['id']),
+            'url' => mini_app_url((int)$test['id'], $sourcePlatform, $referralCode),
+        ];
+    }
+
+    if ($content) {
+        $buttons[] = [
+            'text' => 'Открыть материал',
+            'url' => mini_app_url(null, $sourcePlatform, $referralCode, (int)$content['id']),
         ];
     }
 
@@ -392,13 +465,15 @@ function lead_response_social_buttons(?array $content, ?array $test, ?string $ex
     return $buttons;
 }
 
-function lead_response_media_urls(?array $content, array $attachmentPaths): array
+function lead_response_media_urls(?array $content, array $attachmentPaths, bool $includeContentMedia = true): array
 {
     $urls = [];
-    foreach ([$content['image_path'] ?? null, $content['attachment_path'] ?? null] as $path) {
-        $url = absolute_public_url($path);
-        if ($url) {
-            $urls[] = $url;
+    if ($includeContentMedia) {
+        foreach ([$content['image_path'] ?? null, $content['attachment_path'] ?? null] as $path) {
+            $url = absolute_public_url($path);
+            if ($url) {
+                $urls[] = $url;
+            }
         }
     }
     foreach ($attachmentPaths as $path) {
@@ -462,10 +537,10 @@ function send_telegram_media(string $chatId, ?string $path, string $caption = ''
     return telegram_api_request($media['method'], $payload);
 }
 
-function send_telegram_response(string $chatId, string $text, ?array $content, ?array $test, array $attachmentPaths, ?string $externalUrl): array
+function send_telegram_response(string $chatId, string $text, ?array $content, ?array $test, array $attachmentPaths, ?string $externalUrl, ?string $referralCode = null): array
 {
     $errors = [];
-    $messageResult = send_telegram_text($chatId, $text, telegram_buttons($content, $test, $externalUrl));
+    $messageResult = send_telegram_text($chatId, $text, telegram_buttons($content, $test, $externalUrl, $referralCode));
     if (!$messageResult['ok']) {
         $errors[] = $messageResult['error'];
     }
@@ -521,6 +596,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
 
     $attachmentValue = $attachmentPaths ? json_encode($attachmentPaths, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
     $platform = normalize_platform((string)$lead['source_platform']);
+    $referralCode = lead_response_referral_code($lead);
 
     $stmt = db()->prepare(
         'INSERT INTO lead_responses
@@ -545,7 +621,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
     if ($platform === 'telegram') {
         $telegramChatId = lead_platform_account_id($lead, 'telegram');
         if ($telegramChatId) {
-            $result = send_telegram_response($telegramChatId, $text, $content, $test, $attachmentPaths, $externalUrl);
+            $result = send_telegram_response($telegramChatId, $text, $content, $test, $attachmentPaths, $externalUrl, $referralCode);
             if (!$result['ok']) {
                 $deliveryErrors[] = 'telegram: ' . $result['error'];
                 $status = 'failed';
@@ -562,8 +638,8 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
                 $platformUserId,
                 $lead,
                 $text,
-                lead_response_social_buttons($content, $test, $externalUrl),
-                lead_response_media_urls($content, $attachmentPaths)
+                lead_response_social_buttons($content, $test, $externalUrl, $platform, $referralCode),
+                lead_response_media_urls($content, $attachmentPaths, false)
             );
             if (!$result['ok']) {
                 $deliveryErrors[] = $platform . ': ' . $result['error'];

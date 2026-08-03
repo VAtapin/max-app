@@ -112,7 +112,96 @@ function messaging_http_form_post(string $url, array $payload): array
     return is_array($decoded) ? $decoded : ['error' => 'Empty API response'];
 }
 
-function send_vk_community_message(array $integration, string $platformUserId, string $message): array
+function messaging_http_multipart_file_post(string $url, string $fieldName, string $filename, string $mimeType, string $contents): array
+{
+    $boundary = '----SWProBoundary' . bin2hex(random_bytes(8));
+    $body = '--' . $boundary . "\r\n"
+        . 'Content-Disposition: form-data; name="' . $fieldName . '"; filename="' . addslashes($filename) . '"' . "\r\n"
+        . 'Content-Type: ' . $mimeType . "\r\n\r\n"
+        . $contents . "\r\n"
+        . '--' . $boundary . "--\r\n";
+
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => 'Content-Type: multipart/form-data; boundary=' . $boundary . "\r\n",
+            'content' => $body,
+            'timeout' => 30,
+            'ignore_errors' => true,
+        ],
+    ]);
+    $response = @file_get_contents($url, false, $context);
+    $decoded = $response ? json_decode($response, true) : null;
+
+    return is_array($decoded) ? $decoded : ['error' => 'Empty upload response'];
+}
+
+function messaging_media_extension(string $url): string
+{
+    return strtolower(pathinfo(parse_url($url, PHP_URL_PATH) ?: $url, PATHINFO_EXTENSION));
+}
+
+function messaging_image_mime_type(string $url): ?string
+{
+    return match (messaging_media_extension($url)) {
+        'jpg', 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        default => null,
+    };
+}
+
+function vk_upload_message_photo(array $integration, string $userId, string $url): ?string
+{
+    $mimeType = messaging_image_mime_type($url);
+    if (!$mimeType) {
+        return null;
+    }
+
+    $token = trim((string)($integration['access_token'] ?? ''));
+    $version = (string)(app_config()['integrations']['vk_api_version'] ?? '5.199');
+    $uploadServer = messaging_http_form_post('https://api.vk.com/method/photos.getMessagesUploadServer', [
+        'access_token' => $token,
+        'v' => $version,
+        'peer_id' => $userId,
+    ]);
+    $uploadUrl = (string)($uploadServer['response']['upload_url'] ?? '');
+    if ($uploadUrl === '') {
+        return null;
+    }
+
+    $contents = @file_get_contents($url);
+    if ($contents === false || $contents === '') {
+        return null;
+    }
+
+    $filename = 'swpro.' . messaging_media_extension($url);
+    $uploaded = messaging_http_multipart_file_post($uploadUrl, 'photo', $filename, $mimeType, $contents);
+    if (empty($uploaded['photo']) || empty($uploaded['server']) || empty($uploaded['hash'])) {
+        return null;
+    }
+
+    $saved = messaging_http_form_post('https://api.vk.com/method/photos.saveMessagesPhoto', [
+        'access_token' => $token,
+        'v' => $version,
+        'photo' => (string)$uploaded['photo'],
+        'server' => (string)$uploaded['server'],
+        'hash' => (string)$uploaded['hash'],
+    ]);
+    $photo = $saved['response'][0] ?? null;
+    if (!is_array($photo) || empty($photo['owner_id']) || empty($photo['id'])) {
+        return null;
+    }
+
+    $attachment = 'photo' . $photo['owner_id'] . '_' . $photo['id'];
+    if (!empty($photo['access_key'])) {
+        $attachment .= '_' . $photo['access_key'];
+    }
+
+    return $attachment;
+}
+
+function send_vk_community_message(array $integration, string $platformUserId, string $message, array $attachments = []): array
 {
     $userId = preg_replace('/\D+/', '', $platformUserId);
     if (!$userId) {
@@ -139,13 +228,18 @@ function send_vk_community_message(array $integration, string $platformUserId, s
     }
 
     $version = (string)(app_config()['integrations']['vk_api_version'] ?? '5.199');
-    $response = messaging_http_form_post('https://api.vk.com/method/messages.send', [
+    $payload = [
         'access_token' => $token,
         'v' => $version,
         'user_id' => $userId,
         'random_id' => random_int(1, 2147483647),
         'message' => $message,
-    ]);
+    ];
+    if ($attachments) {
+        $payload['attachment'] = implode(',', $attachments);
+    }
+
+    $response = messaging_http_form_post('https://api.vk.com/method/messages.send', $payload);
 
     if (isset($response['response'])) {
         return ['ok' => true, 'error' => null, 'provider_response' => $response['response']];
@@ -207,13 +301,31 @@ function send_social_platform_message(
         return ['ok' => false, 'error' => 'Нет активной интеграции сообщества для ' . platform_label($platform)];
     }
 
-    $message = messaging_text_with_links($text, $buttons, $mediaUrls);
-    if ($message === '') {
+    $attachments = [];
+    $fallbackMediaUrls = $mediaUrls;
+    if ($platform === 'VK') {
+        $fallbackMediaUrls = [];
+        foreach ($mediaUrls as $mediaUrl) {
+            $mediaUrl = trim((string)$mediaUrl);
+            if ($mediaUrl === '') {
+                continue;
+            }
+            $attachment = vk_upload_message_photo($integration, preg_replace('/\D+/', '', $platformUserId) ?: $platformUserId, $mediaUrl);
+            if ($attachment) {
+                $attachments[] = $attachment;
+            } else {
+                $fallbackMediaUrls[] = $mediaUrl;
+            }
+        }
+    }
+
+    $message = messaging_text_with_links($text, $buttons, $fallbackMediaUrls);
+    if ($message === '' && !($platform === 'VK' && $attachments)) {
         return ['ok' => false, 'error' => 'Message text is empty'];
     }
 
     $result = $platform === 'VK'
-        ? send_vk_community_message($integration, $platformUserId, $message)
+        ? send_vk_community_message($integration, $platformUserId, $message, $attachments)
         : send_ok_group_message($integration, $platformUserId, $message);
 
     $result['integration_id'] = (int)$integration['id'];

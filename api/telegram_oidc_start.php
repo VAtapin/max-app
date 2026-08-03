@@ -26,6 +26,7 @@ $_SESSION['telegram_oidc'] = [
     'link_token' => trim((string)($_GET['link_token'] ?? '')),
     'return_page' => $returnPage,
     'test_id' => max(0, (int)($_GET['test_id'] ?? 0)),
+    'material_id' => max(0, (int)($_GET['material_id'] ?? 0)),
     'created_at' => time(),
 ];
 

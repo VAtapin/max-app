@@ -71,6 +71,9 @@ try {
     if (!empty($flow['test_id'])) {
         $redirectParams['test_id'] = (int)$flow['test_id'];
     }
+    if (!empty($flow['material_id'])) {
+        $redirectParams['material_id'] = (int)$flow['material_id'];
+    }
     header(
         'Location: ' . rtrim((string)$config['app']['public_url'], '/')
         . '/vk-mini-app/?' . http_build_query($redirectParams)
