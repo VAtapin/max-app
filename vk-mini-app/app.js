@@ -25,10 +25,28 @@ const page = document.querySelector('#page');
 const tabs = document.querySelectorAll('.tabs button');
 const homeLink = document.querySelector('#home-link');
 
+function hashLaunchParams() {
+    let hash = window.location.hash.replace(/^#/, '');
+    if (hash.startsWith('/')) {
+        const questionIndex = hash.indexOf('?');
+        hash = questionIndex >= 0 ? hash.slice(questionIndex + 1) : '';
+    }
+    return new URLSearchParams(hash);
+}
+
+function launchParams() {
+    const params = new URLSearchParams(window.location.search);
+    hashLaunchParams().forEach((value, key) => {
+        if (!params.has(key)) {
+            params.set(key, value);
+        }
+    });
+    return params;
+}
+
 function getReferralCode() {
-    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-    const search = new URLSearchParams(window.location.search);
-    return hash.get('ref') || search.get('ref') || search.get('startapp') || null;
+    const params = launchParams();
+    return params.get('ref') || params.get('startapp') || null;
 }
 
 function normalizeReferralCodeInput(value) {
@@ -120,9 +138,7 @@ async function api(path, options = {}) {
 }
 
 function getLinkToken() {
-    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-    const search = new URLSearchParams(window.location.search);
-    return hash.get('link_token') || search.get('link_token') || null;
+    return launchParams().get('link_token') || null;
 }
 
 function getTelegramApp() {
@@ -130,17 +146,51 @@ function getTelegramApp() {
 }
 
 function hasTelegramLaunchParams() {
-    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-    const search = new URLSearchParams(window.location.search);
-    return hash.has('tgWebAppData') || search.has('tgWebAppData') || hash.has('tgWebAppVersion') || search.has('tgWebAppVersion');
+    const params = launchParams();
+    return params.has('tgWebAppData') || params.has('tgWebAppVersion');
+}
+
+function vkLaunchParams() {
+    return launchParams();
+}
+
+function hasOkLaunchParams() {
+    const params = vkLaunchParams();
+    const vkClient = String(params.get('vk_client') || '').toLowerCase();
+    const vkPlatform = String(params.get('vk_platform') || '').toLowerCase();
+    return vkClient === 'ok'
+        || vkPlatform.includes('ok')
+        || params.has('vk_ok_user_id')
+        || params.has('ok_app_id')
+        || params.has('logged_user_id')
+        || params.has('session_key')
+        || params.has('application_key')
+        || params.has('apiconnection');
+}
+
+function hasVkLaunchParams() {
+    const params = vkLaunchParams();
+    return params.has('vk_app_id') || params.has('vk_user_id') || params.has('sign') || params.has('vk_ok_user_id');
+}
+
+function hasVkOkLaunchParams() {
+    return hasVkLaunchParams() || hasOkLaunchParams();
+}
+
+function isVkOkContext() {
+    return hasVkOkLaunchParams() || ['VK', 'OK'].includes(state.platform);
+}
+
+function shouldUseTelegramRuntime() {
+    return hasTelegramLaunchParams() && !hasVkOkLaunchParams();
 }
 
 function loadTelegramSdk() {
+    if (!shouldUseTelegramRuntime()) {
+        return Promise.resolve(null);
+    }
     if (getTelegramApp()) {
         return Promise.resolve(getTelegramApp());
-    }
-    if (!hasTelegramLaunchParams()) {
-        return Promise.resolve(null);
     }
 
     return new Promise((resolve) => {
@@ -162,7 +212,10 @@ function loadTelegramSdk() {
 }
 
 async function waitForTelegramApp(timeoutMs = 900) {
-    if (getTelegramApp() || !hasTelegramLaunchParams()) {
+    if (!shouldUseTelegramRuntime()) {
+        return null;
+    }
+    if (getTelegramApp()) {
         return getTelegramApp();
     }
 
@@ -178,6 +231,9 @@ async function waitForTelegramApp(timeoutMs = 900) {
 }
 
 async function initTelegram() {
+    if (!shouldUseTelegramRuntime()) {
+        return null;
+    }
     const tg = getTelegramApp() || await loadTelegramSdk() || await waitForTelegramApp();
     if (!tg || !tg.initData) {
         return null;
@@ -202,24 +258,18 @@ async function initTelegram() {
 }
 
 function telegramInitData() {
+    if (!shouldUseTelegramRuntime()) {
+        return '';
+    }
     const tg = getTelegramApp();
     return tg && tg.initData ? tg.initData : '';
-}
-
-function vkLaunchParams() {
-    return new URLSearchParams(window.location.search);
-}
-
-function hasVkLaunchParams() {
-    const params = vkLaunchParams();
-    return params.has('vk_app_id') || params.has('vk_user_id') || params.has('vk_ok_user_id');
 }
 
 function loadVkBridge() {
     if (window.vkBridge) {
         return Promise.resolve(window.vkBridge);
     }
-    if (!hasVkLaunchParams()) {
+    if (!hasVkOkLaunchParams()) {
         return Promise.resolve(null);
     }
     return new Promise((resolve) => {
@@ -242,7 +292,7 @@ function withTimeout(promise, timeoutMs) {
 }
 
 async function initVk() {
-    if (!hasVkLaunchParams()) {
+    if (!hasVkOkLaunchParams()) {
         return null;
     }
 
@@ -260,7 +310,7 @@ async function initVk() {
     }
 
     const params = vkLaunchParams();
-    const fallbackId = params.get('vk_user_id') || params.get('vk_ok_user_id');
+    const fallbackId = params.get('vk_user_id') || params.get('vk_ok_user_id') || params.get('logged_user_id');
     return fallbackId ? {
         id: fallbackId,
         first_name: '',
@@ -306,6 +356,9 @@ async function initWebUser(referralCodeOverride = null) {
 }
 
 async function consumeTelegramOidc() {
+    if (isVkOkContext()) {
+        return null;
+    }
     const search = new URLSearchParams(window.location.search);
     if (search.get('oidc') !== '1') {
         return null;
@@ -334,9 +387,9 @@ function telegramOidcStartUrl() {
 
 function buildVkOkIdentity(vkUser) {
     const params = vkLaunchParams();
-    const vkClient = params.get('vk_client') || '';
-    const vkPlatform = params.get('vk_platform') || '';
-    const okUserId = params.get('vk_ok_user_id') || '';
+    const vkClient = String(params.get('vk_client') || '').toLowerCase();
+    const vkPlatform = String(params.get('vk_platform') || '').toLowerCase();
+    const okUserId = params.get('vk_ok_user_id') || params.get('logged_user_id') || '';
     const isOk = vkClient === 'ok' || vkPlatform.includes('ok') || okUserId !== '';
     const platform = isOk ? 'OK' : 'VK';
     const platformUserId = isOk && okUserId !== '' ? okUserId : String(vkUser.id);
@@ -345,6 +398,33 @@ function buildVkOkIdentity(vkUser) {
 }
 
 async function authorize() {
+    state.vkUser = await initVk();
+    if (state.vkUser) {
+        const identity = buildVkOkIdentity(state.vkUser);
+        state.platform = identity.platform;
+        state.platformUserId = identity.platformUserId;
+        state.auth = {
+            platform: state.platform,
+            platform_user_id: state.platformUserId,
+        };
+        const payload = {
+            platform: state.platform,
+            platform_user_id: state.platformUserId,
+            first_name: state.vkUser.first_name,
+            last_name: state.vkUser.last_name,
+            username: state.vkUser.domain,
+            referral_code: getReferralCode(),
+            link_token: getLinkToken(),
+            platform_meta: Object.fromEntries(vkLaunchParams().entries()),
+        };
+        const result = await api('auth.php', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        state.user = result.user;
+        return state.user;
+    }
+
     if (await initTelegram()) {
         return state.user;
     }
@@ -353,34 +433,7 @@ async function authorize() {
         return state.user;
     }
 
-    state.vkUser = await initVk();
-    if (!state.vkUser) {
-        return initWebUser();
-    }
-
-    const identity = buildVkOkIdentity(state.vkUser);
-    state.platform = identity.platform;
-    state.platformUserId = identity.platformUserId;
-    state.auth = {
-        platform: state.platform,
-        platform_user_id: state.platformUserId,
-    };
-    const payload = {
-        platform: state.platform,
-        platform_user_id: state.platformUserId,
-        first_name: state.vkUser.first_name,
-        last_name: state.vkUser.last_name,
-        username: state.vkUser.domain,
-        referral_code: getReferralCode(),
-        link_token: getLinkToken(),
-        platform_meta: Object.fromEntries(vkLaunchParams().entries()),
-    };
-    const result = await api('auth.php', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-    });
-    state.user = result.user;
-    return result.user;
+    return initWebUser();
 }
 
 async function authorizeWithReferral(referralCode) {
@@ -464,6 +517,12 @@ function profileBlockTitle(blockType, fallbackKey) {
 }
 
 function profileContactLink(profile) {
+    if (state.platform === 'VK') {
+        return profile.vk_url || profile.ok_url || profile.whatsapp_url || '';
+    }
+    if (state.platform === 'OK') {
+        return profile.ok_url || profile.vk_url || profile.whatsapp_url || '';
+    }
     return profile.telegram_url || profile.whatsapp_url || profile.vk_url || profile.ok_url || '';
 }
 
@@ -642,7 +701,7 @@ function openPlatformUrl(url) {
     }
 
     const absoluteUrl = new URL(url, window.location.href).toString();
-    const tg = getTelegramApp();
+    const tg = shouldUseTelegramRuntime() ? getTelegramApp() : null;
     if (tg && typeof tg.openLink === 'function') {
         tg.openLink(absoluteUrl);
         return;
@@ -944,17 +1003,22 @@ function renderAuthGate() {
         tab.disabled = true;
         tab.classList.remove('active');
     });
+    const vkOkContext = isVkOkContext();
+    const authText = vkOkContext
+        ? 'Приложение открылось без данных платформы. Введите реферальный код консультанта или откройте персональную ссылку еще раз.'
+        : ui('auth.required_text');
+    const platformBadges = vkOkContext
+        ? `${hasOkLaunchParams() ? '<span>OK</span>' : '<span>VK</span>'}`
+        : '<span>Telegram</span><span>VK</span><span>OK</span>';
     page.innerHTML = `
         <section class="panel auth-panel">
             <h2>${escapeHtml(ui('auth.required_title'))}</h2>
-            <p class="muted">${escapeHtml(ui('auth.required_text'))}</p>
+            <p class="muted">${escapeHtml(authText)}</p>
             <div class="auth-platforms">
-                <span>Telegram</span>
-                <span>VK</span>
-                <span>OK</span>
+                ${platformBadges}
             </div>
-            <a class="primary button-link" href="${escapeHtml(telegramOidcStartUrl())}">Войти через Telegram</a>
-            <div class="auth-divider">${escapeHtml(ui('referral.or_code'))}</div>
+            ${vkOkContext ? '' : `<a class="primary button-link" href="${escapeHtml(telegramOidcStartUrl())}">Войти через Telegram</a>`}
+            ${vkOkContext ? '' : `<div class="auth-divider">${escapeHtml(ui('referral.or_code'))}</div>`}
             ${referralFormMarkup()}
         </section>
     `;
@@ -1026,16 +1090,24 @@ function renderAccountSuggestionCard() {
         return '';
     }
 
+    const vkOkContext = isVkOkContext();
+    const visibleSuggestions = vkOkContext
+        ? suggestions.filter((item) => item.platform !== 'telegram')
+        : suggestions;
+    if (!visibleSuggestions.length) {
+        return '';
+    }
+
     const links = result.linking?.links || {};
-    const platforms = suggestions
+    const platforms = visibleSuggestions
         .map((item) => item.platform_label || platformLabel(item.platform))
         .filter(Boolean)
         .join(', ');
     const actions = [];
-    if (links.telegram && suggestions.some((item) => item.platform === 'telegram')) {
+    if (!vkOkContext && links.telegram && visibleSuggestions.some((item) => item.platform === 'telegram')) {
         actions.push(`<a class="soft-link" href="${escapeHtml(links.telegram)}" target="_blank" rel="noopener">${escapeHtml(ui('account_link.open_telegram'))}</a>`);
     }
-    if (links.vk && suggestions.some((item) => item.platform === 'VK')) {
+    if (links.vk && visibleSuggestions.some((item) => item.platform === 'VK')) {
         actions.push(`<a class="soft-link" href="${escapeHtml(links.vk)}" target="_blank" rel="noopener">${escapeHtml(ui('account_link.open_vk'))}</a>`);
     }
     if (links.mini_app) {
@@ -1310,13 +1382,13 @@ async function renderContactPage() {
     await loadMessagingConfig();
     const profile = state.consultantProfile?.profile || {};
     const contacts = [
-        ['Телефон', profile.phone],
-        ['Email', profile.email ? `mailto:${profile.email}` : ''],
-        ['Telegram', profile.telegram_url],
-        ['WhatsApp', profile.whatsapp_url],
-        ['VK', profile.vk_url],
-        ['OK', profile.ok_url],
-    ].filter(([, value]) => value);
+        ['phone', 'Телефон', profile.phone],
+        ['email', 'Email', profile.email ? `mailto:${profile.email}` : ''],
+        ['telegram', 'Telegram', profile.telegram_url],
+        ['whatsapp', 'WhatsApp', profile.whatsapp_url],
+        ['vk', 'VK', profile.vk_url],
+        ['ok', 'OK', profile.ok_url],
+    ].filter(([key, , value]) => value && !(isVkOkContext() && key === 'telegram'));
     page.innerHTML = `
         <section class="panel feature-page">
             <span class="eyebrow">Ваш консультант</span>
@@ -1324,7 +1396,7 @@ async function renderContactPage() {
             <p class="muted">Напишите сообщение здесь или выберите удобный способ связи.</p>
             ${contacts.length ? `
                 <div class="contact-list">
-                    ${contacts.map(([label, value]) => `
+                    ${contacts.map(([, label, value]) => `
                         <a href="${escapeHtml(value)}" target="_blank" rel="noopener">
                             <span>${escapeHtml(label)}</span>
                             <strong>${escapeHtml(String(value).replace(/^mailto:/, ''))}</strong>
@@ -1368,7 +1440,8 @@ async function renderProfile() {
     await loadMessagingConfig();
     const result = await api(`user.php?${userQuery()}`);
     const user = result.user;
-    const accounts = result.platform_accounts || [];
+    const accounts = (result.platform_accounts || [])
+        .filter((account) => !(isVkOkContext() && account.platform === 'telegram'));
     const profile = state.consultantProfile?.profile || {};
     page.innerHTML = `
         <section class="profile-card">
@@ -1415,13 +1488,16 @@ async function renderAccountLinkPanel() {
             body: JSON.stringify(userPayload()),
         });
         const miniAppLink = result.links?.mini_app || '';
-        const telegramLink = result.links?.telegram || '';
+        const telegramLink = isVkOkContext() ? '' : (result.links?.telegram || '');
         const vkLink = result.links?.vk || '';
+        const warning = isVkOkContext()
+            ? 'Подключайте только свои личные аккаунты. Система не объединяет платформы автоматически.'
+            : ui('profile.link_warning');
         panel.innerHTML = `
             <div class="link-card">
                 <strong>${escapeHtml(ui('profile.link_title', 'Ссылка для подключения'))}</strong>
                 <span class="muted">${escapeHtml(ui('profile.link_hint', 'Откройте ссылку на другой платформе и подтвердите вход.'))}</span>
-                <span class="muted">${escapeHtml(ui('profile.link_warning'))}</span>
+                <span class="muted">${escapeHtml(warning)}</span>
                 ${miniAppLink ? `<a href="${escapeHtml(miniAppLink)}" target="_blank" rel="noopener">${escapeHtml(ui('profile.open_mini_app', 'Открыть Mini App'))}</a>` : ''}
                 ${telegramLink ? `<a href="${escapeHtml(telegramLink)}" target="_blank" rel="noopener">${escapeHtml(ui('profile.open_telegram', 'Подключить Telegram'))}</a>` : ''}
                 ${vkLink ? `<a href="${escapeHtml(vkLink)}" target="_blank" rel="noopener">${escapeHtml(ui('profile.open_vk', 'Подключить VK'))}</a>` : ''}
