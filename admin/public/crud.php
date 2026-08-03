@@ -405,24 +405,211 @@ function user_display_label(array $row): string
     return '#' . (int)$row['id'] . ' ' . $name . ($platform ? ' (' . platform_label($platform) . ' ' . $platformUserId . ')' : '');
 }
 
-function merge_user_options(int $targetUserId, array $admin): array
+function merge_user_base_select(): string
 {
+    return "SELECT eu.id, eu.first_name, eu.last_name,
+                CONCAT_WS(' ', NULLIF(eu.first_name, ''), NULLIF(eu.last_name, '')) AS full_name,
+                eu.username, eu.platform, eu.platform_user_id, eu.gender, eu.birth_date,
+                eu.age_years, eu.city, eu.phone, eu.email, eu.reseller_id, eu.manager_id,
+                (SELECT GROUP_CONCAT(CONCAT(pa.platform, ':', pa.platform_user_id) ORDER BY FIELD(pa.platform, 'telegram', 'VK', 'OK', 'MAX', 'web'), pa.id SEPARATOR ', ')
+                 FROM platform_accounts pa
+                 WHERE pa.end_user_id = eu.id) AS platform_accounts_summary
+            FROM end_users eu";
+}
+
+function merge_user_row(int $userId, array $admin): ?array
+{
+    [$where, $params] = scoped_where_with_alias(scope_where_for_users($admin), 'eu');
+    $where = $where
+        ? $where . ' AND eu.id = :user_id AND eu.merged_into_user_id IS NULL'
+        : 'WHERE eu.id = :user_id AND eu.merged_into_user_id IS NULL';
+    $params['user_id'] = $userId;
+
+    $stmt = db()->prepare(merge_user_base_select() . " $where LIMIT 1");
+    $stmt->execute($params);
+    $row = $stmt->fetch();
+
+    return $row ?: null;
+}
+
+function normalize_merge_text(?string $value): string
+{
+    $value = trim((string)$value);
+    $value = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+    $value = strtr($value, [
+        'а' => 'a', 'б' => 'b', 'в' => 'v', 'г' => 'g', 'д' => 'd', 'е' => 'e', 'ё' => 'e',
+        'ж' => 'zh', 'з' => 'z', 'и' => 'i', 'й' => 'i', 'к' => 'k', 'л' => 'l', 'м' => 'm',
+        'н' => 'n', 'о' => 'o', 'п' => 'p', 'р' => 'r', 'с' => 's', 'т' => 't', 'у' => 'u',
+        'ф' => 'f', 'х' => 'h', 'ц' => 'c', 'ч' => 'ch', 'ш' => 'sh', 'щ' => 'sch',
+        'ъ' => '', 'ы' => 'y', 'ь' => '', 'э' => 'e', 'ю' => 'yu', 'я' => 'ya',
+        'А' => 'a', 'Б' => 'b', 'В' => 'v', 'Г' => 'g', 'Д' => 'd', 'Е' => 'e', 'Ё' => 'e',
+        'Ж' => 'zh', 'З' => 'z', 'И' => 'i', 'Й' => 'i', 'К' => 'k', 'Л' => 'l', 'М' => 'm',
+        'Н' => 'n', 'О' => 'o', 'П' => 'p', 'Р' => 'r', 'С' => 's', 'Т' => 't', 'У' => 'u',
+        'Ф' => 'f', 'Х' => 'h', 'Ц' => 'c', 'Ч' => 'ch', 'Ш' => 'sh', 'Щ' => 'sch',
+        'Ъ' => '', 'Ы' => 'y', 'Ь' => '', 'Э' => 'e', 'Ю' => 'yu', 'Я' => 'ya',
+    ]);
+
+    return preg_replace('/[^a-z0-9]+/u', '', $value) ?? '';
+}
+
+function merge_user_name_variants(array $row): array
+{
+    $first = trim((string)($row['first_name'] ?? ''));
+    $last = trim((string)($row['last_name'] ?? ''));
+    $full = trim((string)($row['full_name'] ?? ''));
+    $username = trim((string)($row['username'] ?? ''));
+    $variants = [
+        $full,
+        trim($last . ' ' . $first),
+        $username,
+        trim((string)($row['email'] ?? '')),
+        trim((string)($row['phone'] ?? '')),
+    ];
+
+    return array_values(array_filter(array_unique(array_map('normalize_merge_text', $variants))));
+}
+
+function merge_user_similarity_score(array $target, array $candidate, string $query): array
+{
+    $score = 0.0;
+    $reasons = [];
+    $queryNorm = normalize_merge_text($query);
+    $targetNames = merge_user_name_variants($target);
+    $candidateNames = merge_user_name_variants($candidate);
+
+    if ($queryNorm !== '') {
+        $haystack = implode(' ', $candidateNames) . ' ' . normalize_merge_text((string)($candidate['platform_user_id'] ?? ''))
+            . ' ' . normalize_merge_text((string)($candidate['platform_accounts_summary'] ?? ''))
+            . ' ' . normalize_merge_text((string)($candidate['city'] ?? ''));
+        if (str_contains($haystack, $queryNorm)) {
+            $score += 55;
+            $reasons[] = 'найдено по запросу';
+        } elseif (strlen($queryNorm) >= 3) {
+            foreach ($candidateNames as $candidateName) {
+                similar_text($queryNorm, $candidateName, $percent);
+                if ($percent >= 55) {
+                    $score += min(40, $percent * 0.45);
+                    $reasons[] = 'похожее написание запроса';
+                    break;
+                }
+            }
+        }
+    }
+
+    foreach ($targetNames as $targetName) {
+        if ($targetName === '') {
+            continue;
+        }
+        foreach ($candidateNames as $candidateName) {
+            if ($candidateName === '') {
+                continue;
+            }
+            if ($targetName === $candidateName) {
+                $score += 90;
+                $reasons[] = 'совпадает имя';
+                break 2;
+            }
+            if (strlen($targetName) >= 4 && strlen($candidateName) >= 4
+                && (str_contains($targetName, $candidateName) || str_contains($candidateName, $targetName))) {
+                $score += 55;
+                $reasons[] = 'очень похожее имя';
+                break 2;
+            }
+
+            similar_text($targetName, $candidateName, $percent);
+            if ($percent >= 72) {
+                $score += min(50, $percent * 0.55);
+                $reasons[] = 'похожее имя';
+                break 2;
+            }
+        }
+    }
+
+    if (!empty($target['birth_date']) && !empty($candidate['birth_date']) && $target['birth_date'] === $candidate['birth_date']) {
+        $score += 25;
+        $reasons[] = 'совпадает дата рождения';
+    }
+    if (!empty($target['age_years']) && !empty($candidate['age_years']) && (int)$target['age_years'] === (int)$candidate['age_years']) {
+        $score += 8;
+        $reasons[] = 'совпадает возраст';
+    }
+    if (!empty($target['city']) && !empty($candidate['city'])
+        && normalize_merge_text((string)$target['city']) === normalize_merge_text((string)$candidate['city'])) {
+        $score += 18;
+        $reasons[] = 'совпадает город';
+    }
+    if (!empty($target['gender']) && !empty($candidate['gender']) && $target['gender'] === $candidate['gender']) {
+        $score += 6;
+    }
+    if (!empty($target['manager_id']) && !empty($candidate['manager_id']) && (int)$target['manager_id'] === (int)$candidate['manager_id']) {
+        $score += 5;
+    } elseif (!empty($target['reseller_id']) && !empty($candidate['reseller_id']) && (int)$target['reseller_id'] === (int)$candidate['reseller_id']) {
+        $score += 4;
+    }
+    if (!empty($target['platform']) && !empty($candidate['platform']) && $target['platform'] !== $candidate['platform']) {
+        $score += 6;
+        $reasons[] = 'другая платформа';
+    }
+
+    return [
+        'score' => $score,
+        'reason' => implode(', ', array_values(array_unique($reasons))) ?: 'возможное совпадение',
+    ];
+}
+
+function merge_user_search_results(int $targetUserId, string $query, array $admin): array
+{
+    $target = merge_user_row($targetUserId, $admin);
+    if (!$target) {
+        throw new RuntimeException('Пользователь недоступен.');
+    }
+
     [$where, $params] = scoped_where_with_alias(scope_where_for_users($admin), 'eu');
     $where = $where
         ? $where . ' AND eu.id <> :target_user_id AND eu.merged_into_user_id IS NULL'
         : 'WHERE eu.id <> :target_user_id AND eu.merged_into_user_id IS NULL';
     $params['target_user_id'] = $targetUserId;
 
-    $stmt = db()->prepare(
-        "SELECT eu.id, CONCAT_WS(' ', NULLIF(eu.first_name, ''), NULLIF(eu.last_name, '')) AS full_name,
-                eu.username, eu.platform, eu.platform_user_id
-         FROM end_users eu
-         $where
-         ORDER BY eu.id DESC
-         LIMIT 300"
-    );
+    $stmt = db()->prepare(merge_user_base_select() . " $where ORDER BY eu.id DESC LIMIT 10000");
     $stmt->execute($params);
-    return $stmt->fetchAll();
+
+    $queryNorm = normalize_merge_text($query);
+    $minScore = $queryNorm !== '' ? 20 : 45;
+    $items = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $match = merge_user_similarity_score($target, $row, $query);
+        if ($match['score'] < $minScore) {
+            continue;
+        }
+        $items[] = [
+            'id' => (int)$row['id'],
+            'label' => user_display_label($row),
+            'meta' => merge_user_meta_label($row),
+            'reason' => $match['reason'],
+            'score' => round($match['score'], 1),
+        ];
+    }
+
+    usort($items, static fn(array $a, array $b): int => ($b['score'] <=> $a['score']) ?: ($b['id'] <=> $a['id']));
+    return array_slice($items, 0, 12);
+}
+
+function merge_user_meta_label(array $row): string
+{
+    $parts = [];
+    if (!empty($row['city'])) {
+        $parts[] = (string)$row['city'];
+    }
+    if (!empty($row['birth_date'])) {
+        $parts[] = 'д.р. ' . $row['birth_date'];
+    } elseif (!empty($row['age_years'])) {
+        $parts[] = (int)$row['age_years'] . ' лет';
+    }
+    if (!empty($row['platform_accounts_summary'])) {
+        $parts[] = (string)$row['platform_accounts_summary'];
+    }
+
+    return implode(' · ', $parts);
 }
 
 function user_platform_accounts(int $endUserId): array
@@ -1522,6 +1709,27 @@ if ($moduleKey === 'integrations' && $admin['role'] !== 'superadmin') {
     unset($formFields['owner_type'], $formFields['owner_id']);
 }
 
+if ($moduleKey === 'users' && $action === 'merge_search') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $targetUserId = (int)($_GET['id'] ?? 0);
+    $query = trim((string)($_GET['q'] ?? ''));
+
+    try {
+        if (!$targetUserId) {
+            http_response_code(404);
+            echo json_encode(['items' => [], 'error' => app_text('user_merge.target_required')], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        echo json_encode(['items' => merge_user_search_results($targetUserId, $query, $admin)], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['items' => [], 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
 if ($action === 'create' && !$canCreate) {
     $errors[] = app_text('auto.k_868d1fd837c9');
     $action = 'list';
@@ -1910,21 +2118,36 @@ require __DIR__ . '/../app/views/layouts/header.php';
         <section class="panel form-panel">
             <h2><?= h(app_text('user_merge.title')) ?></h2>
             <p class="cell-muted"><?= h(app_text('user_merge.description')) ?></p>
-            <form method="post" class="crud-form" onsubmit="return confirm(<?= json_encode(app_text('user_merge.confirm'), JSON_UNESCAPED_UNICODE) ?>);">
+            <form method="post" class="crud-form user-merge-form" data-user-merge-form onsubmit="return this.querySelector('[data-merge-user-id]').value !== '' &amp;&amp; confirm(<?= json_encode(app_text('user_merge.confirm'), JSON_UNESCAPED_UNICODE) ?>);">
                 <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
                 <input type="hidden" name="action" value="merge_user">
                 <input type="hidden" name="id" value="<?= h((string)$editRow['id']) ?>">
-                <label class="field">
-                    <span><?= h(app_text('user_merge.source_user')) ?></span>
-                    <select name="source_user_id" required>
-                        <option value=""><?= h(app_text('auto.k_92250813ceb7')) ?></option>
-                        <?php foreach (merge_user_options((int)$editRow['id'], $admin) as $option): ?>
-                            <option value="<?= (int)$option['id'] ?>"><?= h(user_display_label($option)) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </label>
+                <div
+                    class="merge-search"
+                    data-user-merge-search
+                    data-search-url="crud.php?module=users&amp;action=merge_search&amp;id=<?= (int)$editRow['id'] ?>"
+                    data-loading="<?= h(app_text('user_merge.loading_suggestions')) ?>"
+                    data-empty="<?= h(app_text('user_merge.empty_suggestions')) ?>"
+                    data-selected="<?= h(app_text('user_merge.selected_user')) ?>"
+                    data-choose-first="<?= h(app_text('user_merge.choose_first')) ?>"
+                >
+                    <input type="hidden" name="source_user_id" data-merge-user-id>
+                    <label class="field">
+                        <span><?= h(app_text('user_merge.source_user')) ?></span>
+                        <input
+                            type="search"
+                            autocomplete="off"
+                            placeholder="<?= h(app_text('user_merge.search_placeholder')) ?>"
+                            data-merge-search-input
+                        >
+                    </label>
+                    <div class="merge-selected" data-merge-selected hidden></div>
+                    <div class="merge-suggestions" data-merge-suggestions>
+                        <div class="empty-state"><?= h(app_text('user_merge.loading_suggestions')) ?></div>
+                    </div>
+                </div>
                 <div class="form-actions">
-                    <button type="submit" class="danger-button"><?= h(app_text('user_merge.submit')) ?></button>
+                    <button type="submit" class="danger-button" data-merge-submit disabled><?= h(app_text('user_merge.submit')) ?></button>
                 </div>
             </form>
         </section>

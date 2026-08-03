@@ -68,6 +68,15 @@ function escapeAdminAttribute(value) {
         .replace(/>/g, '&gt;');
 }
 
+function escapeAdminHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function initAdminRemoteModals(root = document) {
     root.querySelectorAll('[data-admin-modal-url]').forEach((link) => {
         if (link.dataset.adminModalBound === '1') {
@@ -112,6 +121,7 @@ function initAdminRemoteModals(root = document) {
                 initAdminModalBackdrop(modal.parentElement || document);
                 initAdminResultModals(modal);
                 initAdminRemoteModals(modal);
+                initUserMergeSearch(modal);
             } catch (error) {
                 modal.innerHTML = `
                     <div class="modal-shell">
@@ -136,6 +146,135 @@ function initAdminRemoteModals(root = document) {
     });
 }
 
+function initUserMergeSearch(root = document) {
+    root.querySelectorAll('[data-user-merge-search]').forEach((widget) => {
+        if (widget.dataset.mergeSearchBound === '1') {
+            return;
+        }
+        widget.dataset.mergeSearchBound = '1';
+
+        const searchUrl = widget.dataset.searchUrl || '';
+        const input = widget.querySelector('[data-merge-search-input]');
+        const hidden = widget.querySelector('[data-merge-user-id]');
+        const suggestions = widget.querySelector('[data-merge-suggestions]');
+        const selected = widget.querySelector('[data-merge-selected]');
+        const form = widget.closest('[data-user-merge-form]');
+        const submit = form ? form.querySelector('[data-merge-submit]') : null;
+        const loadingText = widget.dataset.loading || 'Загрузка...';
+        const emptyText = widget.dataset.empty || 'Ничего не найдено.';
+        const selectedText = widget.dataset.selected || 'Выбран:';
+        const chooseFirstText = widget.dataset.chooseFirst || 'Сначала выберите пользователя.';
+        let timer = null;
+        let controller = null;
+
+        if (!searchUrl || !input || !hidden || !suggestions) {
+            return;
+        }
+
+        const setPending = () => {
+            suggestions.innerHTML = `<div class="empty-state">${escapeAdminHtml(loadingText)}</div>`;
+        };
+
+        const setEmpty = (message = emptyText) => {
+            suggestions.innerHTML = `<div class="empty-state">${escapeAdminHtml(message)}</div>`;
+        };
+
+        const clearChoice = () => {
+            hidden.value = '';
+            if (submit) {
+                submit.disabled = true;
+            }
+            if (selected) {
+                selected.hidden = true;
+                selected.textContent = '';
+            }
+        };
+
+        const renderItems = (items) => {
+            if (!items.length) {
+                setEmpty();
+                return;
+            }
+
+            suggestions.innerHTML = items.map((item) => `
+                <button
+                    type="button"
+                    class="merge-suggestion"
+                    data-merge-user-option
+                    data-id="${escapeAdminAttribute(item.id)}"
+                    data-label="${escapeAdminAttribute(item.label || '')}"
+                >
+                    <strong>${escapeAdminHtml(item.label || '')}</strong>
+                    ${item.meta ? `<span>${escapeAdminHtml(item.meta)}</span>` : ''}
+                    ${item.reason ? `<small>${escapeAdminHtml(item.reason)}</small>` : ''}
+                </button>
+            `).join('');
+        };
+
+        const loadItems = async (query = '') => {
+            if (controller) {
+                controller.abort();
+            }
+            controller = new AbortController();
+            setPending();
+
+            const separator = searchUrl.includes('?') ? '&' : '?';
+            try {
+                const response = await fetch(`${searchUrl}${separator}q=${encodeURIComponent(query)}`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    signal: controller.signal,
+                });
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.error || `HTTP ${response.status}`);
+                }
+                renderItems(Array.isArray(payload.items) ? payload.items : []);
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    setEmpty(error.message || emptyText);
+                }
+            }
+        };
+
+        input.addEventListener('input', () => {
+            clearChoice();
+            window.clearTimeout(timer);
+            timer = window.setTimeout(() => loadItems(input.value.trim()), 260);
+        });
+
+        suggestions.addEventListener('click', (event) => {
+            const option = event.target.closest('[data-merge-user-option]');
+            if (!option) {
+                return;
+            }
+
+            hidden.value = option.dataset.id || '';
+            input.value = option.dataset.label || '';
+            if (selected) {
+                selected.hidden = false;
+                selected.innerHTML = `<span>${escapeAdminHtml(selectedText)}</span> <strong>${escapeAdminHtml(option.dataset.label || '')}</strong>`;
+            }
+            if (submit) {
+                submit.disabled = hidden.value === '';
+            }
+        });
+
+        if (form) {
+            form.addEventListener('submit', (event) => {
+                if (!hidden.value) {
+                    event.preventDefault();
+                    alert(chooseFirstText);
+                }
+            });
+        }
+
+        loadItems('');
+    });
+}
+
 document.querySelectorAll('button[disabled]').forEach((button) => {
     button.title = '';
 });
@@ -143,3 +282,4 @@ document.querySelectorAll('button[disabled]').forEach((button) => {
 initAdminResultModals();
 initAdminModalBackdrop();
 initAdminRemoteModals();
+initUserMergeSearch();

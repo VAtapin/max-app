@@ -558,6 +558,60 @@ button:disabled {
     justify-self: start;
 }
 
+.merge-search {
+    display: grid;
+    gap: 12px;
+}
+
+.merge-selected {
+    background: #effaf7;
+    border: 1px solid #bfe4dc;
+    border-radius: var(--radius-sm);
+    color: var(--accent);
+    padding: 10px 12px;
+}
+
+.merge-selected span {
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.merge-suggestions {
+    display: grid;
+    gap: 8px;
+}
+
+.merge-suggestion {
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    cursor: pointer;
+    display: grid;
+    gap: 4px;
+    padding: 12px;
+    text-align: left;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    width: 100%;
+}
+
+.merge-suggestion:hover {
+    border-color: var(--accent-light);
+    box-shadow: 0 8px 20px rgba(15, 118, 110, 0.10);
+    transform: translateY(-1px);
+}
+
+.merge-suggestion strong {
+    font-size: 14px;
+}
+
+.merge-suggestion span,
+.merge-suggestion small {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
 .file-link {
     display: inline-block;
     font-size: 13px;
