@@ -24,6 +24,10 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
             </div>
             <label class="mobile-nav-close" for="mobile-nav-toggle" aria-label="Закрыть меню">×</label>
         </div>
+        <div class="sidebar-mobile-user">
+            <span class="user-chip"><?= h($admin['name'] ?? '') ?></span>
+            <a href="logout.php"><?= h(app_text('auto.k_026abb1e0a5e')) ?></a>
+        </div>
         <nav>
             <?php
             $navSections = [
@@ -84,15 +88,15 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
     <main class="main">
         <header class="topbar">
             <div class="topbar-title-row">
+                <div class="topbar-title">
+                    <span><?= h($title ?? app_text('auto.dashboard')) ?></span>
+                    <small><?= h($config['app']['name']) ?></small>
+                </div>
                 <label class="mobile-menu-button" for="mobile-nav-toggle" aria-label="Открыть меню">
                     <span></span>
                     <span></span>
                     <span></span>
                 </label>
-                <div class="topbar-title">
-                    <span><?= h($title ?? app_text('auto.dashboard')) ?></span>
-                    <small><?= h($config['app']['name']) ?></small>
-                </div>
             </div>
             <div class="topbar-user">
                 <span class="user-chip"><?= h($admin['name'] ?? '') ?></span>

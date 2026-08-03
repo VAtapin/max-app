@@ -2875,3 +2875,183 @@ button {
         padding: 16px;
     }
 }
+
+/* Final mobile admin header and compact filters */
+.sidebar-mobile-user {
+    display: none;
+}
+
+@media (max-width: 760px) {
+    .topbar {
+        align-items: center;
+        background: #ffffff;
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+        min-height: 56px;
+        padding: 8px 12px;
+        position: sticky;
+        top: 0;
+        z-index: 70;
+    }
+
+    .topbar-title-row {
+        align-items: center;
+        display: flex;
+        flex: 1 1 auto;
+        gap: 12px;
+        justify-content: space-between;
+        min-width: 0;
+        width: 100%;
+    }
+
+    .topbar-title {
+        min-width: 0;
+    }
+
+    .topbar-title span {
+        display: block;
+        font-size: 17px;
+        line-height: 1.12;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .topbar-title small {
+        display: block;
+        font-size: 11px;
+        line-height: 1.1;
+        margin-top: 2px;
+    }
+
+    .mobile-menu-button {
+        border-radius: 11px;
+        box-shadow: 0 3px 12px rgba(23, 32, 51, .1);
+        height: 38px;
+        margin-left: auto;
+        width: 40px;
+    }
+
+    .topbar-user {
+        display: none;
+    }
+
+    .sidebar {
+        border-left: 1px solid var(--line);
+        border-radius: 18px 0 0 18px;
+        border-right: 0;
+        box-shadow: -18px 0 44px rgba(15, 23, 42, .18);
+        left: auto;
+        right: 0;
+        transform: translateX(105%);
+        width: min(330px, 88vw);
+    }
+
+    .mobile-nav-toggle:checked ~ .sidebar {
+        transform: translateX(0);
+    }
+
+    .sidebar-mobile-user {
+        align-items: center;
+        border-bottom: 1px solid #eef2f5;
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        padding: 0 0 12px;
+    }
+
+    .sidebar-mobile-user .user-chip {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .content {
+        padding: 14px 10px 22px;
+    }
+
+    .toolbar {
+        margin-bottom: 12px;
+    }
+
+    .toolbar h1 {
+        font-size: 24px;
+        line-height: 1.12;
+    }
+
+    .filters {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-bottom: 12px;
+        padding: 10px;
+    }
+
+    .filters label {
+        gap: 3px;
+        min-width: 0;
+    }
+
+    .filters span {
+        font-size: 11px;
+        line-height: 1.15;
+    }
+
+    .filters select {
+        border-radius: 10px;
+        min-height: 36px;
+        min-width: 0;
+        padding: 7px 9px;
+        width: 100%;
+    }
+
+    .filters button,
+    .filters .button {
+        align-items: center;
+        display: inline-flex;
+        justify-content: center;
+        min-height: 36px;
+        padding: 7px 10px;
+        width: 100%;
+    }
+
+    .filters .secondary-button {
+        grid-column: 1 / -1;
+    }
+
+    .lead-card.lead-ticket {
+        gap: 10px;
+        padding: 11px;
+    }
+
+    .lead-card h3 {
+        font-size: 16px;
+        margin: 8px 0 5px;
+    }
+
+    .lead-ticket .lead-card-message {
+        font-size: 13px;
+        line-height: 1.3;
+    }
+
+    .lead-card-top {
+        gap: 5px;
+    }
+
+    .lead-compact-meta {
+        gap: 5px;
+    }
+
+    .lead-compact-meta > span {
+        border-radius: 9px;
+        min-height: 30px;
+        padding: 5px 7px;
+    }
+
+    .lead-compact-meta b {
+        font-size: 10px;
+    }
+}
