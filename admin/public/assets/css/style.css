@@ -4357,3 +4357,121 @@ button {
         padding: 10px;
     }
 }
+
+/* Compact screenshot cards in Help */
+.vk-screenshot-list {
+    grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+}
+
+.vk-screenshot-card {
+    background: #ffffff;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, .06);
+    display: grid;
+    gap: 10px;
+    grid-template-columns: 1fr;
+    padding: 12px;
+}
+
+.vk-screenshot-text {
+    gap: 9px;
+}
+
+.vk-screenshot-text h3 {
+    font-size: 16px;
+}
+
+.vk-screenshot-preview {
+    background: #f4f7f9;
+    border: 1px solid #dbe3ea;
+    border-radius: 12px;
+    cursor: zoom-in;
+    display: block;
+    height: 155px;
+    overflow: hidden;
+    padding: 0;
+    position: relative;
+    width: 100%;
+}
+
+.vk-screenshot-preview img {
+    display: block;
+    height: 100%;
+    object-fit: contain;
+    width: 100%;
+}
+
+.vk-shot-marker {
+    background: rgba(255, 220, 69, .96);
+    border: 2px solid #d99c00;
+    border-radius: 999px;
+    box-shadow: 0 6px 18px rgba(119, 76, 0, .22);
+    color: #1f2937;
+    font-size: 11px;
+    font-weight: 900;
+    left: var(--marker-x);
+    line-height: 1.05;
+    max-width: 150px;
+    padding: 5px 8px;
+    pointer-events: none;
+    position: absolute;
+    text-align: center;
+    top: var(--marker-y);
+    transform: translate(-50%, -50%);
+    white-space: normal;
+}
+
+.vk-shot-marker::after {
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: 10px solid #d99c00;
+    bottom: -10px;
+    content: "";
+    left: 50%;
+    position: absolute;
+    transform: translateX(-50%);
+}
+
+.image-preview-modal {
+    max-width: min(980px, calc(100vw - 28px));
+}
+
+.image-preview-shell {
+    max-height: min(90vh, 840px);
+}
+
+.image-preview-body {
+    display: grid;
+    padding: 14px;
+    place-items: center;
+}
+
+.image-preview-frame {
+    display: inline-block;
+    max-height: 72vh;
+    max-width: 100%;
+    position: relative;
+}
+
+.image-preview-frame img {
+    border-radius: 12px;
+    display: block;
+    max-height: 72vh;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+@media (max-width: 760px) {
+    .vk-screenshot-list {
+        grid-template-columns: 1fr;
+    }
+
+    .vk-screenshot-preview {
+        height: 135px;
+    }
+
+    .vk-shot-marker {
+        font-size: 10px;
+        max-width: 124px;
+        padding: 4px 7px;
+    }
+}

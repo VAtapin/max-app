@@ -122,6 +122,7 @@ function initAdminRemoteModals(root = document) {
                 initAdminResultModals(modal);
                 initAdminRemoteModals(modal);
                 initUserMergeSearch(modal);
+                initImagePreviewModal(modal);
                 initResponsiveTables(modal);
             } catch (error) {
                 modal.innerHTML = `
@@ -349,6 +350,74 @@ function initLeadMediaModal(root = document) {
     });
 }
 
+function adminImagePreviewModal() {
+    let modal = document.getElementById('admin-image-preview-modal');
+    if (modal) {
+        return modal;
+    }
+
+    modal = document.createElement('dialog');
+    modal.id = 'admin-image-preview-modal';
+    modal.className = 'admin-modal image-preview-modal';
+    modal.innerHTML = `
+        <div class="modal-shell image-preview-shell">
+            <div class="modal-head">
+                <div><span class="eyebrow">Скриншот</span><h2 data-image-preview-title>Просмотр</h2></div>
+                <form method="dialog"><button class="icon-button" aria-label="Закрыть">&times;</button></form>
+            </div>
+            <div class="modal-body image-preview-body" data-image-preview-body></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    initAdminModalBackdrop(modal.parentElement || document);
+    return modal;
+}
+
+function initImagePreviewModal(root = document) {
+    if (root.dataset && root.dataset.imagePreviewBound === '1') {
+        return;
+    }
+    if (root.dataset) {
+        root.dataset.imagePreviewBound = '1';
+    }
+
+    root.addEventListener('click', (event) => {
+        const trigger = event.target.closest('[data-image-preview]');
+        if (!trigger) {
+            return;
+        }
+
+        event.preventDefault();
+        const url = trigger.dataset.imageSrc || '';
+        if (!url) {
+            return;
+        }
+
+        const modal = adminImagePreviewModal();
+        const titleNode = modal.querySelector('[data-image-preview-title]');
+        const bodyNode = modal.querySelector('[data-image-preview-body]');
+        if (titleNode) {
+            titleNode.textContent = trigger.dataset.imageTitle || 'Скриншот';
+        }
+        if (bodyNode) {
+            bodyNode.replaceChildren();
+            const frame = document.createElement('div');
+            frame.className = 'image-preview-frame';
+            const imageNode = document.createElement('img');
+            imageNode.src = url;
+            imageNode.alt = trigger.dataset.imageTitle || 'Скриншот';
+            frame.appendChild(imageNode);
+            trigger.querySelectorAll('.vk-shot-marker').forEach((marker) => {
+                frame.appendChild(marker.cloneNode(true));
+            });
+            bodyNode.appendChild(frame);
+        }
+        if (typeof modal.showModal === 'function' && !modal.open) {
+            modal.showModal();
+        }
+    });
+}
+
 function initResponsiveTables(root = document) {
     root.querySelectorAll('table').forEach((table) => {
         if (table.dataset.responsiveTableBound === '1') {
@@ -389,4 +458,5 @@ initAdminModalBackdrop();
 initAdminRemoteModals();
 initUserMergeSearch();
 initLeadMediaModal();
+initImagePreviewModal();
 initResponsiveTables();
