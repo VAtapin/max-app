@@ -15,12 +15,17 @@ $modules = [
     'resellers' => [
         'title' => app_text('auto.k_32cea47742bf'),
         'table' => 'resellers',
-        'columns' => ['id', 'name', 'email', 'phone', 'referral_code', 'is_active'],
+        'columns' => ['id', 'name', 'email', 'phone', 'billing_name', 'billing_inn', 'billing_email', 'billing_comment', 'referral_code', 'manager_limit', 'is_active'],
         'fields' => [
             'name' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
             'email' => ['label' => 'Email', 'type' => 'email'],
             'phone' => ['label' => app_text('auto.k_87ec4b495b56')],
+            'billing_name' => ['label' => 'Плательщик / юр. лицо'],
+            'billing_inn' => ['label' => 'ИНН плательщика'],
+            'billing_email' => ['label' => 'Email для счетов', 'type' => 'email'],
+            'billing_comment' => ['label' => 'Комментарий для оплаты', 'type' => 'textarea'],
             'referral_code' => ['label' => app_text('auto.k_a9d3a61b02f2'), 'required' => true],
+            'manager_limit' => ['label' => 'Лимит консультантов', 'type' => 'number', 'min' => 0, 'nullable' => true],
             'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
         ],
     ],
@@ -845,6 +850,12 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin)
         }
     }
 
+    if ($moduleKey === 'resellers'
+        && ($payload['manager_limit'] ?? null) !== null
+        && (int)$payload['manager_limit'] < 0) {
+        $errors[] = 'Лимит консультантов не может быть отрицательным.';
+    }
+
     if (in_array($moduleKey, ['users', 'leads'], true) && !empty($payload['manager_id']) && !empty($payload['reseller_id'])) {
         $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id LIMIT 1');
         $stmt->execute(['id' => (int)$payload['manager_id']]);
@@ -875,13 +886,13 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin)
                 $stmt = db()->prepare('SELECT COUNT(*) FROM resellers WHERE id = :id');
                 $stmt->execute(['id' => $ownerId]);
                 if ((int)$stmt->fetchColumn() === 0) {
-                    $errors[] = 'Реселлер для материала не найден.';
+                    $errors[] = 'Лидер для материала не найден.';
                 }
             } elseif ($ownerType === 'manager') {
                 $stmt = db()->prepare('SELECT COUNT(*) FROM managers WHERE id = :id');
                 $stmt->execute(['id' => $ownerId]);
                 if ((int)$stmt->fetchColumn() === 0) {
-                    $errors[] = 'Менеджер для материала не найден.';
+                    $errors[] = 'Консультант для материала не найден.';
                 }
             }
         }
@@ -922,6 +933,83 @@ function manager_reseller_id(int $managerId): ?int
     $manager = $stmt->fetch();
 
     return $manager && $manager['reseller_id'] !== null ? (int)$manager['reseller_id'] : null;
+}
+
+function leader_manager_limit_state(?int $resellerId, ?int $excludeManagerId = null): ?array
+{
+    if (!$resellerId) {
+        return null;
+    }
+
+    $leaderStmt = db()->prepare('SELECT manager_limit FROM resellers WHERE id = :id LIMIT 1');
+    $leaderStmt->execute(['id' => $resellerId]);
+    $leader = $leaderStmt->fetch();
+    if (!$leader) {
+        return null;
+    }
+
+    $params = ['reseller_id' => $resellerId];
+    $sql = 'SELECT COUNT(*) FROM managers WHERE reseller_id = :reseller_id AND is_active = 1';
+    if ($excludeManagerId) {
+        $sql .= ' AND id <> :exclude_manager_id';
+        $params['exclude_manager_id'] = $excludeManagerId;
+    }
+
+    $countStmt = db()->prepare($sql);
+    $countStmt->execute($params);
+
+    return [
+        'limit' => $leader['manager_limit'] !== null && $leader['manager_limit'] !== '' ? (int)$leader['manager_limit'] : null,
+        'active' => (int)$countStmt->fetchColumn(),
+    ];
+}
+
+function validate_manager_limit_payload(string $moduleKey, array $payload, ?int $recordId = null): array
+{
+    if ($moduleKey !== 'managers' || (int)($payload['is_active'] ?? 0) !== 1) {
+        return [];
+    }
+
+    $resellerId = nullable_int_value($payload['reseller_id'] ?? null);
+    if (!$resellerId) {
+        return [];
+    }
+
+    $state = leader_manager_limit_state($resellerId, $recordId);
+    if (!$state || $state['limit'] === null) {
+        return [];
+    }
+
+    $projected = $state['active'] + 1;
+    if ($projected <= $state['limit']) {
+        return [];
+    }
+
+    return [
+        'У лидера заполнен лимит консультантов: ' . $state['active'] . ' из ' . $state['limit']
+        . '. Увеличьте лимит в карточке лидера или отключите лишнего консультанта.',
+    ];
+}
+
+function validate_leader_limit_payload(string $moduleKey, array $payload, ?int $recordId = null): array
+{
+    if ($moduleKey !== 'resellers' || !$recordId) {
+        return [];
+    }
+
+    $limit = nullable_int_value($payload['manager_limit'] ?? null);
+    if ($limit === null) {
+        return [];
+    }
+
+    $state = leader_manager_limit_state($recordId);
+    if (!$state || $state['active'] <= $limit) {
+        return [];
+    }
+
+    return [
+        'Нельзя поставить лимит ' . $limit . ': у лидера уже активных консультантов ' . $state['active'] . '.',
+    ];
 }
 
 function apply_role_defaults(string $moduleKey, array $payload, array $admin): array
@@ -1549,6 +1637,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $errors = array_merge($errors, validate_payload($formFields, $payload));
     $payload = apply_role_defaults($moduleKey, $payload, $admin);
     $errors = array_merge($errors, validate_scope_payload($moduleKey, $payload, $admin));
+    $errors = array_merge($errors, validate_manager_limit_payload($moduleKey, $payload, $postId));
+    $errors = array_merge($errors, validate_leader_limit_payload($moduleKey, $payload, $postId));
     if (!$errors) {
         try {
             $savedId = save_record($moduleKey, $module, $payload, $postId, $admin);
@@ -1704,6 +1794,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                             name="<?= h($name) ?>"
                             value="<?= h($inputValue) ?>"
                             <?= isset($field['step']) ? 'step="' . h($field['step']) . '"' : '' ?>
+                            <?= isset($field['min']) ? 'min="' . h((string)$field['min']) . '"' : '' ?>
                         >
                     <?php endif; ?>
                 </label>

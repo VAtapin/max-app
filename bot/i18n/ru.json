@@ -41,5 +41,5 @@
   "recommendation.reason": "Рекомендация сформирована по ответам теста.",
   "fallback.commands": "Я не понял команду.\n\nИспользуйте меню Telegram или откройте SWPro:\n{app_url}",
   "max.menu": "Меню: /tests, /products, /recommendations, /manager",
-  "staff.client_registration_blocked": "Этот аккаунт уже используется как менеджер, реселлер или администратор SWPro. Регистрация как клиент по реферальной ссылке отключена."
+  "staff.client_registration_blocked": "Этот аккаунт уже используется как консультант, лидер или администратор SWPro. Регистрация как клиент по реферальной ссылке отключена."
 }

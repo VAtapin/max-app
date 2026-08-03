@@ -95,7 +95,9 @@ function crud_display_columns(string $moduleKey): array
             'name' => app_text('auto.k_86469fea3a4a'),
             'contacts' => app_text('auto.k_dba0fcb2cbbb'),
             'referral_code' => app_text('auto.k_b162c37f62ea'),
-            'managers_count' => app_text('auto.k_6756aa53b5b5'),
+            'manager_capacity' => app_text('auto.k_6756aa53b5b5'),
+            'billing_summary' => 'Плательщик',
+            'subscription_summary' => 'Подписка и сумма',
             'users_count' => app_text('auto.k_0f0b8f55edcc'),
             'state' => app_text('auto.k_f7f293b5c58c'),
         ],
@@ -269,6 +271,16 @@ function users_scope_filter(): string
     return in_array($scope, ['clients', 'visitors', 'all'], true) ? $scope : 'clients';
 }
 
+function leader_subscription_status_label(?string $value): string
+{
+    return [
+        'pending' => 'Ожидает оплаты',
+        'active' => 'Активна',
+        'expired' => 'Истекла',
+        'suspended' => 'Приостановлена',
+    ][(string)$value] ?? (string)$value;
+}
+
 function append_sql_condition(string $where, string $condition): string
 {
     return $where !== '' ? $where . ' AND ' . $condition : 'WHERE ' . $condition;
@@ -396,14 +408,28 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
 
     if ($moduleKey === 'resellers') {
         return [
-            "SELECT r.id, r.name, r.email, r.phone, r.referral_code,
+            "SELECT r.id, r.name, r.email, r.phone, r.billing_name, r.billing_inn, r.billing_email,
+                    r.billing_comment, r.referral_code, r.manager_limit,
                     IF(r.is_active = 1, 'active', 'inactive') AS state,
-                    COUNT(DISTINCT m.id) AS managers_count,
-                    COUNT(DISTINCT eu.id) AS users_count
+                    (SELECT COUNT(*) FROM managers m WHERE m.reseller_id = r.id) AS managers_count,
+                    (SELECT COUNT(*) FROM managers m WHERE m.reseller_id = r.id AND m.is_active = 1) AS active_managers_count,
+                    ls.status AS subscription_status,
+                    ls.starts_at AS subscription_starts_at,
+                    ls.ends_at AS subscription_ends_at,
+                    ls.consultant_limit AS subscription_consultant_limit,
+                    ls.price_per_consultant,
+                    ls.amount_due,
+                    (SELECT COUNT(*) FROM end_users eu WHERE eu.reseller_id = r.id) AS users_count
              FROM resellers r
-             LEFT JOIN managers m ON m.reseller_id = r.id
-             LEFT JOIN end_users eu ON eu.reseller_id = r.id
-             GROUP BY r.id
+             LEFT JOIN (
+                SELECT s.*
+                FROM leader_subscriptions s
+                INNER JOIN (
+                    SELECT reseller_id, MAX(id) AS latest_id
+                    FROM leader_subscriptions
+                    GROUP BY reseller_id
+                ) latest ON latest.latest_id = s.id
+             ) ls ON ls.reseller_id = r.id
              ORDER BY r.id DESC
              LIMIT 100",
             [],
@@ -494,8 +520,8 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
             "SELECT cp.id, cp.title, cp.content_type, cp.section_type, c.title AS category_title, cp.image_path,
                     cp.attachment_path, cp.video_url, cp.button_url, cp.status, cp.publish_at,
                     CASE
-                        WHEN cp.owner_type = 'reseller' THEN CONCAT('Реселлер: ', COALESCE(r.name, CONCAT('#', cp.owner_id)))
-                        WHEN cp.owner_type = 'manager' THEN CONCAT('Менеджер: ', COALESCE(m.name, CONCAT('#', cp.owner_id)))
+                        WHEN cp.owner_type = 'reseller' THEN CONCAT('Лидер: ', COALESCE(r.name, CONCAT('#', cp.owner_id)))
+                        WHEN cp.owner_type = 'manager' THEN CONCAT('Консультант: ', COALESCE(m.name, CONCAT('#', cp.owner_id)))
                         ELSE 'Шаблон супер-админа'
                     END AS owner_label
              FROM content_posts cp
@@ -535,6 +561,39 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
 {
     if ($column === 'contacts') {
         return trim(($row['email'] ?? '') . "\n" . ($row['phone'] ?? '')) ?: app_text('auto.k_1b93795b9768');
+    }
+
+    if ($moduleKey === 'resellers' && $column === 'manager_capacity') {
+        $active = (int)($row['active_managers_count'] ?? 0);
+        $total = (int)($row['managers_count'] ?? 0);
+        $limit = $row['manager_limit'] !== null && $row['manager_limit'] !== ''
+            ? (int)$row['manager_limit']
+            : null;
+        return 'Активных: ' . $active . "\nВсего: " . $total . "\nЛимит: " . ($limit !== null ? (string)$limit : 'без ограничения');
+    }
+
+    if ($moduleKey === 'resellers' && $column === 'billing_summary') {
+        $items = [];
+        if (trim((string)($row['billing_name'] ?? '')) !== '') {
+            $items[] = (string)$row['billing_name'];
+        }
+        if (trim((string)($row['billing_inn'] ?? '')) !== '') {
+            $items[] = 'ИНН ' . $row['billing_inn'];
+        }
+        if (trim((string)($row['billing_email'] ?? '')) !== '') {
+            $items[] = (string)$row['billing_email'];
+        }
+        return $items ? implode("\n", $items) : app_text('auto.k_1b93795b9768');
+    }
+
+    if ($moduleKey === 'resellers' && $column === 'subscription_summary') {
+        if (empty($row['subscription_status'])) {
+            return 'Нет подписки';
+        }
+        $status = leader_subscription_status_label((string)$row['subscription_status']);
+        $amount = $row['amount_due'] !== null ? number_format((float)$row['amount_due'], 2, ',', ' ') . ' руб.' : 'сумма не задана';
+        $period = trim((string)($row['subscription_starts_at'] ?? '')) . ' - ' . trim((string)($row['subscription_ends_at'] ?? ''));
+        return $status . "\n" . $amount . "\n" . trim($period, " -");
     }
 
     if ($column === 'display_name' || $column === 'user_name') {
@@ -647,11 +706,11 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
 function status_badge_class(string $value): string
 {
     return match ($value) {
-        'new', 'none', 'Присоединился', 'Ожидает реферальный код', status_label('none') => 'badge badge-new',
-        'contacted', 'sent', status_label('contacted'), status_label('sent') => 'badge badge-sent',
+        'new', 'none', 'Присоединился', 'Ожидает реферальный код', 'Ожидает оплаты', 'Нет подписки', status_label('none') => 'badge badge-new',
+        'contacted', 'sent', 'Активна', status_label('contacted'), status_label('sent') => 'badge badge-sent',
         'interested', 'pending', status_label('interested'), status_label('pending') => 'badge badge-pending',
         'closed', status_label('closed') => 'badge badge-closed',
-        'lost', 'failed', status_label('lost'), status_label('failed') => 'badge badge-failed',
+        'lost', 'failed', 'Истекла', 'Приостановлена', status_label('lost'), status_label('failed') => 'badge badge-failed',
         default => 'badge',
     };
 }
@@ -697,6 +756,14 @@ function render_cell(string $moduleKey, string $key, array $row): string
         $message = trim((string)($row['message'] ?? ''));
         $message = $message !== '' ? $message : app_text('auto.k_503360e76342');
         return '<div class="lead-message">' . nl2br(h($message)) . '</div><div class="cell-muted">' . render_platform_badge((string)($row['source_platform'] ?? '')) . '</div>';
+    }
+
+    if ($moduleKey === 'resellers' && $key === 'subscription_summary') {
+        $value = crud_cell_value($moduleKey, $key, $row);
+        $firstLine = strtok($value, "\n") ?: $value;
+        $rest = trim(substr($value, strlen($firstLine)));
+        return '<span class="' . h(status_badge_class($firstLine)) . '">' . h($firstLine) . '</span>'
+            . ($rest !== '' ? '<div class="cell-muted">' . nl2br(h($rest)) . '</div>' : '');
     }
 
     if ($key === 'platform_account') {

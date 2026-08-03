@@ -15,7 +15,6 @@ $fields = [
     'legal_operator_inn' => 'ИНН',
     'legal_operator_address' => 'Адрес',
     'legal_operator_email' => 'Email для обращений по персональным данным',
-    'leader_monthly_price' => 'Стоимость места лидера в месяц',
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
