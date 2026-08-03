@@ -1639,6 +1639,288 @@ button:disabled {
     padding-left: 20px;
 }
 
+.vk-guide {
+    display: grid;
+    gap: 18px;
+    margin: 18px 0;
+    overflow: visible;
+}
+
+.vk-guide-head {
+    align-items: start;
+    display: grid;
+    gap: 16px;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+}
+
+.vk-guide-head h2 {
+    margin-bottom: 8px;
+}
+
+.vk-guide-head p {
+    color: var(--muted);
+    line-height: 1.55;
+    margin: 0;
+    max-width: 760px;
+}
+
+.vk-guide-note {
+    background: #fff8e7;
+    border: 1px solid #f6d99b;
+    border-radius: var(--radius-md);
+    color: #774c00;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.45;
+    padding: 12px;
+}
+
+.vk-guide-steps {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+}
+
+.vk-guide-step {
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+}
+
+.vk-guide-step-title {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+}
+
+.vk-guide-step-title span {
+    align-items: center;
+    background: var(--accent);
+    border-radius: 999px;
+    color: #ffffff;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 13px;
+    font-weight: 900;
+    height: 28px;
+    justify-content: center;
+    width: 28px;
+}
+
+.vk-guide-step-title h3 {
+    font-size: 18px;
+    line-height: 1.25;
+    margin: 0;
+}
+
+.vk-guide-step p {
+    color: var(--muted);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.vk-guide-copy {
+    background: #f8fafc;
+    border: 1px solid #dfe7ee;
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.45;
+    padding: 10px 12px;
+}
+
+.vk-guide-shot {
+    background: #edf1f5;
+    border: 1px solid #d5dde7;
+    border-radius: 14px;
+    display: grid;
+    gap: 8px;
+    min-height: 178px;
+    overflow: hidden;
+    padding: 10px;
+}
+
+.vk-shot-top,
+.vk-shot-cover,
+.vk-shot-row,
+.vk-shot-field,
+.vk-shot-check,
+.vk-shot-button,
+.vk-shot-tabs span {
+    background: #ffffff;
+    border: 1px solid #dce4ec;
+    border-radius: 10px;
+    padding: 8px 10px;
+}
+
+.vk-shot-top {
+    color: #5b6b80;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.vk-shot-cover {
+    align-items: center;
+    background: linear-gradient(135deg, #dff4ff, #eef9ec);
+    color: #30516b;
+    display: flex;
+    font-weight: 900;
+    min-height: 54px;
+}
+
+.vk-shot-row {
+    color: #20304a;
+    font-weight: 800;
+}
+
+.vk-shot-field {
+    align-items: start;
+    display: grid;
+    gap: 4px;
+    grid-template-columns: minmax(88px, 32%) minmax(0, 1fr);
+}
+
+.vk-shot-field b {
+    color: #5b6b80;
+    font-size: 12px;
+}
+
+.vk-shot-field span,
+.vk-shot-field strong,
+.vk-shot-field code {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.vk-shot-field strong {
+    color: #067647;
+}
+
+.vk-shot-field code {
+    background: #f8fafc;
+    border: 1px solid #e4ebf0;
+    border-radius: 8px;
+    color: #243247;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12px;
+    padding: 4px 6px;
+}
+
+.vk-shot-check {
+    align-items: center;
+    color: #1f2a3d;
+    display: flex;
+    font-weight: 800;
+    gap: 8px;
+}
+
+.vk-shot-check::before {
+    align-items: center;
+    background: #ffffff;
+    border: 2px solid #9fb0c2;
+    border-radius: 5px;
+    content: "";
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 900;
+    height: 14px;
+    justify-content: center;
+    line-height: 1;
+    width: 14px;
+}
+
+.vk-shot-check.is-highlight::before {
+    background: #4f80bd;
+    border-color: #4f80bd;
+    color: #ffffff;
+    content: "✓";
+}
+
+.vk-shot-check.is-muted {
+    color: #738196;
+    font-weight: 700;
+}
+
+.vk-shot-row.is-highlight,
+.vk-shot-field.is-highlight,
+.vk-shot-tabs span.is-active {
+    background: #fff7b8;
+    border-color: #f1cf54;
+}
+
+.vk-shot-button {
+    background: #4b82c2;
+    color: #ffffff;
+    font-weight: 900;
+    justify-self: start;
+}
+
+.vk-shot-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.vk-shot-tabs span {
+    color: #53657b;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.vk-guide-map {
+    background: #f8fbfb;
+    border: 1px solid #dbe9e7;
+    border-radius: var(--radius-md);
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+}
+
+.vk-guide-map h3 {
+    margin: 0;
+}
+
+.vk-guide-map-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.vk-guide-map-grid div {
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    display: grid;
+    gap: 4px;
+    padding: 10px;
+}
+
+.vk-guide-map-grid b {
+    color: var(--accent-dark);
+    font-size: 12px;
+    text-transform: uppercase;
+}
+
+.vk-guide-map-grid span {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.vk-guide-compact .vk-guide-head {
+    grid-template-columns: 1fr;
+}
+
+.vk-guide-compact .vk-guide-steps {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
 .faq-editor,
 .faq-manage-list {
     margin-top: 18px;
@@ -3958,5 +4240,53 @@ button {
     table.responsive-table[data-module] td[data-column="image_preview"] .table-thumb {
         height: 58px;
         width: 58px;
+    }
+}
+
+@media (max-width: 760px) {
+    .vk-guide {
+        gap: 14px;
+        margin: 14px 0;
+    }
+
+    .vk-guide-head,
+    .vk-guide-steps,
+    .vk-guide-map-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .vk-guide-step {
+        padding: 12px;
+    }
+
+    .vk-guide-step-title h3 {
+        font-size: 16px;
+    }
+
+    .vk-guide-shot {
+        min-height: 0;
+        padding: 8px;
+    }
+
+    .vk-shot-field {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 420px) {
+    .vk-guide-note,
+    .vk-guide-copy,
+    .vk-guide-step p,
+    .vk-guide-map-grid span {
+        font-size: 12px;
+    }
+
+    .vk-shot-top,
+    .vk-shot-row,
+    .vk-shot-field,
+    .vk-shot-check,
+    .vk-shot-button,
+    .vk-shot-tabs span {
+        padding: 7px 8px;
     }
 }

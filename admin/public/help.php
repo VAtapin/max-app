@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
+require_once __DIR__ . '/../app/core/integration_guides.php';
 
 $admin = require_auth();
 $title = app_text('help.title');
@@ -153,6 +154,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php else: ?>
     <div class="empty-state"><?= h(app_text('help.empty')) ?></div>
 <?php endif; ?>
+
+<?= render_vk_connection_guide() ?>
 
 <section class="panel form-panel faq-editor">
     <h2><?= h(app_text('help.editor_title')) ?></h2>

@@ -8,6 +8,7 @@ require_once __DIR__ . '/../app/core/test_admin.php';
 require_once __DIR__ . '/../app/core/broadcast_runner.php';
 require_once __DIR__ . '/../app/core/client_journey.php';
 require_once __DIR__ . '/../app/core/content_ownership.php';
+require_once __DIR__ . '/../app/core/integration_guides.php';
 
 $admin = require_auth();
 
@@ -1983,6 +1984,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php foreach ($errors as $error): ?>
     <div class="alert"><?= h($error) ?></div>
 <?php endforeach; ?>
+<?php if ($moduleKey === 'integrations'): ?>
+    <?= render_vk_connection_guide(true) ?>
+<?php endif; ?>
 <?php if ($action === 'create' || $action === 'edit'): ?>
     <section class="panel form-panel">
         <h2><?= h(crud_form_title($moduleKey, $action)) ?></h2>

@@ -204,13 +204,9 @@ function vk_callback_is_start_command(array $message): bool
 
 function vk_callback_send_start_response(array $integration, string $platformUserId, array $user): void
 {
-    $name = trim((string)($user['first_name'] ?? ''));
-    $greeting = $name !== '' ? 'Здравствуйте, ' . $name . '!' : 'Здравствуйте!';
     $miniAppUrl = vk_callback_mini_app_url($integration);
-    $text = $greeting . "\n\n"
-        . "SWPro готов к работе. В Mini App можно пройти чек-ап организма, посмотреть материалы и отправить вопрос консультанту.\n\n"
-        . "Открыть SWPro:\n" . $miniAppUrl . "\n\n"
-        . "Если хотите сразу написать консультанту, отправьте сообщение сюда одним текстом.";
+    $text = "Здравствуйте! Здесь можно пройти чек-ап и получить ответ консультанта. Нажмите «Начать» или откройте приложение SWPro.\n\n"
+        . "Открыть SWPro:\n" . $miniAppUrl;
 
     $result = send_vk_community_message($integration, $platformUserId, $text);
     if (empty($result['ok'])) {
