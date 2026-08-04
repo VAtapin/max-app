@@ -1186,13 +1186,17 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin,
         }
         if ($admin['role'] === 'reseller') {
             $rootId = (int)$admin['reseller_id'];
-            if ($parentId === null) {
+            if ($recordId) {
+                if (!team_is_reseller_in_branch($rootId, $recordId, true)) {
+                    $errors[] = 'Этот лидер не входит в вашу ветку.';
+                }
+                if ($parentId !== null && !team_is_reseller_in_branch($rootId, $parentId, true)) {
+                    $errors[] = 'Вышестоящий лидер должен быть внутри вашей ветки.';
+                }
+            } elseif ($parentId === null) {
                 $errors[] = 'Для лидера в вашей ветке нужно выбрать вышестоящего лидера.';
             } elseif (!team_is_reseller_in_branch($rootId, $parentId, true)) {
                 $errors[] = 'Вышестоящий лидер должен быть внутри вашей ветки.';
-            }
-            if ($recordId && !team_is_reseller_in_branch($rootId, $recordId, true)) {
-                $errors[] = 'Этот лидер не входит в вашу ветку.';
             }
         }
     }
