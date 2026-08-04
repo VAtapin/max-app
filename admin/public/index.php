@@ -46,7 +46,7 @@ function manager_referral_links(array $manager): array
     if ($vkAppId !== '') {
         $links['VK'] = [
             'label' => 'VK',
-            'url' => 'https://vk.com/app' . $vkAppId . '#ref=' . $encodedCode,
+            'url' => 'https://vk.ru/app' . $vkAppId . '#ref=' . $encodedCode,
         ];
     }
 

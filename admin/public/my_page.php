@@ -110,8 +110,49 @@ function about_section_titles(array $blocks): array
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
+    $postAction = (string)($_POST['action'] ?? 'save_profile');
 
     $profileId = (int)$profile['id'];
+    if ($postAction === 'apply_template') {
+        $templateId = (int)($_POST['template_id'] ?? 0);
+        try {
+            if (!$templateId || !site_template_apply_to_profile($profileId, $owner['owner_type'], (int)$owner['owner_id'], $templateId, true)) {
+                $errors[] = 'Выберите активный шаблон оформления.';
+            }
+        } catch (Throwable $e) {
+            $errors[] = 'Не удалось применить шаблон: ' . $e->getMessage();
+        }
+
+        if (!$errors) {
+            log_activity('admin', (int)$admin['id'], 'apply_site_template', 'consultant_profiles', $profileId, [
+                'template_id' => $templateId,
+                'owner_type' => $owner['owner_type'],
+                'owner_id' => (int)$owner['owner_id'],
+            ]);
+            redirect('my_page.php?' . profile_owner_query($owner) . '&success=template_applied');
+        }
+    } elseif ($postAction === 'reset_to_parent') {
+        try {
+            $parentProfile = consultant_parent_profile($owner['owner_type'], (int)$owner['owner_id']);
+            if (!$parentProfile) {
+                $errors[] = 'Для этой страницы нет версии выше.';
+            } else {
+                consultant_profile_reset_to_parent($profileId, (int)$parentProfile['id']);
+            }
+        } catch (Throwable $e) {
+            $errors[] = 'Не удалось вернуть версию выше: ' . $e->getMessage();
+        }
+
+        if (!$errors) {
+            log_activity('admin', (int)$admin['id'], 'reset_consultant_profile_to_parent', 'consultant_profiles', $profileId, [
+                'owner_type' => $owner['owner_type'],
+                'owner_id' => (int)$owner['owner_id'],
+            ]);
+            redirect('my_page.php?' . profile_owner_query($owner) . '&success=profile_reset');
+        }
+    }
+
+    if (!in_array($postAction, ['apply_template', 'reset_to_parent'], true)) {
     $currentPhotoPath = isset($_POST['remove_photo_path']) ? null : ($_POST['photo_path_current'] ?? ($profile['photo_path'] ?? null));
     $currentBannerPath = isset($_POST['remove_banner_path']) ? null : ($_POST['banner_path_current'] ?? ($profile['banner_path'] ?? null));
     $currentWelcomePath = isset($_POST['remove_welcome_image_path']) ? null : ($_POST['welcome_image_path_current'] ?? ($profile['welcome_image_path'] ?? null));
@@ -158,7 +199,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  vk_url = :vk_url,
                  ok_url = :ok_url,
                  theme_key = :theme_key,
-                 is_public = :is_public
+                 is_public = :is_public,
+                 source_profile_id = NULL,
+                 template_customized_at = NOW()
              WHERE id = :id'
         );
         $themeKey = (string)($_POST['theme_key'] ?? 'classic');
@@ -237,14 +280,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         log_activity('admin', (int)$admin['id'], 'update_consultant_profile', 'consultant_profiles', $profileId);
         redirect('my_page.php?' . profile_owner_query($owner) . '&success=saved');
     }
+    }
 }
 
-$profile = ensure_consultant_profile($owner['owner_type'], $owner['owner_id']);
-$blocks = consultant_blocks((int)$profile['id']);
+$storedProfile = ensure_consultant_profile($owner['owner_type'], $owner['owner_id']);
+$effectiveProfileId = consultant_effective_profile_id($storedProfile);
+$profile = consultant_effective_profile($storedProfile);
+$blocks = consultant_blocks($effectiveProfileId);
 $aboutTitles = about_section_titles($blocks);
-$selectedProducts = consultant_selected_ids((int)$profile['id'], 'profile_products', 'product_id');
-$selectedMaterials = consultant_selected_ids((int)$profile['id'], 'profile_materials', 'content_post_id');
+$selectedProducts = consultant_selected_ids($effectiveProfileId, 'profile_products', 'product_id');
+$selectedMaterials = consultant_selected_ids($effectiveProfileId, 'profile_materials', 'content_post_id');
 $ownerOptions = consultant_options_for_admin($admin);
+$templateOptions = site_template_options();
+$parentProfile = consultant_parent_profile($owner['owner_type'], (int)$owner['owner_id']);
+$isInheritedProfile = consultant_profile_inherits($storedProfile);
 
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
@@ -255,6 +304,10 @@ require __DIR__ . '/../app/views/layouts/header.php';
 
 <?php if ($success === 'saved'): ?>
     <div class="notice success"><?= h(app_text('consultant_profile.saved')) ?></div>
+<?php elseif ($success === 'template_applied'): ?>
+    <div class="notice success">Шаблон применён. Личные фотографии и загруженные изображения сохранены.</div>
+<?php elseif ($success === 'profile_reset'): ?>
+    <div class="notice success">Страница снова использует версию вышестоящего лидера.</div>
 <?php endif; ?>
 <?php foreach ($errors as $error): ?>
     <div class="alert"><?= h($error) ?></div>
@@ -279,8 +332,43 @@ require __DIR__ . '/../app/views/layouts/header.php';
     </section>
 <?php endif; ?>
 
+<?php if ($templateOptions): ?>
+    <section class="panel form-panel">
+        <h2>Шаблон оформления</h2>
+        <p class="cell-muted">Можно быстро вернуть страницу к одному из готовых вариантов. Ваши личные фото и загруженные изображения не затираются.</p>
+        <form method="post" class="inline-form" onsubmit="return confirm('Применить выбранный шаблон к странице? Тексты и настройки блоков будут заменены шаблонными.');">
+            <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+            <input type="hidden" name="action" value="apply_template">
+            <input type="hidden" name="owner_type" value="<?= h($owner['owner_type']) ?>">
+            <input type="hidden" name="owner_id" value="<?= (int)$owner['owner_id'] ?>">
+            <label class="field">
+                <span>Вариант</span>
+                <select name="template_id">
+                    <?php foreach ($templateOptions as $option): ?>
+                        <option value="<?= (int)$option['id'] ?>" <?= (int)($profile['template_id'] ?? 0) === (int)$option['id'] ? 'selected' : '' ?>>
+                            <?= h((string)$option['label']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <button type="submit" class="secondary-button">Применить шаблон</button>
+        </form>
+        <?php if ($parentProfile): ?>
+            <form method="post" class="inline-form" onsubmit="return confirm('Вернуть страницу к версии вышестоящего лидера? Ваша личная настройка блоков и подборок будет сброшена.');">
+                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                <input type="hidden" name="action" value="reset_to_parent">
+                <input type="hidden" name="owner_type" value="<?= h($owner['owner_type']) ?>">
+                <input type="hidden" name="owner_id" value="<?= (int)$owner['owner_id'] ?>">
+                <button type="submit" class="secondary-button"><?= $isInheritedProfile ? 'Обновить из версии выше' : 'Вернуть версию выше' ?></button>
+                <span class="cell-muted">Версия выше: <?= h((string)($parentProfile['display_name'] ?? '#' . (int)$parentProfile['id'])) ?></span>
+            </form>
+        <?php endif; ?>
+    </section>
+<?php endif; ?>
+
 <form method="post" class="profile-builder" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+    <input type="hidden" name="action" value="save_profile">
     <input type="hidden" name="owner_type" value="<?= h($owner['owner_type']) ?>">
     <input type="hidden" name="owner_id" value="<?= (int)$owner['owner_id'] ?>">
 

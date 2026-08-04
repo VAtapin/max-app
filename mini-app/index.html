@@ -9,22 +9,22 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="manifest" href="/site.webmanifest">
     <meta name="theme-color" content="#0b4f86">
-    <link rel="stylesheet" href="style.css?v=20260613-2">
+    <link rel="stylesheet" href="style.css?v=20260804-2">
 </head>
 <body>
     <main class="connect-app">
         <section class="connect-card">
             <div class="brand">SWPro</div>
             <h1>Подключение к консультанту</h1>
-            <p class="lead">Откройте SWPro в удобной платформе. Код консультанта будет передан автоматически.</p>
+            <p class="lead">Откройте SWPro в удобной платформе. Введите код консультанта или перейдите по его персональной ссылке.</p>
 
             <form id="connect-form" class="code-form">
                 <label for="ref-code">Код консультанта</label>
                 <div class="code-row">
-                    <input id="ref-code" name="ref" autocomplete="one-time-code" placeholder="Например: SWPRO-START">
+                    <input id="ref-code" name="ref" autocomplete="one-time-code" placeholder="Например: SWPRO_MARIA">
                     <button type="submit">Обновить ссылки</button>
                 </div>
-                <button class="default-code" type="button" data-action="default-code">Использовать стандартного консультанта</button>
+                <p class="code-error" id="code-error" hidden>Введите код консультанта, чтобы открыть приложение.</p>
             </form>
 
             <section class="platforms" aria-label="Платформы подключения">
@@ -67,6 +67,6 @@
             <p class="hint">Если вы уже закреплены за другим консультантом, новая ссылка не изменит привязку автоматически.</p>
         </section>
     </main>
-    <script src="app.js?v=20260703-1"></script>
+    <script src="app.js?v=20260804-2"></script>
 </body>
 </html>

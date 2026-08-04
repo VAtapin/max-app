@@ -57,7 +57,14 @@ if ($pending2fa) {
 }
 $setupSecret = $step === 'setup_2fa' && $pendingSetup ? pending_2fa_setup_secret() : '';
 $setupUri = $setupSecret !== '' && $pendingSetup ? admin_totp_uri($pendingSetup, $setupSecret) : '';
-$setupQr = $setupUri !== '' ? qr_code_svg_data_uri($setupUri) : '';
+$setupQr = '';
+if ($setupUri !== '') {
+    try {
+        $setupQr = qr_code_svg_data_uri($setupUri);
+    } catch (Throwable $e) {
+        $error = 'Не удалось создать QR-код 2FA: ' . $e->getMessage();
+    }
+}
 ?>
 <!doctype html>
 <html lang="ru">
@@ -91,7 +98,9 @@ $setupQr = $setupUri !== '' ? qr_code_svg_data_uri($setupUri) : '';
             <input type="hidden" name="action" value="confirm_2fa_setup">
             <h1 class="two-factor-connect-title">Подключить приложение-аутентификатор</h1>
             <p class="cell-muted">Откройте Яндекс ID, 2FAS, Aegis, Microsoft Authenticator или другое приложение с поддержкой TOTP и отсканируйте QR-код.</p>
-            <img class="two-factor-qr-image login-two-factor-qr-image" src="<?= h($setupQr) ?>" alt="QR-код для настройки 2FA">
+            <?php if ($setupQr !== ''): ?>
+                <img class="two-factor-qr-image login-two-factor-qr-image" src="<?= h($setupQr) ?>" alt="QR-код для настройки 2FA">
+            <?php endif; ?>
             <details class="two-factor-manual">
                 <summary>Не получается отсканировать QR-код</summary>
                 <p>Введите этот секретный ключ вручную:</p>

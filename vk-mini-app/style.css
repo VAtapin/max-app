@@ -1819,8 +1819,15 @@ button.secondary,
 }
 
 .contact-page {
+    justify-self: center;
     max-width: 560px;
     overflow: hidden;
+    width: 100%;
+}
+
+.contact-page .button-link,
+.contact-page button {
+    max-width: 100%;
     width: 100%;
 }
 

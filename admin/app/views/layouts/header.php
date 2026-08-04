@@ -94,20 +94,20 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
     </aside>
     <main class="main">
         <header class="topbar">
-            <div class="topbar-title-row">
-                <div class="topbar-title">
-                    <span><?= h($title ?? app_text('auto.dashboard')) ?></span>
-                    <small><?= h($config['app']['name']) ?></small>
+            <div class="topbar-title">
+                <span><?= h($title ?? app_text('auto.dashboard')) ?></span>
+                <small><?= h($config['app']['name']) ?></small>
+            </div>
+            <div class="topbar-right">
+                <div class="topbar-user">
+                    <a class="user-chip" href="account.php"><?= h($admin['name'] ?? '') ?></a>
+                    <a href="logout.php"><?= h(app_text('auto.k_026abb1e0a5e')) ?></a>
                 </div>
                 <label class="mobile-menu-button" for="mobile-nav-toggle" aria-label="Открыть меню">
                     <span></span>
                     <span></span>
                     <span></span>
                 </label>
-            </div>
-            <div class="topbar-user">
-                <a class="user-chip" href="account.php"><?= h($admin['name'] ?? '') ?></a>
-                <a href="logout.php"><?= h(app_text('auto.k_026abb1e0a5e')) ?></a>
             </div>
         </header>
         <section class="content">

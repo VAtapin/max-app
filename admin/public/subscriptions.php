@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
+require_once __DIR__ . '/../app/core/team_tree.php';
 
 $admin = require_auth();
 if ($admin['role'] !== 'superadmin') {
@@ -20,6 +21,14 @@ function subscription_status_labels(): array
         'active' => 'Активна',
         'expired' => 'Истекла',
         'suspended' => 'Приостановлена',
+    ];
+}
+
+function subscription_billing_basis_labels(): array
+{
+    return [
+        'branch' => 'Вся ветка',
+        'direct' => 'Только прямой уровень',
     ];
 }
 
@@ -51,6 +60,26 @@ function money_text(?float $value): string
     return $value === null ? '—' : number_format($value, 2, ',', ' ') . ' руб.';
 }
 
+function subscription_parse_money(string $value): ?float
+{
+    $value = str_replace(',', '.', trim($value));
+    if ($value === '') {
+        return null;
+    }
+
+    return is_numeric($value) ? (float)$value : null;
+}
+
+function subscription_parse_limit(string $value): ?int
+{
+    $value = trim($value);
+    if ($value === '') {
+        return null;
+    }
+
+    return ctype_digit($value) ? (int)$value : -1;
+}
+
 function subscription_period_text(array $item): string
 {
     $startsAt = trim((string)($item['subscription_starts_at'] ?? $item['starts_at'] ?? ''));
@@ -62,7 +91,29 @@ function subscription_period_text(array $item): string
     return ($startsAt !== '' ? $startsAt : 'без даты') . ' - ' . ($endsAt !== '' ? $endsAt : 'без окончания');
 }
 
-$basePrice = setting_value('leader_price_per_consultant', '300');
+function subscription_limit_text(?int $limit): string
+{
+    return $limit === null ? 'без лимита' : (string)$limit;
+}
+
+function subscription_limit_cell(int $used, ?int $limit): string
+{
+    return (string)$used . ' / ' . subscription_limit_text($limit);
+}
+
+function subscription_max_child_consultants(int $resellerId): int
+{
+    $max = 0;
+    $childrenMap = team_children_map(true);
+    foreach ($childrenMap[$resellerId] ?? [] as $childId) {
+        $max = max($max, team_branch_manager_count((int)$childId));
+    }
+
+    return $max;
+}
+
+$baseLeaderPrice = setting_value('leader_price_per_leader', '500');
+$baseConsultantPrice = setting_value('leader_price_per_consultant', '300');
 $paymentTerms = setting_value(
     'leader_payment_terms',
     'Оплата подтверждается администратором вручную. Онлайн-касса на первом этапе не подключена.'
@@ -73,9 +124,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postAction = (string)($_POST['action'] ?? 'save_subscription');
 
     if ($postAction === 'save_billing_settings') {
-        $price = str_replace(',', '.', trim((string)($_POST['leader_price_per_consultant'] ?? '')));
+        $leaderPrice = subscription_parse_money((string)($_POST['leader_price_per_leader'] ?? ''));
+        $consultantPrice = subscription_parse_money((string)($_POST['leader_price_per_consultant'] ?? ''));
         $terms = trim((string)($_POST['leader_payment_terms'] ?? ''));
-        if ($price === '' || !is_numeric($price) || (float)$price <= 0) {
+        if ($leaderPrice === null || $leaderPrice <= 0) {
+            $errors[] = 'Укажите цену за лидера больше нуля.';
+        }
+        if ($consultantPrice === null || $consultantPrice <= 0) {
             $errors[] = 'Укажите цену за консультанта больше нуля.';
         }
         if ($terms === '') {
@@ -83,7 +138,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (!$errors) {
-            save_setting('leader_price_per_consultant', number_format((float)$price, 2, '.', ''), 'Базовая ежемесячная стоимость одного консультанта в команде лидера');
+            save_setting('leader_price_per_leader', number_format((float)$leaderPrice, 2, '.', ''), 'Базовая ежемесячная стоимость одного дочернего лидера');
+            save_setting('leader_price_per_consultant', number_format((float)$consultantPrice, 2, '.', ''), 'Базовая ежемесячная стоимость одного консультанта в команде лидера');
             save_setting('leader_payment_terms', $terms, 'Короткая подсказка для бухгалтерской панели лидеров');
             log_activity('admin', (int)$admin['id'], 'update_leader_billing_settings', 'settings');
             redirect('subscriptions.php?success=settings_saved');
@@ -93,63 +149,117 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($postAction === 'save_subscription') {
         $resellerId = (int)($_POST['reseller_id'] ?? 0);
         $status = (string)($_POST['status'] ?? 'pending');
+        $billingBasis = (string)($_POST['billing_basis'] ?? 'branch');
         $startsAt = trim((string)($_POST['starts_at'] ?? ''));
         $endsAt = trim((string)($_POST['ends_at'] ?? ''));
         $paidAt = trim((string)($_POST['paid_at'] ?? ''));
         $invoiceNumber = trim((string)($_POST['invoice_number'] ?? ''));
         $paymentMethod = trim((string)($_POST['payment_method'] ?? ''));
         $note = trim((string)($_POST['payment_note'] ?? ''));
-        $consultantLimit = trim((string)($_POST['consultant_limit'] ?? ''));
-        $pricePerConsultant = str_replace(',', '.', trim((string)($_POST['price_per_consultant'] ?? $basePrice)));
+        $directLeaderLimit = subscription_parse_limit((string)($_POST['direct_leader_limit'] ?? ''));
+        $branchLeaderLimit = subscription_parse_limit((string)($_POST['branch_leader_limit'] ?? ''));
+        $directConsultantLimit = subscription_parse_limit((string)($_POST['direct_consultant_limit'] ?? ''));
+        $branchConsultantLimit = subscription_parse_limit((string)($_POST['branch_consultant_limit'] ?? ''));
+        $perChildConsultantLimit = subscription_parse_limit((string)($_POST['per_child_consultant_limit'] ?? ''));
+        $pricePerLeader = subscription_parse_money((string)($_POST['price_per_leader'] ?? $baseLeaderPrice));
+        $pricePerConsultant = subscription_parse_money((string)($_POST['price_per_consultant'] ?? $baseConsultantPrice));
 
-        if ($resellerId <= 0) {
+        foreach ([
+            'Лимит прямых лидеров' => $directLeaderLimit,
+            'Лимит лидеров во всей ветке' => $branchLeaderLimit,
+            'Лимит прямых консультантов' => $directConsultantLimit,
+            'Лимит консультантов во всей ветке' => $branchConsultantLimit,
+            'Лимит консультантов на дочернего лидера' => $perChildConsultantLimit,
+        ] as $label => $limit) {
+            if ($limit !== null && $limit < 0) {
+                $errors[] = $label . ': укажите целое число или оставьте поле пустым.';
+            }
+        }
+        if ($resellerId <= 0 || !team_reseller_row($resellerId)) {
             $errors[] = 'Выберите лидера.';
         }
         if (!isset(subscription_status_labels()[$status])) {
             $errors[] = 'Некорректный статус.';
         }
-        if ($consultantLimit === '' || (int)$consultantLimit <= 0) {
-            $errors[] = 'Укажите лимит консультантов для этого периода.';
+        if (!isset(subscription_billing_basis_labels()[$billingBasis])) {
+            $errors[] = 'Некорректный способ расчёта.';
         }
-        if ($pricePerConsultant === '' || !is_numeric($pricePerConsultant) || (float)$pricePerConsultant <= 0) {
+        if ($pricePerLeader === null || $pricePerLeader <= 0) {
+            $errors[] = 'Укажите цену за лидера больше нуля.';
+        }
+        if ($pricePerConsultant === null || $pricePerConsultant <= 0) {
             $errors[] = 'Укажите цену за консультанта больше нуля.';
         }
         if ($status === 'active' && $endsAt === '') {
             $errors[] = 'Для активной подписки укажите дату окончания.';
         }
 
-        if ($resellerId > 0 && $consultantLimit !== '' && (int)$consultantLimit > 0) {
-            $activeManagers = db()->prepare('SELECT COUNT(*) FROM managers WHERE reseller_id = :reseller_id AND is_active = 1');
-            $activeManagers->execute(['reseller_id' => $resellerId]);
-            $activeCount = (int)$activeManagers->fetchColumn();
-            if ($activeCount > (int)$consultantLimit) {
-                $errors[] = 'Лимит меньше текущего количества активных консультантов: ' . $activeCount . '.';
+        if ($resellerId > 0) {
+            $summary = team_branch_summary($resellerId);
+            if ($directLeaderLimit !== null && $summary['direct_leaders'] > $directLeaderLimit) {
+                $errors[] = 'Лимит прямых лидеров меньше текущего количества: ' . $summary['direct_leaders'] . '.';
+            }
+            if ($branchLeaderLimit !== null && $summary['branch_leaders'] > $branchLeaderLimit) {
+                $errors[] = 'Лимит лидеров во всей ветке меньше текущего количества: ' . $summary['branch_leaders'] . '.';
+            }
+            if ($directConsultantLimit !== null && $summary['direct_consultants'] > $directConsultantLimit) {
+                $errors[] = 'Лимит прямых консультантов меньше текущего количества: ' . $summary['direct_consultants'] . '.';
+            }
+            if ($branchConsultantLimit !== null && $summary['branch_consultants'] > $branchConsultantLimit) {
+                $errors[] = 'Лимит консультантов во всей ветке меньше текущего количества: ' . $summary['branch_consultants'] . '.';
+            }
+            if ($perChildConsultantLimit !== null) {
+                $maxChildConsultants = subscription_max_child_consultants($resellerId);
+                if ($maxChildConsultants > $perChildConsultantLimit) {
+                    $errors[] = 'Лимит на дочернего лидера меньше текущего максимума у дочерних лидеров: ' . $maxChildConsultants . '.';
+                }
             }
         }
 
         if (!$errors) {
-            $limit = (int)$consultantLimit;
-            $price = (float)$pricePerConsultant;
-            $amount = $limit * $price;
+            $billingLeaderLimit = $billingBasis === 'direct' ? $directLeaderLimit : $branchLeaderLimit;
+            $billingConsultantLimit = $billingBasis === 'direct' ? $directConsultantLimit : $branchConsultantLimit;
+            $leaderAmount = (float)($billingLeaderLimit ?? 0) * (float)$pricePerLeader;
+            $consultantAmount = (float)($billingConsultantLimit ?? 0) * (float)$pricePerConsultant;
+            $amount = $leaderAmount + $consultantAmount;
+            $consultantLimit = $branchConsultantLimit ?? $directConsultantLimit;
+            $leaderLimit = $branchLeaderLimit ?? $directLeaderLimit;
 
             db()->beginTransaction();
             try {
                 $stmt = db()->prepare(
                     'INSERT INTO leader_subscriptions (
-                        reseller_id, consultant_limit, price_per_consultant, amount_due,
+                        reseller_id, consultant_limit, leader_limit,
+                        price_per_consultant, price_per_leader,
+                        amount_due, leader_amount_due, billing_basis,
+                        direct_leader_limit, branch_leader_limit,
+                        direct_consultant_limit, branch_consultant_limit, per_child_consultant_limit,
                         status, starts_at, ends_at, monthly_price, paid_at,
                         invoice_number, payment_method, payment_note, activated_by
                      ) VALUES (
-                        :reseller_id, :consultant_limit, :price_per_consultant, :amount_due,
+                        :reseller_id, :consultant_limit, :leader_limit,
+                        :price_per_consultant, :price_per_leader,
+                        :amount_due, :leader_amount_due, :billing_basis,
+                        :direct_leader_limit, :branch_leader_limit,
+                        :direct_consultant_limit, :branch_consultant_limit, :per_child_consultant_limit,
                         :status, :starts_at, :ends_at, :monthly_price, :paid_at,
                         :invoice_number, :payment_method, :payment_note, :activated_by
                      )'
                 );
                 $stmt->execute([
                     'reseller_id' => $resellerId,
-                    'consultant_limit' => $limit,
-                    'price_per_consultant' => $price,
+                    'consultant_limit' => $consultantLimit,
+                    'leader_limit' => $leaderLimit,
+                    'price_per_consultant' => $pricePerConsultant,
+                    'price_per_leader' => $pricePerLeader,
                     'amount_due' => $amount,
+                    'leader_amount_due' => $leaderAmount,
+                    'billing_basis' => $billingBasis,
+                    'direct_leader_limit' => $directLeaderLimit,
+                    'branch_leader_limit' => $branchLeaderLimit,
+                    'direct_consultant_limit' => $directConsultantLimit,
+                    'branch_consultant_limit' => $branchConsultantLimit,
+                    'per_child_consultant_limit' => $perChildConsultantLimit,
                     'status' => $status,
                     'starts_at' => $startsAt !== '' ? str_replace('T', ' ', $startsAt) : null,
                     'ends_at' => $endsAt !== '' ? str_replace('T', ' ', $endsAt) : null,
@@ -162,13 +272,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
                 $subscriptionId = (int)db()->lastInsertId();
 
-                $updateLimit = db()->prepare('UPDATE resellers SET manager_limit = :manager_limit WHERE id = :id');
-                $updateLimit->execute(['manager_limit' => $limit, 'id' => $resellerId]);
+                $updateLimit = db()->prepare(
+                    'UPDATE resellers
+                     SET manager_limit = :manager_limit,
+                         direct_leader_limit = :direct_leader_limit,
+                         branch_leader_limit = :branch_leader_limit,
+                         direct_manager_limit = :direct_manager_limit,
+                         branch_manager_limit = :branch_manager_limit,
+                         per_child_manager_limit = :per_child_manager_limit,
+                         price_per_leader = :price_per_leader,
+                         price_per_consultant = :price_per_consultant
+                     WHERE id = :id'
+                );
+                $updateLimit->execute([
+                    'manager_limit' => $consultantLimit,
+                    'direct_leader_limit' => $directLeaderLimit,
+                    'branch_leader_limit' => $branchLeaderLimit,
+                    'direct_manager_limit' => $directConsultantLimit,
+                    'branch_manager_limit' => $branchConsultantLimit,
+                    'per_child_manager_limit' => $perChildConsultantLimit,
+                    'price_per_leader' => $pricePerLeader,
+                    'price_per_consultant' => $pricePerConsultant,
+                    'id' => $resellerId,
+                ]);
 
                 log_activity('admin', (int)$admin['id'], 'create_leader_subscription', 'leader_subscriptions', $subscriptionId, [
                     'reseller_id' => $resellerId,
-                    'consultant_limit' => $limit,
-                    'price_per_consultant' => $price,
+                    'leader_limit' => $leaderLimit,
+                    'consultant_limit' => $consultantLimit,
+                    'billing_basis' => $billingBasis,
                     'amount_due' => $amount,
                 ]);
                 db()->commit();
@@ -181,24 +313,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$leaders = db()->query('SELECT id, name, manager_limit FROM resellers WHERE is_active = 1 ORDER BY name')->fetchAll();
+$leaderOptions = team_reseller_options_for_admin($admin);
 $leaderRows = db()->query(
-    'SELECT r.id, r.name, r.email, r.phone, r.billing_name, r.billing_inn, r.billing_email,
-            r.manager_limit, r.is_active,
-            (SELECT COUNT(*) FROM managers m WHERE m.reseller_id = r.id) AS managers_count,
-            (SELECT COUNT(*) FROM managers m WHERE m.reseller_id = r.id AND m.is_active = 1) AS active_managers_count,
-            (SELECT COUNT(*) FROM end_users eu WHERE eu.reseller_id = r.id) AS users_count,
+    'SELECT r.id, r.parent_reseller_id, r.name, r.email, r.phone, r.billing_name, r.billing_inn, r.billing_email,
+            r.manager_limit, r.direct_leader_limit, r.branch_leader_limit,
+            r.direct_manager_limit, r.branch_manager_limit, r.per_child_manager_limit,
+            r.price_per_leader AS reseller_price_per_leader,
+            r.price_per_consultant AS reseller_price_per_consultant,
+            r.is_active,
+            parent.name AS parent_name,
             ls.status AS subscription_status,
             ls.starts_at AS subscription_starts_at,
             ls.ends_at AS subscription_ends_at,
             ls.consultant_limit AS subscription_consultant_limit,
+            ls.leader_limit AS subscription_leader_limit,
             ls.price_per_consultant,
+            ls.price_per_leader,
             ls.amount_due,
+            ls.leader_amount_due,
+            ls.billing_basis,
             ls.paid_at,
             ls.invoice_number,
             ls.payment_method,
             ls.payment_note
      FROM resellers r
+     LEFT JOIN resellers parent ON parent.id = r.parent_reseller_id
      LEFT JOIN (
         SELECT s.*
         FROM leader_subscriptions s
@@ -208,22 +347,23 @@ $leaderRows = db()->query(
             GROUP BY reseller_id
         ) latest ON latest.latest_id = s.id
      ) ls ON ls.reseller_id = r.id
-     ORDER BY r.name ASC'
+     ORDER BY parent.name IS NULL DESC, parent.name, r.name ASC'
 )->fetchAll();
 
 $summary = [
     'leaders' => count($leaderRows),
     'active_subscriptions' => 0,
-    'active_consultants' => 0,
-    'consultant_limit' => 0,
+    'branch_leaders' => 0,
+    'branch_consultants' => 0,
     'monthly_revenue' => 0.0,
     'pending' => 0,
     'problem' => 0,
 ];
 $now = time();
-foreach ($leaderRows as $row) {
-    $summary['active_consultants'] += (int)$row['active_managers_count'];
-    $summary['consultant_limit'] += (int)($row['manager_limit'] ?? 0);
+foreach ($leaderRows as &$row) {
+    $row['team_summary'] = team_branch_summary((int)$row['id']);
+    $summary['branch_leaders'] += (int)$row['team_summary']['branch_leaders'];
+    $summary['branch_consultants'] += (int)$row['team_summary']['branch_consultants'];
     $status = (string)($row['subscription_status'] ?? '');
     if ($status === 'pending') {
         $summary['pending']++;
@@ -238,38 +378,43 @@ foreach ($leaderRows as $row) {
         $summary['problem']++;
     }
 }
+unset($row);
 
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
 <div class="toolbar"><h1>Оплата лидеров</h1></div>
-<?php if ($success === 'saved'): ?><div class="notice success">Подписка сохранена, лимит лидера обновлён.</div><?php endif; ?>
+<?php if ($success === 'saved'): ?><div class="notice success">Подписка сохранена, лимиты лидера обновлены.</div><?php endif; ?>
 <?php if ($success === 'settings_saved'): ?><div class="notice success">Параметры оплаты сохранены.</div><?php endif; ?>
 <?php foreach ($errors as $error): ?><div class="alert"><?= h($error) ?></div><?php endforeach; ?>
 
 <section class="grid stats-grid">
     <article class="stat"><span>Лидеров</span><strong><?= (int)$summary['leaders'] ?></strong></article>
     <article class="stat"><span>Активных подписок</span><strong><?= (int)$summary['active_subscriptions'] ?></strong></article>
-    <article class="stat"><span>Активных консультантов</span><strong><?= (int)$summary['active_consultants'] ?></strong></article>
-    <article class="stat"><span>Выданный лимит</span><strong><?= (int)$summary['consultant_limit'] ?></strong></article>
+    <article class="stat"><span>Лидеров в ветках</span><strong><?= (int)$summary['branch_leaders'] ?></strong></article>
+    <article class="stat"><span>Консультантов в ветках</span><strong><?= (int)$summary['branch_consultants'] ?></strong></article>
     <article class="stat"><span>План в месяц</span><strong><?= h(money_text((float)$summary['monthly_revenue'])) ?></strong></article>
     <article class="stat"><span>Ожидают/проблемы</span><strong><?= (int)($summary['pending'] + $summary['problem']) ?></strong></article>
 </section>
 
 <section class="panel form-panel">
-    <h2>Тариф и правила оплаты</h2>
-    <p class="cell-muted">Цена применяется как базовая при создании новой подписки. Итог считается как лимит консультантов умножить на цену за консультанта.</p>
+    <h2>Тарифы и правила оплаты</h2>
+    <p class="cell-muted">Базовые цены подставляются в новую подписку. Итог можно считать по прямому уровню лидера или по всей его ветке.</p>
     <form method="post" class="crud-form">
         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
         <input type="hidden" name="action" value="save_billing_settings">
         <label class="field">
+            <span>Цена за дочернего лидера в месяц, руб.</span>
+            <input type="number" step="0.01" name="leader_price_per_leader" value="<?= h($baseLeaderPrice) ?>">
+        </label>
+        <label class="field">
             <span>Цена за консультанта в месяц, руб.</span>
-            <input type="number" step="0.01" name="leader_price_per_consultant" value="<?= h($basePrice) ?>">
+            <input type="number" step="0.01" name="leader_price_per_consultant" value="<?= h($baseConsultantPrice) ?>">
         </label>
         <label class="field wide">
             <span>Короткие условия оплаты</span>
             <textarea name="leader_payment_terms" rows="3"><?= h($paymentTerms) ?></textarea>
         </label>
-        <div class="form-actions"><button type="submit">Сохранить тариф</button></div>
+        <div class="form-actions"><button type="submit">Сохранить тарифы</button></div>
     </form>
 </section>
 
@@ -283,24 +428,26 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <span>Лидер *</span>
             <select name="reseller_id" required>
                 <option value="">Выберите</option>
-                <?php foreach ($leaders as $leader): ?>
-                    <option
-                        value="<?= (int)$leader['id'] ?>"
-                        data-limit="<?= h((string)($leader['manager_limit'] ?? '')) ?>"
-                    >
-                        <?= h((string)$leader['name']) ?>
-                    </option>
+                <?php foreach ($leaderOptions as $leader): ?>
+                    <option value="<?= (int)$leader['id'] ?>"><?= h($leader['label']) ?></option>
                 <?php endforeach; ?>
             </select>
         </label>
         <label class="field">
-            <span>Лимит консультантов *</span>
-            <input type="number" min="1" name="consultant_limit" value="1" required>
+            <span>Расчёт суммы *</span>
+            <select name="billing_basis">
+                <?php foreach (subscription_billing_basis_labels() as $value => $label): ?>
+                    <option value="<?= h($value) ?>"><?= h($label) ?></option>
+                <?php endforeach; ?>
+            </select>
         </label>
-        <label class="field">
-            <span>Цена за консультанта, руб. *</span>
-            <input type="number" step="0.01" min="0.01" name="price_per_consultant" value="<?= h($basePrice) ?>" required>
-        </label>
+        <label class="field"><span>Лимит прямых лидеров</span><input type="number" min="0" name="direct_leader_limit" placeholder="без лимита"></label>
+        <label class="field"><span>Лимит лидеров во всей ветке</span><input type="number" min="0" name="branch_leader_limit" placeholder="без лимита"></label>
+        <label class="field"><span>Лимит прямых консультантов</span><input type="number" min="0" name="direct_consultant_limit" placeholder="без лимита"></label>
+        <label class="field"><span>Лимит консультантов во всей ветке</span><input type="number" min="0" name="branch_consultant_limit" placeholder="без лимита"></label>
+        <label class="field"><span>Консультантов на дочернего лидера</span><input type="number" min="0" name="per_child_consultant_limit" placeholder="без лимита"></label>
+        <label class="field"><span>Цена за лидера, руб. *</span><input type="number" step="0.01" min="0.01" name="price_per_leader" value="<?= h($baseLeaderPrice) ?>" required></label>
+        <label class="field"><span>Цена за консультанта, руб. *</span><input type="number" step="0.01" min="0.01" name="price_per_consultant" value="<?= h($baseConsultantPrice) ?>" required></label>
         <div class="field">
             <span>Расчёт за месяц</span>
             <strong id="subscription-amount-preview">—</strong>
@@ -323,28 +470,20 @@ require __DIR__ . '/../app/views/layouts/header.php';
     </form>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const leader = document.querySelector('[name="reseller_id"]');
-            const limit = document.querySelector('[name="consultant_limit"]');
-            const price = document.querySelector('[name="price_per_consultant"]');
+            const form = document.querySelector('form [name="billing_basis"]')?.closest('form');
             const preview = document.querySelector('#subscription-amount-preview');
-            if (!limit || !price || !preview) return;
-            const formatMoney = (value) => new Intl.NumberFormat('ru-RU', {
-                style: 'currency',
-                currency: 'RUB',
-            }).format(value);
+            if (!form || !preview) return;
+            const money = (value) => new Intl.NumberFormat('ru-RU', {style: 'currency', currency: 'RUB'}).format(value);
+            const numberValue = (name) => Number(String(form.elements[name]?.value || '0').replace(',', '.')) || 0;
             const updatePreview = () => {
-                const amount = Number(limit.value || 0) * Number(String(price.value || '0').replace(',', '.'));
-                preview.textContent = amount > 0 ? formatMoney(amount) : '—';
+                const basis = form.elements.billing_basis?.value || 'branch';
+                const leaderLimit = numberValue(basis === 'direct' ? 'direct_leader_limit' : 'branch_leader_limit');
+                const consultantLimit = numberValue(basis === 'direct' ? 'direct_consultant_limit' : 'branch_consultant_limit');
+                const amount = leaderLimit * numberValue('price_per_leader') + consultantLimit * numberValue('price_per_consultant');
+                preview.textContent = amount > 0 ? money(amount) : '—';
             };
-            leader?.addEventListener('change', () => {
-                const savedLimit = leader.selectedOptions?.[0]?.dataset?.limit || '';
-                if (savedLimit && Number(savedLimit) > 0) {
-                    limit.value = savedLimit;
-                }
-                updatePreview();
-            });
-            limit.addEventListener('input', updatePreview);
-            price.addEventListener('input', updatePreview);
+            ['billing_basis', 'direct_leader_limit', 'branch_leader_limit', 'direct_consultant_limit', 'branch_consultant_limit', 'price_per_leader', 'price_per_consultant']
+                .forEach((name) => form.elements[name]?.addEventListener('input', updatePreview));
             updatePreview();
         });
     </script>
@@ -356,7 +495,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
         <thead>
         <tr>
             <th>Лидер</th>
-            <th>Консультанты</th>
+            <th>Текущая ветка</th>
+            <th>Выданные лимиты</th>
             <th>Последняя подписка</th>
             <th>Сумма</th>
             <th>Плательщик</th>
@@ -368,24 +508,39 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <?php
             $status = (string)($item['subscription_status'] ?? '');
             $statusLabel = $status !== '' ? (subscription_status_labels()[$status] ?? $status) : 'Нет подписки';
+            $basis = (string)($item['billing_basis'] ?? 'branch');
             $amount = $item['amount_due'] !== null ? (float)$item['amount_due'] : null;
             $billing = trim((string)($item['billing_name'] ?? ''))
                 ?: trim((string)($item['billing_email'] ?? ''))
                 ?: '—';
+            $team = $item['team_summary'];
             ?>
             <tr>
                 <td>
                     <strong><?= h((string)$item['name']) ?></strong><br>
                     <span class="cell-muted"><?= h((string)($item['email'] ?: $item['phone'] ?: '—')) ?></span>
+                    <?php if (!empty($item['parent_name'])): ?>
+                        <br><span class="cell-muted">Над ним: <?= h((string)$item['parent_name']) ?></span>
+                    <?php endif; ?>
                 </td>
                 <td>
-                    Активных: <?= (int)$item['active_managers_count'] ?><br>
-                    Всего: <?= (int)$item['managers_count'] ?><br>
-                    Лимит: <?= $item['manager_limit'] !== null ? (int)$item['manager_limit'] : 'без ограничения' ?>
+                    Лидеры: <?= (int)$team['direct_leaders'] ?> прямых / <?= (int)$team['branch_leaders'] ?> в ветке<br>
+                    Консультанты: <?= (int)$team['direct_consultants'] ?> прямых / <?= (int)$team['branch_consultants'] ?> в ветке<br>
+                    Клиенты ветки: <?= (int)$team['branch_clients'] ?>
                 </td>
                 <td>
-                    <span class="badge"><?= h($statusLabel) ?></span><br>
-                    <span class="cell-muted"><?= h(subscription_period_text($item)) ?></span>
+                    Прямые лидеры: <?= h(subscription_limit_cell((int)$team['direct_leaders'], $item['direct_leader_limit'] !== null ? (int)$item['direct_leader_limit'] : null)) ?><br>
+                    Лидеры ветки: <?= h(subscription_limit_cell((int)$team['branch_leaders'], $item['branch_leader_limit'] !== null ? (int)$item['branch_leader_limit'] : null)) ?><br>
+                    Прямые консультанты: <?= h(subscription_limit_cell((int)$team['direct_consultants'], $item['direct_manager_limit'] !== null ? (int)$item['direct_manager_limit'] : null)) ?><br>
+                    Консультанты ветки: <?= h(subscription_limit_cell((int)$team['branch_consultants'], $item['branch_manager_limit'] !== null ? (int)$item['branch_manager_limit'] : null)) ?>
+                    <?php if ($item['per_child_manager_limit'] !== null): ?>
+                        <br>На дочернего лидера: <?= (int)$item['per_child_manager_limit'] ?>
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <span class="<?= h(status_badge_class($statusLabel)) ?>"><?= h($statusLabel) ?></span><br>
+                    <span class="cell-muted"><?= h(subscription_period_text($item)) ?></span><br>
+                    <span class="cell-muted">Расчёт: <?= h(subscription_billing_basis_labels()[$basis] ?? $basis) ?></span>
                     <?php if (!empty($item['paid_at'])): ?>
                         <br><span class="cell-muted">Оплачено: <?= h((string)$item['paid_at']) ?></span>
                     <?php endif; ?>
@@ -393,7 +548,10 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <td>
                     <?= h(money_text($amount)) ?><br>
                     <span class="cell-muted">
-                        <?= $item['price_per_consultant'] !== null ? h(money_text((float)$item['price_per_consultant'])) . ' за консультанта' : 'цена не задана' ?>
+                        <?= $item['price_per_leader'] !== null ? h(money_text((float)$item['price_per_leader'])) . ' за лидера' : 'цена лидера не задана' ?>
+                    </span><br>
+                    <span class="cell-muted">
+                        <?= $item['price_per_consultant'] !== null ? h(money_text((float)$item['price_per_consultant'])) . ' за консультанта' : 'цена консультанта не задана' ?>
                     </span>
                 </td>
                 <td>

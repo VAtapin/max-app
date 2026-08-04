@@ -301,7 +301,14 @@ function test_snippet(?int $testId): ?array
     return $test ?: null;
 }
 
-function mini_app_url(?int $testId = null, ?string $platform = null, ?string $referralCode = null, ?int $materialId = null, ?int $endUserId = null): string
+function mini_app_url(
+    ?int $testId = null,
+    ?string $platform = null,
+    ?string $referralCode = null,
+    ?int $materialId = null,
+    ?int $endUserId = null,
+    ?string $page = null
+): string
 {
     $config = app_config();
     $platform = normalize_platform($platform);
@@ -310,12 +317,15 @@ function mini_app_url(?int $testId = null, ?string $platform = null, ?string $re
     if ($referralCode !== '') {
         $params['ref'] = $referralCode;
     }
+    $page = trim((string)$page);
     if ($testId) {
         $params['page'] = 'tests';
         $params['test_id'] = $testId;
     } elseif ($materialId) {
         $params['page'] = 'home';
         $params['material_id'] = $materialId;
+    } elseif ($page !== '') {
+        $params['page'] = $page;
     }
 
     if ($platform === 'VK') {
@@ -702,7 +712,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
             'Ответ консультанта',
             $message !== '' ? $message : 'Консультант отправил вам материалы.',
             'Открыть ответ',
-            $miniAppUrl !== '' ? $miniAppUrl . '/?page=contact' : null
+            mini_app_url(null, $platform, $referralCode, null, (int)$lead['end_user_id'], 'contact')
         );
         $stmt = db()->prepare('UPDATE leads SET status = "contacted" WHERE id = :id AND status = "new"');
         $stmt->execute(['id' => $leadId]);

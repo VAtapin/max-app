@@ -160,7 +160,7 @@ function vk_callback_mini_app_url(array $integration): string
     $encodedCode = $code !== null ? rawurlencode($code) : '';
     $vkAppId = preg_replace('/\D+/', '', (string)($config['integrations']['vk_app_id'] ?? '')) ?: '';
     if ($vkAppId !== '') {
-        return 'https://vk.com/app' . $vkAppId . ($encodedCode !== '' ? '#ref=' . $encodedCode : '');
+        return 'https://vk.ru/app' . $vkAppId . ($encodedCode !== '' ? '#ref=' . $encodedCode : '');
     }
 
     $miniAppUrl = trim((string)($config['integrations']['mini_app_url'] ?? ''));

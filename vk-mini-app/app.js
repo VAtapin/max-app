@@ -95,7 +95,7 @@ function launchParams() {
             params.set(key, value);
         }
     });
-    ['startapp', 'start_param', 'vk_ref', 'vk_start_param', 'location', 'route', 'payload'].forEach((key) => {
+    ['startapp', 'start_param', 'vk_ref', 'vk_start_param', 'location', 'route', 'payload', 'hash', 'vk_hash', 'fragment'].forEach((key) => {
         if (params.has(key)) {
             mergeRouteParams(params, params.get(key));
         }
@@ -151,7 +151,7 @@ function applyBridgeLocation(value) {
 
 async function loadI18n() {
     try {
-        const response = await fetch('i18n/ru.json?v=20260703-4', {cache: 'force-cache'});
+        const response = await fetch('i18n/ru.json?v=20260804-2', {cache: 'force-cache'});
         state.i18n = response.ok ? await response.json() : {};
         applyStaticI18n();
     } catch (_) {

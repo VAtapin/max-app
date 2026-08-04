@@ -151,6 +151,21 @@ function messaging_image_mime_type(string $url): ?string
     };
 }
 
+function messaging_local_upload_path_from_url(string $url): ?string
+{
+    $path = (string)(parse_url($url, PHP_URL_PATH) ?: $url);
+    $path = '/' . ltrim($path, '/');
+    $prefix = '/admin/uploads/';
+    if (!str_starts_with($path, $prefix)) {
+        return null;
+    }
+
+    $relative = substr($path, strlen($prefix));
+    $local = dirname(__DIR__, 2) . '/uploads/' . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relative);
+
+    return is_file($local) ? $local : null;
+}
+
 function vk_upload_message_photo(array $integration, string $userId, string $url): ?string
 {
     $mimeType = messaging_image_mime_type($url);
@@ -170,7 +185,8 @@ function vk_upload_message_photo(array $integration, string $userId, string $url
         return null;
     }
 
-    $contents = @file_get_contents($url);
+    $localPath = messaging_local_upload_path_from_url($url);
+    $contents = $localPath ? @file_get_contents($localPath) : @file_get_contents($url);
     if ($contents === false || $contents === '') {
         return null;
     }

@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/team_tree.php';
+
 function owned_content_config(string $moduleKey): ?array
 {
     $configs = [
@@ -90,46 +92,57 @@ function owned_content_owner_list_clause(string $alias, array $owners, string $p
     return ['(' . implode(' OR ', $parts) . ')', $params];
 }
 
+function owned_content_owner_priority_condition(array $config, string $alias, array $owners, string $paramPrefix): array
+{
+    if (!$owners) {
+        return ['', []];
+    }
+
+    $sqlAlias = $alias !== '' ? $alias : $config['table'];
+    $prefix = $sqlAlias . '.';
+    $sourceColumn = $config['source_column'];
+    $deletedColumn = $config['deleted_column'];
+    $parts = [];
+    $params = [];
+
+    foreach ($owners as $index => $owner) {
+        [$ownerSql, $ownerParams] = owned_content_owner_clause($sqlAlias, $owner['owner_type'], $owner['owner_id'], $paramPrefix . '_owner_' . $index);
+        $params += $ownerParams;
+        $laterOwners = array_slice($owners, $index + 1);
+        $notExists = '';
+        if ($laterOwners) {
+            [$laterSql, $laterParams] = owned_content_owner_list_clause('cow_later', $laterOwners, $paramPrefix . '_later_' . $index);
+            $params += $laterParams;
+            $notExists = ' AND NOT EXISTS (
+                SELECT 1
+                FROM ' . $config['table'] . ' cow_later
+                WHERE cow_later.id <> ' . $prefix . 'id
+                  AND COALESCE(cow_later.' . $sourceColumn . ', cow_later.id) = COALESCE(' . $prefix . $sourceColumn . ', ' . $prefix . 'id)
+                  AND ' . $laterSql . '
+            )';
+        }
+
+        $parts[] = '(' . $ownerSql . ' AND ' . $prefix . $deletedColumn . ' = 0' . $notExists . ')';
+    }
+
+    return ['(' . implode(' OR ', $parts) . ')', $params];
+}
+
 function owned_content_admin_visible_owners(array $admin): array
 {
     if ($admin['role'] === 'superadmin') {
         return [];
     }
 
-    $owners = [['owner_type' => null, 'owner_id' => null]];
-    if ($admin['role'] === 'reseller' && !empty($admin['reseller_id'])) {
-        $owners[] = ['owner_type' => 'reseller', 'owner_id' => (int)$admin['reseller_id']];
-    }
-    if ($admin['role'] === 'manager') {
-        if (!empty($admin['reseller_id'])) {
-            $owners[] = ['owner_type' => 'reseller', 'owner_id' => (int)$admin['reseller_id']];
-        }
-        if (!empty($admin['manager_id'])) {
-            $owners[] = ['owner_type' => 'manager', 'owner_id' => (int)$admin['manager_id']];
-        }
-    }
-
-    return $owners;
+    return team_owner_chain_for_admin($admin);
 }
 
 function owned_content_admin_override_owners(array $admin): array
 {
-    if ($admin['role'] === 'reseller' && !empty($admin['reseller_id'])) {
-        return [['owner_type' => 'reseller', 'owner_id' => (int)$admin['reseller_id']]];
-    }
-
-    if ($admin['role'] === 'manager') {
-        $owners = [];
-        if (!empty($admin['reseller_id'])) {
-            $owners[] = ['owner_type' => 'reseller', 'owner_id' => (int)$admin['reseller_id']];
-        }
-        if (!empty($admin['manager_id'])) {
-            $owners[] = ['owner_type' => 'manager', 'owner_id' => (int)$admin['manager_id']];
-        }
-        return $owners;
-    }
-
-    return [];
+    return array_values(array_filter(
+        owned_content_admin_visible_owners($admin),
+        static fn(array $owner): bool => $owner['owner_type'] !== null
+    ));
 }
 
 function owned_content_scope_condition(string $moduleKey, array $admin, string $alias = ''): array
@@ -139,44 +152,19 @@ function owned_content_scope_condition(string $moduleKey, array $admin, string $
         return ['', []];
     }
 
-    $sqlAlias = $alias !== '' ? $alias : $config['table'];
-    [$visibleSql, $params] = owned_content_owner_list_clause($sqlAlias, owned_content_admin_visible_owners($admin), 'visible');
-    $prefix = $sqlAlias . '.';
-    $visibleSql = '(' . $visibleSql . ') AND ' . $prefix . $config['deleted_column'] . ' = 0';
-    $overrideOwners = owned_content_admin_override_owners($admin);
-    if ($overrideOwners) {
-        [$cloneSql, $cloneParams] = owned_content_owner_list_clause('cow_clone', $overrideOwners, 'override');
-        $params += $cloneParams;
-        $visibleSql .= ' AND NOT EXISTS (
-            SELECT 1
-            FROM ' . $config['table'] . ' cow_clone
-            WHERE cow_clone.id <> ' . $prefix . 'id
-              AND (
-                  cow_clone.' . $config['source_column'] . ' = ' . $prefix . 'id
-                  OR (' . $prefix . $config['source_column'] . ' IS NOT NULL AND cow_clone.' . $config['source_column'] . ' = ' . $prefix . $config['source_column'] . ')
-              )
-              AND ' . $cloneSql . '
-              AND (
-                  ' . $prefix . 'owner_type IS NULL
-                  OR (' . $prefix . 'owner_type = "reseller" AND cow_clone.owner_type = "manager")
-              )
-        )';
-    }
+    [$visibleSql, $params] = owned_content_owner_priority_condition(
+        $config,
+        $alias !== '' ? $alias : $config['table'],
+        owned_content_admin_visible_owners($admin),
+        'visible'
+    );
 
     return ['WHERE ' . $visibleSql, $params];
 }
 
 function owned_content_client_owners(array $user): array
 {
-    $owners = [['owner_type' => null, 'owner_id' => null]];
-    if (!empty($user['reseller_id'])) {
-        $owners[] = ['owner_type' => 'reseller', 'owner_id' => (int)$user['reseller_id']];
-    }
-    if (!empty($user['manager_id'])) {
-        $owners[] = ['owner_type' => 'manager', 'owner_id' => (int)$user['manager_id']];
-    }
-
-    return $owners;
+    return team_owner_chain_for_user($user);
 }
 
 function owned_content_client_scope_condition(string $moduleKey, array $user, string $alias = ''): array
@@ -187,32 +175,12 @@ function owned_content_client_scope_condition(string $moduleKey, array $user, st
         return [$sql, $params];
     }
 
-    $owners = owned_content_client_owners($user);
-    $sqlAlias = $alias !== '' ? $alias : $config['table'];
-    [$visibleSql, $params] = owned_content_owner_list_clause($sqlAlias, $owners, 'client_visible');
-    $prefix = $sqlAlias . '.';
-    $visibleSql = '(' . $visibleSql . ') AND ' . $prefix . $config['deleted_column'] . ' = 0';
-    $overrideOwners = array_values(array_filter($owners, static fn(array $owner): bool => $owner['owner_type'] !== null));
-    if ($overrideOwners) {
-        [$cloneSql, $cloneParams] = owned_content_owner_list_clause('cow_client_clone', $overrideOwners, 'client_override');
-        $params += $cloneParams;
-        $visibleSql .= ' AND NOT EXISTS (
-            SELECT 1
-            FROM ' . $config['table'] . ' cow_client_clone
-            WHERE cow_client_clone.id <> ' . $prefix . 'id
-              AND (
-                  cow_client_clone.' . $config['source_column'] . ' = ' . $prefix . 'id
-                  OR (' . $prefix . $config['source_column'] . ' IS NOT NULL AND cow_client_clone.' . $config['source_column'] . ' = ' . $prefix . $config['source_column'] . ')
-              )
-              AND ' . $cloneSql . '
-              AND (
-                  ' . $prefix . 'owner_type IS NULL
-                  OR (' . $prefix . 'owner_type = "reseller" AND cow_client_clone.owner_type = "manager")
-              )
-        )';
-    }
-
-    return [$visibleSql, $params];
+    return owned_content_owner_priority_condition(
+        $config,
+        $alias !== '' ? $alias : $config['table'],
+        owned_content_client_owners($user),
+        'client_visible'
+    );
 }
 
 function owned_content_row(string $moduleKey, int $id): ?array
@@ -255,12 +223,34 @@ function owned_content_unique_slug(string $table, string $sourceSlug, string $ow
     }
 }
 
+function owned_content_root_id(string $moduleKey, int $id): int
+{
+    $row = owned_content_row($moduleKey, $id);
+    if (!$row) {
+        return $id;
+    }
+
+    $config = owned_content_config($moduleKey);
+    if (!$config) {
+        return $id;
+    }
+
+    $sourceColumn = $config['source_column'];
+    return !empty($row[$sourceColumn]) ? (int)$row[$sourceColumn] : (int)$row['id'];
+}
+
+function owned_content_source_root(array $source, string $sourceColumn): int
+{
+    return !empty($source[$sourceColumn]) ? (int)$source[$sourceColumn] : (int)$source['id'];
+}
+
 function owned_content_existing_clone_id(string $moduleKey, int $sourceId, string $ownerType, int $ownerId, bool $includeDeleted = true): ?int
 {
     $config = owned_content_config($moduleKey);
     if (!$config) {
         return null;
     }
+    $sourceId = owned_content_root_id($moduleKey, $sourceId);
 
     $stmt = db()->prepare(
         'SELECT id
@@ -302,7 +292,7 @@ function owned_content_map_category_for_owner(?int $categoryId, string $ownerTyp
         return null;
     }
 
-    $cloneId = owned_content_existing_clone_id('categories', $categoryId, $ownerType, $ownerId, false);
+    $cloneId = owned_content_existing_clone_id('categories', owned_content_root_id('categories', $categoryId), $ownerType, $ownerId, false);
     return $cloneId ?: $categoryId;
 }
 
@@ -312,7 +302,7 @@ function owned_content_map_product_for_owner(?int $productId, string $ownerType,
         return null;
     }
 
-    $cloneId = owned_content_existing_clone_id('products', $productId, $ownerType, $ownerId, false);
+    $cloneId = owned_content_existing_clone_id('products', owned_content_root_id('products', $productId), $ownerType, $ownerId, false);
     return $cloneId ?: $productId;
 }
 
@@ -330,7 +320,7 @@ function owned_content_clone_category(array $source, string $ownerType, int $own
         'description' => $source['description'],
         'owner_type' => $ownerType,
         'owner_id' => $ownerId,
-        'source_category_id' => (int)$source['id'],
+        'source_category_id' => owned_content_source_root($source, 'source_category_id'),
         'is_deleted' => $inactive ? 1 : 0,
         'sort_order' => (int)$source['sort_order'],
         'is_active' => (int)$source['is_active'],
@@ -355,7 +345,7 @@ function owned_content_clone_product(array $source, string $ownerType, int $owne
         'category_id' => owned_content_map_category_for_owner($source['category_id'] !== null ? (int)$source['category_id'] : null, $ownerType, $ownerId),
         'owner_type' => $ownerType,
         'owner_id' => $ownerId,
-        'source_product_id' => (int)$source['id'],
+        'source_product_id' => owned_content_source_root($source, 'source_product_id'),
         'is_deleted' => $inactive ? 1 : 0,
         'title' => $source['title'],
         'slug' => owned_content_unique_slug('products', (string)($source['slug'] ?? ''), $ownerType, $ownerId),
@@ -406,7 +396,7 @@ function owned_content_clone_content(array $source, string $ownerType, int $owne
         'status' => $source['status'],
         'publish_at' => $source['publish_at'],
         'created_by' => $source['created_by'],
-        'source_content_post_id' => (int)$source['id'],
+        'source_content_post_id' => owned_content_source_root($source, 'source_content_post_id'),
         'is_deleted' => $inactive ? 1 : 0,
     ]);
 
@@ -432,16 +422,18 @@ function owned_content_clone_broadcast(array $source, string $ownerType, int $ow
         'INSERT INTO broadcasts
             (owner_type, owner_id, source_broadcast_id, title, message_text, audience_type, image_path,
              video_path, button_text, button_url, target_type, target_reseller_id, target_manager_id,
+             segment_stage, segment_checkup, segment_activity,
              platform, schedule_type, scheduled_at, status, created_by, is_deleted)
          VALUES
             (:owner_type, :owner_id, :source_broadcast_id, :title, :message_text, :audience_type, :image_path,
              :video_path, :button_text, :button_url, :target_type, :target_reseller_id, :target_manager_id,
+             :segment_stage, :segment_checkup, :segment_activity,
              :platform, :schedule_type, :scheduled_at, :status, :created_by, :is_deleted)'
     );
     $stmt->execute([
         'owner_type' => $ownerType,
         'owner_id' => $ownerId,
-        'source_broadcast_id' => (int)$source['id'],
+        'source_broadcast_id' => owned_content_source_root($source, 'source_broadcast_id'),
         'title' => $source['title'],
         'message_text' => $source['message_text'],
         'audience_type' => $source['audience_type'],
@@ -452,6 +444,9 @@ function owned_content_clone_broadcast(array $source, string $ownerType, int $ow
         'target_type' => $targetType,
         'target_reseller_id' => $targetResellerId,
         'target_manager_id' => $targetManagerId,
+        'segment_stage' => $source['segment_stage'] ?? null,
+        'segment_checkup' => $source['segment_checkup'] ?? null,
+        'segment_activity' => $source['segment_activity'] ?? null,
         'platform' => $source['platform'],
         'schedule_type' => $source['schedule_type'],
         'scheduled_at' => $inactive ? null : $source['scheduled_at'],
@@ -616,7 +611,7 @@ function owned_content_clone_test(array $source, string $ownerType, int $ownerId
         'intro_video_url' => $source['intro_video_url'],
         'owner_type' => $ownerType,
         'owner_id' => $ownerId,
-        'source_test_id' => (int)$source['id'],
+        'source_test_id' => owned_content_source_root($source, 'source_test_id'),
         'is_deleted' => $inactive ? 1 : 0,
         'is_active' => (int)$source['is_active'],
         'sort_order' => (int)$source['sort_order'],
@@ -755,5 +750,82 @@ function owned_content_delete_for_admin(string $moduleKey, int $id, array $admin
     }
 
     owned_content_clone_for_owner($moduleKey, $id, $owner['owner_type'], (int)$owner['owner_id'], true);
+    return true;
+}
+
+function owned_content_owner_label(array $row, array $admin): string
+{
+    $ownerType = $row['owner_type'] ?? null;
+    $ownerId = !empty($row['owner_id']) ? (int)$row['owner_id'] : null;
+    if ($ownerType === null || $ownerType === '') {
+        return 'Базовый контент';
+    }
+
+    $owner = owned_content_admin_owner($admin);
+    $sourceColumn = null;
+    foreach (owned_content_config_keys() as $moduleKey) {
+        $config = owned_content_config($moduleKey);
+        if ($config && array_key_exists($config['source_column'], $row)) {
+            $sourceColumn = $config['source_column'];
+            break;
+        }
+    }
+    $isClone = $sourceColumn !== null && !empty($row[$sourceColumn]);
+
+    if ($owner && $owner['owner_type'] === $ownerType && (int)$owner['owner_id'] === (int)$ownerId) {
+        return $isClone ? 'Моя версия' : 'Мой оригинал';
+    }
+
+    if ($ownerType === 'reseller' && $ownerId) {
+        return 'Версия лидера: ' . team_reseller_label($ownerId);
+    }
+
+    if ($ownerType === 'manager' && $ownerId) {
+        $stmt = db()->prepare('SELECT name FROM managers WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $ownerId]);
+        $name = $stmt->fetchColumn();
+        return 'Версия консультанта: ' . ($name ?: ('#' . $ownerId));
+    }
+
+    return 'Персональная версия';
+}
+
+function owned_content_config_keys(): array
+{
+    return ['categories', 'products', 'tests', 'content', 'broadcasts'];
+}
+
+function owned_content_can_reset(string $moduleKey, array $row, array $admin): bool
+{
+    if (($admin['role'] ?? 'superadmin') === 'superadmin') {
+        return false;
+    }
+
+    $config = owned_content_config($moduleKey);
+    $owner = owned_content_admin_owner($admin);
+    if (!$config || !$owner) {
+        return false;
+    }
+
+    return owned_content_row_matches_owner($row, $owner)
+        && !empty($row[$config['source_column']]);
+}
+
+function owned_content_reset_for_admin(string $moduleKey, int $id, array $admin): bool
+{
+    $row = owned_content_row($moduleKey, $id);
+    if (!$row || !owned_content_can_reset($moduleKey, $row, $admin)) {
+        return false;
+    }
+
+    $config = owned_content_config($moduleKey);
+    $stmt = db()->prepare('DELETE FROM ' . $config['table'] . ' WHERE id = :id LIMIT 1');
+    $stmt->execute(['id' => $id]);
+
+    log_activity('admin', (int)$admin['id'], 'reset_owned_content', $config['table'], $id, [
+        'module' => $moduleKey,
+        'source_id' => (int)$row[$config['source_column']],
+    ]);
+
     return true;
 }

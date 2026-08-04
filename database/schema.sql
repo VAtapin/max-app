@@ -42,6 +42,7 @@ DROP TABLE IF EXISTS admin_users;
 DROP TABLE IF EXISTS profile_reviews;
 DROP TABLE IF EXISTS profile_blocks;
 DROP TABLE IF EXISTS consultant_profiles;
+DROP TABLE IF EXISTS site_templates;
 DROP TABLE IF EXISTS default_platform_managers;
 DROP TABLE IF EXISTS managers;
 DROP TABLE IF EXISTS resellers;
@@ -52,6 +53,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE resellers (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  parent_reseller_id BIGINT UNSIGNED NULL,
   name VARCHAR(190) NOT NULL,
   email VARCHAR(190) NULL,
   phone VARCHAR(50) NULL,
@@ -61,10 +63,21 @@ CREATE TABLE resellers (
   billing_comment VARCHAR(500) NULL,
   referral_code VARCHAR(64) NOT NULL UNIQUE,
   manager_limit INT UNSIGNED NULL,
+  direct_leader_limit INT UNSIGNED NULL,
+  branch_leader_limit INT UNSIGNED NULL,
+  direct_manager_limit INT UNSIGNED NULL,
+  branch_manager_limit INT UNSIGNED NULL,
+  per_child_manager_limit INT UNSIGNED NULL,
+  price_per_leader DECIMAL(10,2) NULL,
+  price_per_consultant DECIMAL(10,2) NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_resellers_referral_code (referral_code)
+  INDEX idx_resellers_referral_code (referral_code),
+  INDEX idx_resellers_parent_reseller_id (parent_reseller_id),
+  CONSTRAINT fk_resellers_parent
+    FOREIGN KEY (parent_reseller_id) REFERENCES resellers(id)
+    ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE managers (
@@ -164,10 +177,28 @@ CREATE TABLE end_users (
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE site_templates (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  slug VARCHAR(100) NOT NULL UNIQUE,
+  title VARCHAR(190) NOT NULL,
+  description VARCHAR(500) NULL,
+  profile_json JSON NOT NULL,
+  blocks_json JSON NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  sort_order INT NOT NULL DEFAULT 100,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_site_templates_active (is_active, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE consultant_profiles (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   owner_type ENUM('reseller', 'manager') NOT NULL,
   owner_id BIGINT UNSIGNED NOT NULL,
+  source_profile_id BIGINT UNSIGNED NULL,
+  template_id BIGINT UNSIGNED NULL,
+  template_applied_at DATETIME NULL,
+  template_customized_at DATETIME NULL,
   slug VARCHAR(190) NOT NULL UNIQUE,
   display_name VARCHAR(190) NOT NULL,
   title VARCHAR(190) NULL,
@@ -204,7 +235,15 @@ CREATE TABLE consultant_profiles (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_consultant_profile_owner (owner_type, owner_id),
   INDEX idx_consultant_profiles_slug (slug),
-  INDEX idx_consultant_profiles_owner (owner_type, owner_id)
+  INDEX idx_consultant_profiles_owner (owner_type, owner_id),
+  INDEX idx_consultant_profiles_source_profile_id (source_profile_id),
+  INDEX idx_consultant_profiles_template_id (template_id),
+  CONSTRAINT fk_consultant_profiles_source_profile
+    FOREIGN KEY (source_profile_id) REFERENCES consultant_profiles(id)
+    ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_consultant_profiles_template
+    FOREIGN KEY (template_id) REFERENCES site_templates(id)
+    ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE profile_blocks (
@@ -801,9 +840,12 @@ CREATE TABLE broadcasts (
   video_path VARCHAR(255) NULL,
   button_text VARCHAR(100) NULL,
   button_url VARCHAR(255) NULL,
-  target_type ENUM('all', 'reseller', 'manager', 'segment') NOT NULL DEFAULT 'all',
+  target_type ENUM('all', 'reseller', 'manager', 'segment', 'own_clients', 'branch_clients', 'direct_consultants', 'branch_consultants', 'direct_leaders', 'branch_leaders', 'whole_branch') NOT NULL DEFAULT 'all',
   target_reseller_id BIGINT UNSIGNED NULL,
   target_manager_id BIGINT UNSIGNED NULL,
+  segment_stage VARCHAR(50) NULL,
+  segment_checkup VARCHAR(50) NULL,
+  segment_activity VARCHAR(50) NULL,
   platform ENUM('all', 'telegram', 'VK', 'OK', 'MAX') NOT NULL DEFAULT 'all',
   schedule_type ENUM('once', 'daily', 'weekly', 'monthly') NOT NULL DEFAULT 'once',
   scheduled_at DATETIME NULL,
@@ -977,8 +1019,17 @@ CREATE TABLE leader_subscriptions (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   reseller_id BIGINT UNSIGNED NOT NULL,
   consultant_limit INT UNSIGNED NULL,
+  leader_limit INT UNSIGNED NULL,
   price_per_consultant DECIMAL(10,2) NULL,
+  price_per_leader DECIMAL(10,2) NULL,
   amount_due DECIMAL(10,2) NULL,
+  leader_amount_due DECIMAL(10,2) NULL,
+  billing_basis ENUM('direct','branch') NOT NULL DEFAULT 'branch',
+  direct_leader_limit INT UNSIGNED NULL,
+  branch_leader_limit INT UNSIGNED NULL,
+  direct_consultant_limit INT UNSIGNED NULL,
+  branch_consultant_limit INT UNSIGNED NULL,
+  per_child_consultant_limit INT UNSIGNED NULL,
   status ENUM('pending', 'active', 'expired', 'suspended') NOT NULL DEFAULT 'pending',
   starts_at DATETIME NULL,
   ends_at DATETIME NULL,

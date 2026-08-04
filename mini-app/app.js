@@ -1,4 +1,3 @@
-const DEFAULT_REFERRAL_CODE = 'SWPRO-START';
 const TELEGRAM_BOT_USERNAME = 'SWProAssistant_bot';
 const VK_APP_ID = '54632319';
 const OK_APP_ID = '512004501421';
@@ -6,6 +5,7 @@ const OK_APP_ID = '512004501421';
 const refInput = document.querySelector('#ref-code');
 const connectForm = document.querySelector('#connect-form');
 const knownUserPanel = document.querySelector('#known-user');
+const codeError = document.querySelector('#code-error');
 
 function query() {
     return new URLSearchParams(window.location.search);
@@ -13,6 +13,10 @@ function query() {
 
 function hashQuery() {
     return new URLSearchParams(window.location.hash.replace(/^#/, ''));
+}
+
+function routeValue(name) {
+    return query().get(name) || hashQuery().get(name) || '';
 }
 
 function normalizeReferralCode(value) {
@@ -41,7 +45,7 @@ function initialReferralCode() {
 }
 
 function currentReferralCode() {
-    return normalizeReferralCode(refInput.value) || DEFAULT_REFERRAL_CODE;
+    return normalizeReferralCode(refInput.value);
 }
 
 function encodedRef() {
@@ -49,14 +53,29 @@ function encodedRef() {
 }
 
 function targetParams() {
-    const params = new URLSearchParams({ref: currentReferralCode()});
-    const page = query().get('page');
-    const testId = query().get('test_id');
+    const params = new URLSearchParams();
+    const code = currentReferralCode();
+    const page = routeValue('page');
+    const testId = routeValue('test_id');
+    const materialId = routeValue('material_id');
+    const linkToken = routeValue('link_token');
+    if (code) {
+        params.set('ref', code);
+    }
     if (page) {
         params.set('page', page);
     }
     if (testId) {
         params.set('test_id', testId);
+    }
+    if (materialId) {
+        params.set('material_id', materialId);
+        if (!page) {
+            params.set('page', 'home');
+        }
+    }
+    if (linkToken) {
+        params.set('link_token', linkToken);
     }
     return params;
 }
@@ -83,24 +102,23 @@ function hasKnownWebUser() {
     return Boolean(localStorage.getItem('swpro_web_user_id'));
 }
 
+function hasLinkToken() {
+    return routeValue('link_token') !== '';
+}
+
 function launchHash() {
     return targetParams().toString();
 }
 
 function okQuery() {
-    const params = new URLSearchParams({ref: currentReferralCode()});
-    const page = query().get('page');
-    if (page) {
-        params.set('page', page);
-    }
-    return params.toString();
+    return targetParams().toString();
 }
 
 function platformLinks() {
     const ref = encodedRef();
     return {
         telegram: `https://t.me/${encodeURIComponent(TELEGRAM_BOT_USERNAME)}?start=${encodeURIComponent(`ref_${currentReferralCode()}`)}`,
-        vk: `https://vk.com/app${VK_APP_ID}#${launchHash()}`,
+        vk: `https://vk.ru/app${VK_APP_ID}#${launchHash()}`,
         ok: `https://ok.ru/app/${OK_APP_ID}?${okQuery()}`,
         cabinet: appUrl(),
         knownCabinet: appUrl(),
@@ -113,23 +131,39 @@ function ensureWebIdentity() {
         webUserId = `web-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`;
         localStorage.setItem('swpro_web_user_id', webUserId);
     }
-    localStorage.setItem('swpro_pending_referral_code', currentReferralCode());
+    const code = currentReferralCode();
+    if (code) {
+        localStorage.setItem('swpro_pending_referral_code', code);
+    }
 }
 
 function updateLinks() {
     const code = currentReferralCode();
     refInput.value = code;
+    if (codeError) {
+        codeError.hidden = true;
+    }
     const links = platformLinks();
 
     document.querySelectorAll('[data-link]').forEach((link) => {
         const key = link.dataset.link.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-        if (links[key]) {
+        const requiresReferral = key !== 'knownCabinet' && !(key === 'cabinet' && hasLinkToken());
+        const disabled = requiresReferral && !code;
+        link.classList.toggle('is-disabled', disabled);
+        link.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+        if (links[key] && !disabled) {
             link.href = links[key];
+        } else if (disabled) {
+            link.removeAttribute('href');
         }
     });
 
     const url = new URL(window.location.href);
-    url.searchParams.set('ref', code);
+    if (code) {
+        url.searchParams.set('ref', code);
+    } else {
+        url.searchParams.delete('ref');
+    }
     window.history.replaceState(null, '', url.toString());
 }
 
@@ -140,11 +174,14 @@ function showKnownUserShortcut() {
 }
 
 function autoOpenCabinetIfKnown() {
-    if (!hasTelegramContext() && !hasVkOkContext() && !hasKnownWebUser()) {
+    if (!hasTelegramContext() && !hasVkOkContext() && !hasKnownWebUser() && !hasLinkToken()) {
         return false;
     }
     if (hasKnownWebUser()) {
-        localStorage.setItem('swpro_pending_referral_code', currentReferralCode());
+        const code = currentReferralCode();
+        if (code) {
+            localStorage.setItem('swpro_pending_referral_code', code);
+        }
     }
     window.location.replace(appUrl());
     return true;
@@ -160,16 +197,24 @@ document.addEventListener('click', (event) => {
     if (!(target instanceof HTMLElement)) {
         return;
     }
-    if (target.dataset.action === 'default-code') {
-        refInput.value = DEFAULT_REFERRAL_CODE;
-        updateLinks();
+    const platformLink = target.closest('[data-link]');
+    const canOpenCabinetByToken = platformLink
+        && platformLink.dataset.link === 'cabinet'
+        && hasLinkToken();
+    if (platformLink && platformLink.dataset.link !== 'known-cabinet' && !canOpenCabinetByToken && !currentReferralCode()) {
+        event.preventDefault();
+        if (codeError) {
+            codeError.hidden = false;
+        }
+        refInput.focus();
+        return;
     }
     if (target.closest('[data-link="cabinet"], [data-link="known-cabinet"]')) {
         ensureWebIdentity();
     }
 });
 
-refInput.value = initialReferralCode() || DEFAULT_REFERRAL_CODE;
+refInput.value = initialReferralCode();
 updateLinks();
 if (!autoOpenCabinetIfKnown()) {
     showKnownUserShortcut();

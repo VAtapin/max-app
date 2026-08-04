@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/content_ownership.php';
+require_once __DIR__ . '/site_templates.php';
 
 function consultant_owner_from_admin(array $admin): ?array
 {
@@ -36,6 +37,37 @@ function consultant_owner_row(string $ownerType, int $ownerId): ?array
     $row = $stmt->fetch();
 
     return $row ?: null;
+}
+
+function consultant_parent_owner(string $ownerType, int $ownerId): ?array
+{
+    if ($ownerType === 'manager') {
+        $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $ownerId]);
+        $resellerId = $stmt->fetchColumn();
+
+        return $resellerId ? ['owner_type' => 'reseller', 'owner_id' => (int)$resellerId] : null;
+    }
+
+    if ($ownerType === 'reseller') {
+        $stmt = db()->prepare('SELECT parent_reseller_id FROM resellers WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $ownerId]);
+        $parentId = $stmt->fetchColumn();
+
+        return $parentId ? ['owner_type' => 'reseller', 'owner_id' => (int)$parentId] : null;
+    }
+
+    return null;
+}
+
+function consultant_parent_profile(string $ownerType, int $ownerId): ?array
+{
+    $parent = consultant_parent_owner($ownerType, $ownerId);
+    if (!$parent) {
+        return null;
+    }
+
+    return ensure_consultant_profile($parent['owner_type'], (int)$parent['owner_id']);
 }
 
 function consultant_slug(string $value, string $fallback): string
@@ -97,8 +129,14 @@ function consultant_profile_by_referral_code(?string $referralCode): ?array
     return null;
 }
 
-function ensure_consultant_profile(string $ownerType, int $ownerId): array
+function ensure_consultant_profile(string $ownerType, int $ownerId, array $seen = []): array
 {
+    $seenKey = $ownerType . ':' . $ownerId;
+    if (isset($seen[$seenKey])) {
+        throw new RuntimeException('Обнаружено циклическое наследование мини-сайта.');
+    }
+    $seen[$seenKey] = true;
+
     $stmt = db()->prepare('SELECT * FROM consultant_profiles WHERE owner_type = :owner_type AND owner_id = :owner_id LIMIT 1');
     $stmt->execute(['owner_type' => $ownerType, 'owner_id' => $ownerId]);
     $profile = $stmt->fetch();
@@ -111,16 +149,23 @@ function ensure_consultant_profile(string $ownerType, int $ownerId): array
     $owner = consultant_owner_row($ownerType, $ownerId);
     $name = $owner['name'] ?? ($ownerType . '-' . $ownerId);
     $slug = consultant_unique_slug(consultant_slug($name, $ownerType . '-' . $ownerId));
+    $parent = consultant_parent_owner($ownerType, $ownerId);
+    $sourceProfileId = null;
+    if ($parent) {
+        $parentProfile = ensure_consultant_profile($parent['owner_type'], (int)$parent['owner_id'], $seen);
+        $sourceProfileId = (int)$parentProfile['id'];
+    }
 
     $insert = db()->prepare(
         'INSERT INTO consultant_profiles
-            (owner_type, owner_id, slug, display_name, title, subtitle, phone, email, theme_key, is_public)
+            (owner_type, owner_id, source_profile_id, slug, display_name, title, subtitle, phone, email, theme_key, is_public)
          VALUES
-            (:owner_type, :owner_id, :slug, :display_name, :title, :subtitle, :phone, :email, :theme_key, 1)'
+            (:owner_type, :owner_id, :source_profile_id, :slug, :display_name, :title, :subtitle, :phone, :email, :theme_key, 1)'
     );
     $insert->execute([
         'owner_type' => $ownerType,
         'owner_id' => $ownerId,
+        'source_profile_id' => $sourceProfileId,
         'slug' => $slug,
         'display_name' => $name,
         'title' => $ownerType === 'reseller' ? app_text('consultant_profile.default_reseller_title') : app_text('consultant_profile.default_manager_title'),
@@ -133,9 +178,118 @@ function ensure_consultant_profile(string $ownerType, int $ownerId): array
     $profileId = (int)db()->lastInsertId();
     ensure_consultant_blocks($profileId);
     ensure_consultant_primary_test($profileId);
+    $defaultTemplateId = site_template_default_id();
+    if (!$sourceProfileId && $defaultTemplateId) {
+        site_template_apply_to_profile($profileId, $ownerType, $ownerId, $defaultTemplateId, true);
+        ensure_consultant_primary_test($profileId);
+    }
 
     $stmt->execute(['owner_type' => $ownerType, 'owner_id' => $ownerId]);
     return $stmt->fetch();
+}
+
+function consultant_profile_inherits(array $profile): bool
+{
+    return !empty($profile['source_profile_id']) && empty($profile['template_customized_at']);
+}
+
+function consultant_profile_source(array $profile): ?array
+{
+    if (!consultant_profile_inherits($profile)) {
+        return null;
+    }
+
+    $stmt = db()->prepare('SELECT * FROM consultant_profiles WHERE id = :id LIMIT 1');
+    $stmt->execute(['id' => (int)$profile['source_profile_id']]);
+    $source = $stmt->fetch();
+
+    return $source ?: null;
+}
+
+function consultant_effective_profile_id(array $profile, array $seen = []): int
+{
+    $profileId = (int)($profile['id'] ?? 0);
+    if (!$profileId || isset($seen[$profileId])) {
+        return $profileId;
+    }
+    $seen[$profileId] = true;
+
+    $source = consultant_profile_source($profile);
+    if (!$source) {
+        return $profileId;
+    }
+
+    return consultant_effective_profile_id($source, $seen);
+}
+
+function consultant_effective_profile(array $profile, array $seen = []): array
+{
+    $profileId = (int)($profile['id'] ?? 0);
+    if (!$profileId || isset($seen[$profileId])) {
+        return $profile;
+    }
+    $seen[$profileId] = true;
+
+    $source = consultant_profile_source($profile);
+    if (!$source) {
+        return $profile;
+    }
+
+    $effective = consultant_effective_profile($source, $seen);
+    foreach ([
+        'id',
+        'owner_type',
+        'owner_id',
+        'source_profile_id',
+        'slug',
+        'display_name',
+        'phone',
+        'email',
+        'telegram_url',
+        'whatsapp_url',
+        'vk_url',
+        'ok_url',
+        'photo_path',
+        'is_public',
+        'created_at',
+        'updated_at',
+    ] as $field) {
+        if (array_key_exists($field, $profile)) {
+            $effective[$field] = $profile[$field];
+        }
+    }
+    $effective['inherited_from_profile_id'] = (int)$source['id'];
+    $effective['effective_profile_id'] = consultant_effective_profile_id($source);
+
+    return $effective;
+}
+
+function consultant_profile_reset_to_parent(int $profileId, int $sourceProfileId): void
+{
+    db()->beginTransaction();
+    try {
+        $stmt = db()->prepare(
+            'UPDATE consultant_profiles
+             SET source_profile_id = :source_profile_id,
+                 template_customized_at = NULL,
+                 template_applied_at = NULL
+             WHERE id = :id'
+        );
+        $stmt->execute([
+            'id' => $profileId,
+            'source_profile_id' => $sourceProfileId,
+        ]);
+
+        foreach (['profile_blocks', 'profile_products', 'profile_tests', 'profile_materials'] as $table) {
+            $delete = db()->prepare("DELETE FROM {$table} WHERE profile_id = :profile_id");
+            $delete->execute(['profile_id' => $profileId]);
+        }
+
+        db()->commit();
+    } catch (Throwable $e) {
+        db()->rollBack();
+        throw $e;
+    }
 }
 
 function ensure_consultant_primary_test(int $profileId): void
@@ -303,11 +457,33 @@ function consultant_profile_upload(string $field, ?string $currentPath, array &$
 
 function consultant_options_for_admin(array $admin): array
 {
-    if ($admin['role'] !== 'superadmin') {
+    if ($admin['role'] === 'manager') {
         return [];
     }
 
     $options = [];
+    if ($admin['role'] === 'reseller') {
+        $resellerIds = team_reseller_branch_ids((int)$admin['reseller_id'], true);
+        [$resellerWhere, $resellerParams] = team_sql_in_condition('id', $resellerIds, 'profile_reseller');
+        $stmt = db()->prepare('SELECT id, name FROM resellers WHERE ' . $resellerWhere . ' ORDER BY name, id');
+        $stmt->execute($resellerParams);
+        foreach ($stmt->fetchAll() as $row) {
+            $options[] = ['owner_type' => 'reseller', 'owner_id' => (int)$row['id'], 'label' => 'Лидер: ' . team_reseller_label((int)$row['id'])];
+        }
+
+        $managerIds = team_manager_ids_for_resellers($resellerIds);
+        if ($managerIds) {
+            [$managerWhere, $managerParams] = team_sql_in_condition('id', $managerIds, 'profile_manager');
+            $stmt = db()->prepare('SELECT id, name FROM managers WHERE ' . $managerWhere . ' ORDER BY name, id');
+            $stmt->execute($managerParams);
+            foreach ($stmt->fetchAll() as $row) {
+                $options[] = ['owner_type' => 'manager', 'owner_id' => (int)$row['id'], 'label' => app_text('auto.k_8d98911527e4') . ': ' . $row['name']];
+            }
+        }
+
+        return $options;
+    }
+
     foreach (db()->query('SELECT id, name FROM managers ORDER BY id ASC')->fetchAll() as $row) {
         $options[] = ['owner_type' => 'manager', 'owner_id' => (int)$row['id'], 'label' => app_text('auto.k_8d98911527e4') . ': ' . $row['name']];
     }
@@ -320,8 +496,10 @@ function consultant_options_for_admin(array $admin): array
 
 function consultant_profile_payload(array $profile): array
 {
-    $profileId = (int)$profile['id'];
-    $blocks = consultant_blocks($profileId);
+    $itemsProfileId = consultant_effective_profile_id($profile);
+    $profile = consultant_effective_profile($profile);
+    $profileId = $itemsProfileId;
+    $blocks = consultant_blocks($itemsProfileId);
     $ownerAdmin = $profile['owner_type'] === 'reseller'
         ? [
             'role' => 'reseller',

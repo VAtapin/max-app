@@ -254,7 +254,11 @@ function confirm_pending_admin_2fa_setup(string $code): bool
     $user['two_factor_enabled'] = 1;
     $user['two_factor_secret'] = $secret;
     $user['two_factor_confirmed_at'] = date('Y-m-d H:i:s');
-    complete_admin_login($user);
+    try {
+        complete_admin_login($user);
+    } catch (Throwable) {
+        return false;
+    }
 
     return true;
 }

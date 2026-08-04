@@ -77,6 +77,26 @@ function account_two_factor_save_error(Throwable $e): string
     return 'Не удалось сохранить 2FA: ' . $message;
 }
 
+function account_two_factor_verify(string $secret, string $code, array &$errors): bool
+{
+    try {
+        return admin_totp_verify($secret, $code);
+    } catch (Throwable $e) {
+        $errors[] = 'Не удалось проверить код 2FA: ' . $e->getMessage();
+        return false;
+    }
+}
+
+function account_two_factor_qr(string $uri, array &$errors): string
+{
+    try {
+        return qr_code_svg_data_uri($uri);
+    } catch (Throwable $e) {
+        $errors[] = 'Не удалось создать QR-код 2FA: ' . $e->getMessage();
+        return '';
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $action = (string)($_POST['action'] ?? '');
@@ -154,7 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($secret === '') {
             $errors[] = 'Сначала начните настройку 2FA.';
         }
-        if ($secret !== '' && !admin_totp_verify($secret, $code)) {
+        if ($secret !== '' && !account_two_factor_verify($secret, $code, $errors)) {
             $errors[] = 'Неверный код 2FA.';
         }
 
@@ -186,7 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!account_current_password_valid($admin, $currentPassword)) {
             $errors[] = 'Текущий пароль указан неверно.';
         }
-        if (admin_two_factor_ready($admin) && !admin_totp_verify((string)$admin['two_factor_secret'], $code)) {
+        if (admin_two_factor_ready($admin) && !account_two_factor_verify((string)$admin['two_factor_secret'], $code, $errors)) {
             $errors[] = 'Неверный код 2FA.';
         }
 
@@ -215,7 +235,7 @@ if ($setupMode && empty($_SESSION['account_2fa_setup_secret'])) {
 }
 $setupSecret = $setupMode ? (string)($_SESSION['account_2fa_setup_secret'] ?? '') : '';
 $setupUri = $setupSecret !== '' ? admin_totp_uri($admin, $setupSecret) : '';
-$setupQr = $setupUri !== '' ? qr_code_svg_data_uri($setupUri) : '';
+$setupQr = $setupUri !== '' ? account_two_factor_qr($setupUri, $errors) : '';
 $roleLabels = [
     'superadmin' => 'Супер-админ',
     'reseller' => 'Лидер',
@@ -325,7 +345,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
         <div class="two-factor-connect">
             <h2>Подключить приложение-аутентификатор</h2>
             <p>Откройте Яндекс ID, 2FAS, Aegis, Microsoft Authenticator или другое приложение с поддержкой TOTP и отсканируйте QR-код.</p>
-            <img class="two-factor-qr-image" src="<?= h($setupQr) ?>" alt="QR-код для настройки 2FA">
+            <?php if ($setupQr !== ''): ?>
+                <img class="two-factor-qr-image" src="<?= h($setupQr) ?>" alt="QR-код для настройки 2FA">
+            <?php endif; ?>
             <details class="two-factor-manual">
                 <summary>Не получается отсканировать QR-код</summary>
                 <p>Введите этот секретный ключ вручную:</p>

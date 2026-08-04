@@ -9,6 +9,7 @@ require_once __DIR__ . '/../app/core/broadcast_runner.php';
 require_once __DIR__ . '/../app/core/client_journey.php';
 require_once __DIR__ . '/../app/core/content_ownership.php';
 require_once __DIR__ . '/../app/core/integration_guides.php';
+require_once __DIR__ . '/../app/core/site_templates.php';
 
 $admin = require_auth();
 
@@ -16,8 +17,10 @@ $modules = [
     'resellers' => [
         'title' => app_text('auto.k_32cea47742bf'),
         'table' => 'resellers',
-        'columns' => ['id', 'name', 'email', 'phone', 'billing_name', 'billing_inn', 'billing_email', 'billing_comment', 'referral_code', 'manager_limit', 'is_active'],
+        'columns' => ['id', 'parent_reseller_id', 'name', 'email', 'phone', 'billing_name', 'billing_inn', 'billing_email', 'billing_comment', 'referral_code', 'manager_limit', 'direct_leader_limit', 'branch_leader_limit', 'direct_manager_limit', 'branch_manager_limit', 'per_child_manager_limit', 'price_per_leader', 'price_per_consultant', 'is_active'],
         'fields' => [
+            'parent_reseller_id' => ['label' => 'Вышестоящий лидер', 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
+            'template_id' => ['label' => 'Стартовый шаблон мини-сайта', 'type' => 'select', 'source' => 'site_templates', 'nullable' => true, 'virtual' => true],
             'name' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
             'email' => ['label' => 'Email', 'type' => 'email'],
             'phone' => ['label' => app_text('auto.k_87ec4b495b56')],
@@ -26,7 +29,13 @@ $modules = [
             'billing_email' => ['label' => 'Email для счетов', 'type' => 'email'],
             'billing_comment' => ['label' => 'Комментарий для оплаты', 'type' => 'textarea'],
             'referral_code' => ['label' => app_text('auto.k_a9d3a61b02f2'), 'required' => true],
-            'manager_limit' => ['label' => 'Лимит консультантов', 'type' => 'number', 'min' => 0, 'nullable' => true],
+            'direct_leader_limit' => ['label' => 'Лимит прямых лидеров', 'type' => 'number', 'min' => 0, 'nullable' => true],
+            'branch_leader_limit' => ['label' => 'Лимит лидеров во всей ветке', 'type' => 'number', 'min' => 0, 'nullable' => true],
+            'direct_manager_limit' => ['label' => 'Лимит прямых консультантов', 'type' => 'number', 'min' => 0, 'nullable' => true],
+            'branch_manager_limit' => ['label' => 'Лимит консультантов во всей ветке', 'type' => 'number', 'min' => 0, 'nullable' => true],
+            'per_child_manager_limit' => ['label' => 'Лимит консультантов на одного дочернего лидера', 'type' => 'number', 'min' => 0, 'nullable' => true],
+            'price_per_leader' => ['label' => 'Цена за лидера в месяц', 'type' => 'number', 'step' => '0.01', 'min' => 0, 'nullable' => true],
+            'price_per_consultant' => ['label' => 'Цена за консультанта в месяц', 'type' => 'number', 'step' => '0.01', 'min' => 0, 'nullable' => true],
             'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
         ],
     ],
@@ -36,6 +45,7 @@ $modules = [
         'columns' => ['id', 'reseller_id', 'name', 'email', 'phone', 'referral_code', 'is_active'],
         'fields' => [
             'reseller_id' => ['label' => app_text('auto.k_86469fea3a4a'), 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
+            'template_id' => ['label' => 'Стартовый шаблон мини-сайта', 'type' => 'select', 'source' => 'site_templates', 'nullable' => true, 'virtual' => true],
             'name' => ['label' => app_text('auto.k_aee78fe86022'), 'required' => true],
             'email' => ['label' => 'Email', 'type' => 'email'],
             'phone' => ['label' => app_text('auto.k_87ec4b495b56')],
@@ -166,9 +176,12 @@ $modules = [
             'video_path' => ['label' => 'Видео MP4', 'type' => 'file', 'accept' => 'video/mp4'],
             'button_text' => ['label' => app_text('auto.k_f9fd27363780')],
             'button_url' => ['label' => app_text('auto.k_668acad1ed4c')],
-            'target_type' => ['label' => app_text('auto.k_e9476ab1820b'), 'type' => 'select', 'options' => ['all', 'reseller', 'manager', 'segment'], 'required' => true],
+            'target_type' => ['label' => app_text('auto.k_e9476ab1820b'), 'type' => 'select', 'options' => ['all', 'reseller', 'manager', 'segment', 'own_clients', 'branch_clients', 'direct_consultants', 'branch_consultants', 'direct_leaders', 'branch_leaders', 'whole_branch'], 'required' => true],
             'target_reseller_id' => ['label' => app_text('auto.k_86469fea3a4a'), 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
             'target_manager_id' => ['label' => app_text('auto.k_8d98911527e4'), 'type' => 'select', 'source' => 'managers', 'nullable' => true],
+            'segment_stage' => ['label' => 'Сегмент: этап клиента', 'type' => 'select', 'options' => array_keys(client_stage_labels()), 'nullable' => true],
+            'segment_checkup' => ['label' => 'Сегмент: чек-ап', 'type' => 'select', 'options' => ['not_started', 'started', 'completed'], 'nullable' => true],
+            'segment_activity' => ['label' => 'Сегмент: активность', 'type' => 'select', 'options' => ['active_7', 'active_30', 'inactive_14', 'inactive_30'], 'nullable' => true],
             'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['all', 'telegram', 'VK', 'OK', 'MAX'], 'required' => true],
             'schedule_type' => ['label' => app_text('auto.k_f04bd0a06491'), 'type' => 'select', 'options' => ['once', 'daily', 'weekly', 'monthly'], 'required' => true],
             'scheduled_at' => ['label' => app_text('auto.k_854ba1dc86aa'), 'type' => 'datetime-local', 'nullable' => true],
@@ -265,8 +278,14 @@ function scope_where_for_module(string $moduleKey, array $admin): array
         return scope_where_for_leads($admin);
     }
 
+    if ($moduleKey === 'resellers' && $admin['role'] === 'reseller') {
+        [$where, $params] = team_sql_in_condition('id', team_reseller_branch_ids((int)$admin['reseller_id'], true), 'scope_reseller_branch');
+        return ['WHERE ' . $where, $params];
+    }
+
     if ($moduleKey === 'managers' && $admin['role'] === 'reseller') {
-        return ['WHERE reseller_id = :scope_reseller_id', ['scope_reseller_id' => $admin['reseller_id']]];
+        [$where, $params] = team_sql_in_condition('reseller_id', team_reseller_branch_ids((int)$admin['reseller_id'], true), 'scope_manager_branch');
+        return ['WHERE ' . $where, $params];
     }
 
     if (in_array($moduleKey, owned_modules(), true)) {
@@ -300,7 +319,7 @@ function scoped_row_exists(string $moduleKey, array $module, int $id, array $adm
 
 function owned_modules(): array
 {
-    return ['categories', 'products', 'tests', 'content'];
+    return owned_content_config_keys();
 }
 
 function owner_scope_condition(array $admin, string $alias = '', string $moduleKey = ''): array
@@ -727,6 +746,7 @@ function select_options(string $source, array $admin): array
         'product_categories' => ['table' => 'product_categories', 'label' => 'title'],
         'content_posts' => ['table' => 'content_posts', 'label' => 'title'],
         'tests' => ['table' => 'tests', 'label' => 'title'],
+        'site_templates' => ['table' => 'site_templates', 'label' => 'title'],
     ];
     if (!isset($allowed[$source])) {
         return [];
@@ -735,9 +755,19 @@ function select_options(string $source, array $admin): array
     $item = $allowed[$source];
     $where = '';
     $params = [];
+    if ($source === 'resellers') {
+        $options = team_reseller_options_for_admin($admin, true);
+        if ($options) {
+            return array_map(static fn(array $option): array => [
+                'id' => (int)$option['id'],
+                'label' => (string)$option['label'],
+            ], $options);
+        }
+    }
     if ($source === 'managers' && $admin['role'] === 'reseller') {
-        $where = 'WHERE reseller_id = :reseller_id';
-        $params['reseller_id'] = $admin['reseller_id'];
+        $branchIds = team_reseller_branch_ids((int)$admin['reseller_id'], true);
+        [$whereSql, $params] = team_sql_in_condition('reseller_id', $branchIds, 'select_manager_branch');
+        $where = 'WHERE ' . $whereSql;
     }
     if ($source === 'end_users') {
         [$where, $params] = scope_where_for_users($admin);
@@ -800,12 +830,33 @@ function form_option_label(string $fieldName, string $option): string
         return client_stage_labels()[$option] ?? $option;
     }
 
+    if ($fieldName === 'segment_stage') {
+        return client_stage_labels()[$option] ?? $option;
+    }
+
     if ($fieldName === 'gender') {
         return client_gender_labels()[$option] ?? $option;
     }
 
     if ($fieldName === 'audience_type') {
         return $option === 'consultants' ? 'Консультанты команды' : 'Клиенты';
+    }
+
+    if ($fieldName === 'segment_checkup') {
+        return [
+            'not_started' => 'Чек-ап не начат',
+            'started' => 'Чек-ап начат',
+            'completed' => 'Чек-ап завершен',
+        ][$option] ?? $option;
+    }
+
+    if ($fieldName === 'segment_activity') {
+        return [
+            'active_7' => 'Активны за 7 дней',
+            'active_30' => 'Активны за 30 дней',
+            'inactive_14' => 'Неактивны 14 дней',
+            'inactive_30' => 'Неактивны 30 дней',
+        ][$option] ?? $option;
     }
 
     if ($fieldName === 'section_type') {
@@ -858,6 +909,9 @@ function collect_payload(array $fields): array
 {
     $payload = [];
     foreach ($fields as $name => $field) {
+        if (!empty($field['virtual'])) {
+            continue;
+        }
         if (!empty($field['readonly'])) {
             continue;
         }
@@ -1015,6 +1069,9 @@ function validate_payload(array $fields, array $payload): array
 {
     $errors = [];
     foreach ($fields as $name => $field) {
+        if (!empty($field['virtual'])) {
+            continue;
+        }
         if (($field['required'] ?? false) && (($payload[$name] ?? null) === null || $payload[$name] === '')) {
             $errors[] = app_text('auto.k_2dc144adf452') . ($field['label'] ?? $name);
         }
@@ -1026,7 +1083,7 @@ function validate_payload(array $fields, array $payload): array
     return $errors;
 }
 
-function validate_scope_payload(string $moduleKey, array $payload, array $admin): array
+function validate_scope_payload(string $moduleKey, array $payload, array $admin, ?int $recordId = null): array
 {
     $errors = [];
     if (in_array($moduleKey, ['managers', 'resellers'], true)) {
@@ -1036,20 +1093,65 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin)
         }
     }
 
-    if ($moduleKey === 'resellers'
-        && ($payload['manager_limit'] ?? null) !== null
-        && (int)$payload['manager_limit'] < 0) {
-        $errors[] = 'Лимит консультантов не может быть отрицательным.';
+    if ($moduleKey === 'resellers') {
+        foreach (['manager_limit', 'direct_leader_limit', 'branch_leader_limit', 'direct_manager_limit', 'branch_manager_limit', 'per_child_manager_limit'] as $field) {
+            if (($payload[$field] ?? null) !== null && (int)$payload[$field] < 0) {
+                $errors[] = 'Лимиты лидеров и консультантов не могут быть отрицательными.';
+                break;
+            }
+        }
+        foreach (['price_per_leader', 'price_per_consultant'] as $field) {
+            if (($payload[$field] ?? null) !== null && (float)$payload[$field] < 0) {
+                $errors[] = 'Цена не может быть отрицательной.';
+                break;
+            }
+        }
+
+        $parentId = nullable_int_value($payload['parent_reseller_id'] ?? null);
+        if ($recordId && $parentId === $recordId) {
+            $errors[] = 'Лидер не может быть вышестоящим сам для себя.';
+        }
+        if ($recordId && $parentId && team_is_reseller_in_branch($recordId, $parentId, false)) {
+            $errors[] = 'Нельзя выбрать дочернего лидера как вышестоящего.';
+        }
+        if ($admin['role'] === 'reseller') {
+            $rootId = (int)$admin['reseller_id'];
+            if ($parentId === null) {
+                $errors[] = 'Для лидера в вашей ветке нужно выбрать вышестоящего лидера.';
+            } elseif (!team_is_reseller_in_branch($rootId, $parentId, true)) {
+                $errors[] = 'Вышестоящий лидер должен быть внутри вашей ветки.';
+            }
+            if ($recordId && !team_is_reseller_in_branch($rootId, $recordId, true)) {
+                $errors[] = 'Этот лидер не входит в вашу ветку.';
+            }
+        }
+    }
+
+    if ($moduleKey === 'managers' && $admin['role'] === 'reseller') {
+        $resellerId = nullable_int_value($payload['reseller_id'] ?? null);
+        if ($resellerId && !team_is_reseller_in_branch((int)$admin['reseller_id'], $resellerId, true)) {
+            $errors[] = 'Консультанта можно закрепить только за лидером внутри вашей ветки.';
+        }
     }
 
     if (in_array($moduleKey, ['users', 'leads'], true) && !empty($payload['manager_id']) && !empty($payload['reseller_id'])) {
-        $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id LIMIT 1');
-        $stmt->execute(['id' => (int)$payload['manager_id']]);
-        $manager = $stmt->fetch();
-        if (!$manager) {
+        $managerResellerId = team_manager_reseller_id((int)$payload['manager_id']);
+        if ($managerResellerId === null) {
             $errors[] = app_text('auto.k_34b1bedb5064');
-        } elseif ($manager['reseller_id'] !== null && (int)$manager['reseller_id'] !== (int)$payload['reseller_id']) {
+        } elseif ($managerResellerId !== (int)$payload['reseller_id']) {
             $errors[] = app_text('auto.k_34b1bedb5064');
+        }
+    }
+
+    if (in_array($moduleKey, ['users', 'leads', 'broadcasts'], true) && $admin['role'] === 'reseller') {
+        $rootId = (int)$admin['reseller_id'];
+        $resellerId = nullable_int_value($payload['reseller_id'] ?? $payload['target_reseller_id'] ?? null);
+        $managerId = nullable_int_value($payload['manager_id'] ?? $payload['target_manager_id'] ?? null);
+        if ($resellerId && !team_is_reseller_in_branch($rootId, $resellerId, true)) {
+            $errors[] = 'Выбранный лидер не входит в вашу ветку.';
+        }
+        if ($managerId && !team_is_manager_in_branch($rootId, $managerId)) {
+            $errors[] = 'Выбранный консультант не входит в вашу ветку.';
         }
     }
 
@@ -1114,11 +1216,7 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin)
 
 function manager_reseller_id(int $managerId): ?int
 {
-    $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id LIMIT 1');
-    $stmt->execute(['id' => $managerId]);
-    $manager = $stmt->fetch();
-
-    return $manager && $manager['reseller_id'] !== null ? (int)$manager['reseller_id'] : null;
+    return team_manager_reseller_id($managerId);
 }
 
 function leader_manager_limit_state(?int $resellerId, ?int $excludeManagerId = null): ?array
@@ -1161,41 +1259,105 @@ function validate_manager_limit_payload(string $moduleKey, array $payload, ?int 
         return [];
     }
 
-    $state = leader_manager_limit_state($resellerId, $recordId);
-    if (!$state || $state['limit'] === null) {
-        return [];
+    $errors = [];
+    $leader = team_reseller_row($resellerId);
+    if ($leader) {
+        $directLimit = team_limit_value($leader, 'direct_manager_limit', 'manager_limit');
+        if ($directLimit !== null) {
+            $directActive = team_direct_manager_count($resellerId, $recordId);
+            if ($directActive + 1 > $directLimit) {
+                $errors[] = 'У лидера "' . team_reseller_label($resellerId) . '" заполнен лимит прямых консультантов: ' . $directActive . ' из ' . $directLimit . '.';
+            }
+        }
     }
 
-    $projected = $state['active'] + 1;
-    if ($projected <= $state['limit']) {
-        return [];
+    foreach (team_reseller_ancestor_ids($resellerId, true) as $ancestorId) {
+        $ancestor = team_reseller_row($ancestorId);
+        if (!$ancestor) {
+            continue;
+        }
+
+        $branchLimit = team_limit_value($ancestor, 'branch_manager_limit', 'manager_limit');
+        if ($branchLimit !== null) {
+            $branchActive = team_branch_manager_count($ancestorId, $recordId);
+            if ($branchActive + 1 > $branchLimit) {
+                $errors[] = 'У лидера "' . team_reseller_label($ancestorId) . '" заполнен лимит консультантов всей ветки: ' . $branchActive . ' из ' . $branchLimit . '.';
+            }
+        }
+
+        $parent = team_reseller_row($ancestorId);
+        $parentId = !empty($parent['parent_reseller_id']) ? (int)$parent['parent_reseller_id'] : null;
+        if ($parentId) {
+            $parentRow = team_reseller_row($parentId);
+            $perChildLimit = $parentRow ? team_limit_value($parentRow, 'per_child_manager_limit') : null;
+            if ($perChildLimit !== null) {
+                $childBranchActive = team_branch_manager_count($ancestorId, $recordId);
+                if ($childBranchActive + 1 > $perChildLimit) {
+                    $errors[] = 'У лидера "' . team_reseller_label($parentId) . '" заполнен лимит консультантов на дочернего лидера "' . team_reseller_label($ancestorId) . '": ' . $childBranchActive . ' из ' . $perChildLimit . '.';
+                }
+            }
+        }
     }
 
-    return [
-        'У лидера заполнен лимит консультантов: ' . $state['active'] . ' из ' . $state['limit']
-        . '. Увеличьте лимит в карточке лидера или отключите лишнего консультанта.',
-    ];
+    return array_values(array_unique($errors));
 }
 
 function validate_leader_limit_payload(string $moduleKey, array $payload, ?int $recordId = null): array
 {
-    if ($moduleKey !== 'resellers' || !$recordId) {
+    if ($moduleKey !== 'resellers') {
         return [];
     }
 
-    $limit = nullable_int_value($payload['manager_limit'] ?? null);
-    if ($limit === null) {
-        return [];
+    $errors = [];
+    $isActive = (int)($payload['is_active'] ?? 0) === 1;
+    $parentId = nullable_int_value($payload['parent_reseller_id'] ?? null);
+
+    if ($isActive && $parentId) {
+        $parent = team_reseller_row($parentId);
+        if ($parent) {
+            $directLimit = team_limit_value($parent, 'direct_leader_limit');
+            if ($directLimit !== null) {
+                $directActive = team_direct_leader_count($parentId, $recordId);
+                if ($directActive + 1 > $directLimit) {
+                    $errors[] = 'У вышестоящего лидера "' . team_reseller_label($parentId) . '" заполнен лимит прямых лидеров: ' . $directActive . ' из ' . $directLimit . '.';
+                }
+            }
+        }
+
+        foreach (team_reseller_ancestor_ids($parentId, true) as $ancestorId) {
+            $ancestor = team_reseller_row($ancestorId);
+            if (!$ancestor) {
+                continue;
+            }
+
+            $branchLimit = team_limit_value($ancestor, 'branch_leader_limit');
+            if ($branchLimit !== null) {
+                $branchActive = team_branch_leader_count($ancestorId, $recordId);
+                if ($branchActive + 1 > $branchLimit) {
+                    $errors[] = 'У лидера "' . team_reseller_label($ancestorId) . '" заполнен лимит лидеров всей ветки: ' . $branchActive . ' из ' . $branchLimit . '.';
+                }
+            }
+        }
     }
 
-    $state = leader_manager_limit_state($recordId);
-    if (!$state || $state['active'] <= $limit) {
-        return [];
+    if ($recordId) {
+        $checks = [
+            'direct_leader_limit' => ['count' => team_direct_leader_count($recordId), 'label' => 'прямых лидеров'],
+            'branch_leader_limit' => ['count' => team_branch_leader_count($recordId), 'label' => 'лидеров всей ветки'],
+            'direct_manager_limit' => ['count' => team_direct_manager_count($recordId), 'label' => 'прямых консультантов'],
+            'branch_manager_limit' => ['count' => team_branch_manager_count($recordId), 'label' => 'консультантов всей ветки'],
+            'manager_limit' => ['count' => team_direct_manager_count($recordId), 'label' => 'прямых консультантов'],
+        ];
+
+        foreach ($checks as $field => $check) {
+            $limit = nullable_int_value($payload[$field] ?? null);
+            if ($limit !== null && $check['count'] > $limit) {
+                $errors[] = 'Нельзя поставить лимит ' . $limit . ' для ' . $check['label'] . ': сейчас уже ' . $check['count'] . '.';
+            }
+        }
     }
 
-    return [
-        'Нельзя поставить лимит ' . $limit . ': у лидера уже активных консультантов ' . $state['active'] . '.',
-    ];
+    return array_values(array_unique($errors));
 }
 
 function apply_role_defaults(string $moduleKey, array $payload, array $admin): array
@@ -1204,8 +1366,17 @@ function apply_role_defaults(string $moduleKey, array $payload, array $admin): a
         $payload['reseller_id'] = manager_reseller_id((int)$payload['manager_id']);
     }
 
+    if ($admin['role'] === 'reseller' && $moduleKey === 'resellers') {
+        $parentId = nullable_int_value($payload['parent_reseller_id'] ?? null);
+        if (!$parentId || !team_is_reseller_in_branch((int)$admin['reseller_id'], $parentId, true)) {
+            $payload['parent_reseller_id'] = $admin['reseller_id'];
+        }
+    }
     if ($admin['role'] === 'reseller' && in_array($moduleKey, ['managers', 'users', 'leads'], true)) {
-        $payload['reseller_id'] = $admin['reseller_id'];
+        $resellerId = nullable_int_value($payload['reseller_id'] ?? null);
+        if (!$resellerId || !team_is_reseller_in_branch((int)$admin['reseller_id'], $resellerId, true)) {
+            $payload['reseller_id'] = $admin['reseller_id'];
+        }
     }
     if ($admin['role'] === 'manager' && in_array($moduleKey, ['users', 'leads'], true)) {
         $payload['manager_id'] = $admin['manager_id'];
@@ -1235,9 +1406,12 @@ function apply_role_defaults(string $moduleKey, array $payload, array $admin): a
         } elseif ($admin['role'] === 'reseller') {
             $payload['owner_type'] = 'reseller';
             $payload['owner_id'] = $admin['reseller_id'];
-            $payload['target_type'] = 'reseller';
-            $payload['target_reseller_id'] = $admin['reseller_id'];
-            $payload['target_manager_id'] = null;
+            if (in_array((string)($payload['target_type'] ?? ''), ['', 'all'], true)) {
+                $payload['target_type'] = 'reseller';
+            }
+            if (empty($payload['target_reseller_id'])) {
+                $payload['target_reseller_id'] = $admin['reseller_id'];
+            }
         }
     }
     if ($moduleKey === 'content') {
@@ -1858,6 +2032,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = 'list';
     }
 
+    if ($postAction === 'reset_owned_content') {
+        if (!$postId || !scoped_row_exists($moduleKey, $module, $postId, $admin)) {
+            http_response_code(404);
+            exit('Record not found');
+        }
+        if (!owned_content_reset_for_admin($moduleKey, $postId, $admin)) {
+            $errors[] = 'Не удалось сбросить запись: доступна только ваша личная версия, созданная из версии выше.';
+        } else {
+            redirect('crud.php?module=' . urlencode($moduleKey) . '&success=content_reset');
+        }
+        $action = 'list';
+    }
+
     if ($postAction === 'save') {
     if (($postId && !$canEdit) || (!$postId && !$canCreate)) {
         $errors[] = $postId
@@ -1875,12 +2062,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = $postId;
     }
 
+    $templateId = nullable_int_value($_POST['template_id'] ?? null);
     $payload = collect_payload($formFields);
     $payload = normalize_module_payload($moduleKey, $payload);
     $payload = apply_file_uploads($moduleKey, $formFields, $payload, $errors);
     $errors = array_merge($errors, validate_payload($formFields, $payload));
     $payload = apply_role_defaults($moduleKey, $payload, $admin);
-    $errors = array_merge($errors, validate_scope_payload($moduleKey, $payload, $admin));
+    $errors = array_merge($errors, validate_scope_payload($moduleKey, $payload, $admin, $postId));
     $errors = array_merge($errors, validate_manager_limit_payload($moduleKey, $payload, $postId));
     $errors = array_merge($errors, validate_leader_limit_payload($moduleKey, $payload, $postId));
     if (!$errors) {
@@ -1901,6 +2089,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $id = $savedId;
                     $editRow = $payload + ['id' => $savedId];
                 }
+            }
+            if (!$errors && $templateId && in_array($moduleKey, ['managers', 'resellers'], true)) {
+                $ownerType = $moduleKey === 'managers' ? 'manager' : 'reseller';
+                $profileId = ensure_consultant_profile($ownerType, $savedId);
+                site_template_apply_to_profile($profileId, $ownerType, $savedId, $templateId);
             }
             if (!$errors) {
                 redirect('crud.php?module=' . urlencode($moduleKey) . '&success=saved');
@@ -1930,7 +2123,14 @@ if ($action === 'edit' && $id) {
     }
     $stmt = db()->prepare("SELECT * FROM {$module['table']} WHERE id = :id LIMIT 1");
     $stmt->execute(['id' => $id]);
-    $editRow = $stmt->fetch();
+    $editRow = $stmt->fetch() ?: null;
+    if (!$editRow) {
+        $errors[] = 'Запись #' . (int)$id . ' не найдена или уже удалена.';
+    }
+}
+
+if ($leadChatOnly && !$editRow) {
+    $errors[] = 'Чат не найден. Вернитесь к списку обращений и откройте актуальную карточку клиента.';
 }
 
 $rows = [];
@@ -1942,7 +2142,7 @@ try {
         $stmt = db()->prepare($listSql);
         $stmt->execute($params);
         $rows = $stmt->fetchAll();
-        $listHtml = render_crud_list($moduleKey, $displayColumns, $rows, $canEdit, $canDelete);
+        $listHtml = render_crud_list($moduleKey, $displayColumns, $rows, $canEdit, $canDelete, $admin);
     }
 } catch (Throwable $e) {
     $errors[] = app_text('auto.k_49fb23bb29cf') . $e->getMessage();
@@ -1984,6 +2184,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <div class="notice success"><?= h(app_text('user_merge.success')) ?></div>
 <?php elseif ($success === 'personal_copy'): ?>
     <div class="notice success"><?= h(app_text('content_ownership.personal_copy')) ?></div>
+<?php elseif ($success === 'content_reset'): ?>
+    <div class="notice success">Личная версия сброшена. Теперь снова используется версия выше.</div>
 <?php elseif ($success === 'broadcast_sent'): ?>
     <div class="notice success"><?= h(app_text('broadcasts.run_success', [
         'sent' => (int)($_GET['sent'] ?? 0),
@@ -2222,7 +2424,13 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php if ($moduleKey === 'leads' && $action === 'edit' && $editRow): ?>
         <section class="panel">
             <h2>Чат с клиентом</h2>
-            <?= render_lead_conversation((int)($editRow['end_user_id'] ?? 0)) ?>
+            <?php
+            try {
+                echo render_lead_conversation((int)($editRow['end_user_id'] ?? 0));
+            } catch (Throwable $e) {
+                echo '<div class="alert">Не удалось загрузить чат: ' . h($e->getMessage()) . '</div>';
+            }
+            ?>
         </section>
     <?php endif; ?>
     <?php if ($moduleKey === 'leads' && $action === 'edit' && $editRow): ?>

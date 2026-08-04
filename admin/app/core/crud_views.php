@@ -93,9 +93,10 @@ function crud_display_columns(string $moduleKey): array
         'resellers' => [
             'id' => 'ID',
             'name' => app_text('auto.k_86469fea3a4a'),
+            'parent_name' => 'Вышестоящий лидер',
             'contacts' => app_text('auto.k_dba0fcb2cbbb'),
             'referral_code' => app_text('auto.k_b162c37f62ea'),
-            'manager_capacity' => app_text('auto.k_6756aa53b5b5'),
+            'team_capacity' => 'Ветка',
             'billing_summary' => 'Плательщик',
             'subscription_summary' => 'Подписка и сумма',
             'users_count' => app_text('auto.k_0f0b8f55edcc'),
@@ -140,6 +141,7 @@ function crud_display_columns(string $moduleKey): array
         'categories' => [
             'id' => 'ID',
             'title' => app_text('auto.k_19c85838e63f'),
+            'owner_label' => 'Версия',
             'slug' => 'Slug',
             'products_count' => app_text('auto.k_c85756a1ae45'),
             'sort_order' => app_text('auto.k_c00d5a4cbda0'),
@@ -149,6 +151,7 @@ function crud_display_columns(string $moduleKey): array
             'id' => 'ID',
             'image_preview' => app_text('auto.k_fb8ffc7377b8'),
             'title' => app_text('auto.k_82a9ca014bb8'),
+            'owner_label' => 'Версия',
             'category_title' => app_text('auto.k_19c85838e63f'),
             'media_summary' => app_text('auto.k_198be2a9a816'),
             'price' => app_text('auto.k_367e2792c179'),
@@ -158,6 +161,7 @@ function crud_display_columns(string $moduleKey): array
         'tests' => [
             'id' => 'ID',
             'title' => app_text('auto.k_ec1868c5a7fb'),
+            'owner_label' => 'Версия',
             'test_type' => 'Тип',
             'category_title' => app_text('auto.k_19c85838e63f'),
             'questions_count' => app_text('auto.k_beeac564c743'),
@@ -258,11 +262,11 @@ function scoped_where_with_alias(array $scope, string $alias): array
         return ['', $params];
     }
 
-    foreach (['reseller_id', 'manager_id'] as $column) {
-        $where = str_replace('WHERE ' . $column, 'WHERE ' . $alias . '.' . $column, $where);
-        $where = str_replace('AND ' . $column, 'AND ' . $alias . '.' . $column, $where);
-        $where = str_replace('OR ' . $column, 'OR ' . $alias . '.' . $column, $where);
-    }
+    $where = preg_replace_callback(
+        '/(?<![.:`"\w])\b(reseller_id|manager_id)\b/',
+        static fn(array $match): string => $alias . '.' . $match[1],
+        $where
+    ) ?? $where;
 
     return [$where, $params];
 }
@@ -409,20 +413,34 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     }
 
     if ($moduleKey === 'resellers') {
+        [$where, $params] = scoped_where_with_alias(scope_where_for_module($moduleKey, $admin), 'r');
+        if ($where) {
+            $where = str_replace('WHERE id', 'WHERE r.id', $where);
+            $where = str_replace('AND id', 'AND r.id', $where);
+            $where = str_replace('OR id', 'OR r.id', $where);
+        }
         return [
-            "SELECT r.id, r.name, r.email, r.phone, r.billing_name, r.billing_inn, r.billing_email,
+            "SELECT r.id, r.parent_reseller_id, parent.name AS parent_name,
+                    r.name, r.email, r.phone, r.billing_name, r.billing_inn, r.billing_email,
                     r.billing_comment, r.referral_code, r.manager_limit,
+                    r.direct_leader_limit, r.branch_leader_limit,
+                    r.direct_manager_limit, r.branch_manager_limit, r.per_child_manager_limit,
                     IF(r.is_active = 1, 'active', 'inactive') AS state,
                     (SELECT COUNT(*) FROM managers m WHERE m.reseller_id = r.id) AS managers_count,
                     (SELECT COUNT(*) FROM managers m WHERE m.reseller_id = r.id AND m.is_active = 1) AS active_managers_count,
+                    (SELECT COUNT(*) FROM resellers child WHERE child.parent_reseller_id = r.id AND child.is_active = 1) AS active_direct_leaders_count,
                     ls.status AS subscription_status,
                     ls.starts_at AS subscription_starts_at,
                     ls.ends_at AS subscription_ends_at,
                     ls.consultant_limit AS subscription_consultant_limit,
+                    ls.leader_limit AS subscription_leader_limit,
                     ls.price_per_consultant,
+                    ls.price_per_leader,
                     ls.amount_due,
+                    ls.leader_amount_due,
                     (SELECT COUNT(*) FROM end_users eu WHERE eu.reseller_id = r.id) AS users_count
              FROM resellers r
+             LEFT JOIN resellers parent ON parent.id = r.parent_reseller_id
              LEFT JOIN (
                 SELECT s.*
                 FROM leader_subscriptions s
@@ -432,9 +450,10 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
                     GROUP BY reseller_id
                 ) latest ON latest.latest_id = s.id
              ) ls ON ls.reseller_id = r.id
+             $where
              ORDER BY r.id DESC
              LIMIT 100",
-            [],
+            $params,
         ];
     }
 
@@ -459,7 +478,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     if ($moduleKey === 'categories') {
         [$where, $params] = owner_scope_condition($admin, 'c', 'categories');
         return [
-            "SELECT c.id, c.title, c.slug, c.sort_order,
+            "SELECT c.id, c.title, c.slug, c.owner_type, c.owner_id, c.source_category_id, c.sort_order,
                     IF(c.is_active = 1, 'active', 'inactive') AS state,
                     COUNT(p.id) AS products_count
              FROM product_categories c
@@ -475,7 +494,8 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     if ($moduleKey === 'products') {
         [$where, $params] = owner_scope_condition($admin, 'p', 'products');
         return [
-            "SELECT p.id, p.title, c.title AS category_title, p.image_path, p.document_path, p.video_url, p.purchase_url, p.price, p.sort_order,
+            "SELECT p.id, p.title, p.owner_type, p.owner_id, p.source_product_id,
+                    c.title AS category_title, p.image_path, p.document_path, p.video_url, p.purchase_url, p.price, p.sort_order,
                     IF(p.is_active = 1, 'active', 'inactive') AS state
              FROM products p
              LEFT JOIN product_categories c ON c.id = p.category_id
@@ -489,7 +509,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     if ($moduleKey === 'tests') {
         [$where, $params] = owner_scope_condition($admin, 't', 'tests');
         return [
-            "SELECT t.id, t.title, t.scoring_type, c.title AS category_title, t.sort_order,
+            "SELECT t.id, t.title, t.owner_type, t.owner_id, t.source_test_id, t.scoring_type, c.title AS category_title, t.sort_order,
                     IF(t.is_active = 1, 'active', 'inactive') AS state,
                     COUNT(DISTINCT q.id) AS questions_count,
                     COUNT(DISTINCT ts.id) AS scales_count
@@ -508,7 +528,8 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     if ($moduleKey === 'broadcasts') {
         [$where, $params] = owned_content_scope_condition('broadcasts', $admin, 'b');
         return [
-            "SELECT b.id, b.title, b.audience_type, b.platform, b.target_type, b.scheduled_at, b.status,
+            "SELECT b.id, b.title, b.owner_type, b.owner_id, b.source_broadcast_id,
+                    b.audience_type, b.platform, b.target_type, b.scheduled_at, b.status,
                     CASE
                         WHEN b.owner_type = 'reseller' THEN CONCAT('Лидер: ', COALESCE(r.name, CONCAT('#', b.owner_id)))
                         WHEN b.owner_type = 'manager' THEN CONCAT('Консультант: ', COALESCE(m.name, CONCAT('#', b.owner_id)))
@@ -530,7 +551,8 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
             $where = append_sql_condition($where, 'cp.status <> "hidden"');
         }
         return [
-            "SELECT cp.id, cp.title, cp.content_type, cp.section_type, c.title AS category_title, cp.image_path,
+            "SELECT cp.id, cp.title, cp.owner_type, cp.owner_id, cp.source_content_post_id,
+                    cp.content_type, cp.section_type, c.title AS category_title, cp.image_path,
                     cp.attachment_path, cp.video_url, cp.button_url, cp.status, cp.publish_at,
                     CASE
                         WHEN cp.owner_type = 'reseller' THEN CONCAT('Лидер: ', COALESCE(r.name, CONCAT('#', cp.owner_id)))
@@ -583,6 +605,33 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
             ? (int)$row['manager_limit']
             : null;
         return 'Активных: ' . $active . "\nВсего: " . $total . "\nЛимит: " . ($limit !== null ? (string)$limit : 'без ограничения');
+    }
+
+    if ($moduleKey === 'resellers' && $column === 'team_capacity') {
+        $resellerId = (int)($row['id'] ?? 0);
+        $summary = $resellerId > 0 ? team_branch_summary($resellerId) : [
+            'direct_leaders' => 0,
+            'branch_leaders' => 0,
+            'direct_consultants' => (int)($row['active_managers_count'] ?? 0),
+            'branch_consultants' => (int)($row['active_managers_count'] ?? 0),
+        ];
+        $directLeaderLimit = $row['direct_leader_limit'] !== null && $row['direct_leader_limit'] !== '' ? (int)$row['direct_leader_limit'] : null;
+        $branchLeaderLimit = $row['branch_leader_limit'] !== null && $row['branch_leader_limit'] !== '' ? (int)$row['branch_leader_limit'] : null;
+        $directManagerLimit = $row['direct_manager_limit'] !== null && $row['direct_manager_limit'] !== ''
+            ? (int)$row['direct_manager_limit']
+            : ($row['manager_limit'] !== null && $row['manager_limit'] !== '' ? (int)$row['manager_limit'] : null);
+        $branchManagerLimit = $row['branch_manager_limit'] !== null && $row['branch_manager_limit'] !== ''
+            ? (int)$row['branch_manager_limit']
+            : ($row['manager_limit'] !== null && $row['manager_limit'] !== '' ? (int)$row['manager_limit'] : null);
+
+        return 'Лидеры: ' . (int)$summary['direct_leaders'] . '/' . ($directLeaderLimit !== null ? $directLeaderLimit : 'без лимита')
+            . ' прямые, ' . (int)$summary['branch_leaders'] . '/' . ($branchLeaderLimit !== null ? $branchLeaderLimit : 'без лимита') . ' ветка'
+            . "\nКонсультанты: " . (int)$summary['direct_consultants'] . '/' . ($directManagerLimit !== null ? $directManagerLimit : 'без лимита')
+            . ' прямые, ' . (int)$summary['branch_consultants'] . '/' . ($branchManagerLimit !== null ? $branchManagerLimit : 'без лимита') . ' ветка';
+    }
+
+    if ($column === 'owner_label' && in_array($moduleKey, ['categories', 'products', 'tests', 'content', 'broadcasts'], true)) {
+        return owned_content_owner_label($row, current_admin() ?: ['role' => 'superadmin']);
     }
 
     if ($moduleKey === 'resellers' && $column === 'billing_summary') {
@@ -925,8 +974,15 @@ function lead_decode_attachments(?string $json): array
 function lead_attachment_type_from_label(string $label, string $url): string
 {
     $label = mb_strtolower($label, 'UTF-8');
+    $path = strtolower((string)(parse_url($url, PHP_URL_PATH) ?: $url));
+    $host = strtolower((string)(parse_url($url, PHP_URL_HOST) ?: ''));
 
-    if (str_contains($label, 'фото') || preg_match('/\.(png|jpe?g|webp|gif)(?:[?#]|$)/i', $url)) {
+    if (str_contains($label, 'фото')
+        || preg_match('/\.(png|jpe?g|webp|gif)(?:[?#]|$)/i', $path)
+        || str_contains($host, 'vkuserphoto')
+        || str_contains($host, 'userapi.com')
+        || preg_match('/(^|\.)sun\d+-\d+\.userapi\.com$/i', $host)
+    ) {
         return 'photo';
     }
 
@@ -934,11 +990,11 @@ function lead_attachment_type_from_label(string $label, string $url): string
         return 'sticker';
     }
 
-    if (str_contains($label, 'голос') || str_contains($label, 'аудио') || preg_match('/\.(mp3|ogg|wav|m4a)(?:[?#]|$)/i', $url)) {
+    if (str_contains($label, 'голос') || str_contains($label, 'аудио') || preg_match('/\.(mp3|ogg|wav|m4a)(?:[?#]|$)/i', $path)) {
         return 'audio';
     }
 
-    if (str_contains($label, 'видео') || preg_match('/\.(mp4|webm|mov)(?:[?#]|$)/i', $url)) {
+    if (str_contains($label, 'видео') || preg_match('/\.(mp4|webm|mov)(?:[?#]|$)/i', $path)) {
         return 'video';
     }
 
@@ -1109,8 +1165,13 @@ function render_lead_attachments(?string $json, string $message = '', string $ex
 function lead_attachment_type_from_url(string $url): string
 {
     $path = strtolower((string)(parse_url($url, PHP_URL_PATH) ?: $url));
+    $host = strtolower((string)(parse_url($url, PHP_URL_HOST) ?: ''));
 
-    if (preg_match('/\.(png|jpe?g|webp|gif)$/i', $path)) {
+    if (preg_match('/\.(png|jpe?g|webp|gif)$/i', $path)
+        || str_contains($host, 'vkuserphoto')
+        || str_contains($host, 'userapi.com')
+        || preg_match('/(^|\.)sun\d+-\d+\.userapi\.com$/i', $host)
+    ) {
         return 'photo';
     }
 
@@ -1412,7 +1473,7 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
                         <?php if ($canEdit): ?>
                             <a
                                 class="button"
-                                href="crud.php?module=leads&amp;action=edit&amp;id=<?= (int)$row['id'] ?>&amp;chat_only=1"
+                                href="lead_chat.php?id=<?= (int)$row['id'] ?>"
                                 target="_blank"
                                 rel="noopener"
                             >Открыть чат</a>
@@ -1434,7 +1495,7 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
     return trim(ob_get_clean());
 }
 
-function render_crud_list(string $moduleKey, array $columns, array $rows, bool $canEdit, bool $canDelete): string
+function render_crud_list(string $moduleKey, array $columns, array $rows, bool $canEdit, bool $canDelete, array $admin = []): string
 {
     ob_start();
     ?>
@@ -1474,6 +1535,14 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
                                         <input type="hidden" name="action" value="run_broadcast">
                                         <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
                                         <button type="submit" class="link-button"><?= h(app_text('broadcasts.run_now')) ?></button>
+                                    </form>
+                                <?php endif; ?>
+                                <?php if (owned_content_can_reset($moduleKey, $row, $admin)): ?>
+                                    <form method="post" class="inline-form" onsubmit="return confirm('Сбросить личную версию и снова использовать версию выше?');">
+                                        <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                        <input type="hidden" name="action" value="reset_owned_content">
+                                        <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+                                        <button type="submit" class="link-button">Сбросить к версии выше</button>
                                     </form>
                                 <?php endif; ?>
                                 <?php if ($canDelete): ?>
