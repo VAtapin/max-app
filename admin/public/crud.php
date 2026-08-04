@@ -21,7 +21,14 @@ $modules = [
         'columns' => ['id', 'parent_reseller_id', 'name', 'email', 'phone', 'billing_name', 'billing_inn', 'billing_email', 'billing_comment', 'referral_code', 'manager_limit', 'direct_leader_limit', 'branch_leader_limit', 'direct_manager_limit', 'branch_manager_limit', 'per_child_manager_limit', 'price_per_leader', 'price_per_consultant', 'is_active'],
         'fields' => [
             'parent_reseller_id' => ['label' => 'Вышестоящий лидер', 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
-            'template_id' => ['label' => 'Стартовый шаблон мини-сайта', 'type' => 'select', 'source' => 'site_templates', 'nullable' => true, 'virtual' => true],
+            'template_id' => [
+                'label' => 'Шаблон мини-сайта',
+                'type' => 'select',
+                'source' => 'site_templates',
+                'nullable' => true,
+                'virtual' => true,
+                'hint' => 'Не выбрано = использовать мини-сайт вышестоящего лидера. Выберите шаблон, если нужна отдельная стартовая страница.',
+            ],
             'name' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
             'email' => ['label' => 'Email', 'type' => 'email'],
             'phone' => ['label' => app_text('auto.k_87ec4b495b56')],
@@ -46,7 +53,14 @@ $modules = [
         'columns' => ['id', 'reseller_id', 'name', 'email', 'phone', 'referral_code', 'is_active'],
         'fields' => [
             'reseller_id' => ['label' => app_text('auto.k_86469fea3a4a'), 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
-            'template_id' => ['label' => 'Стартовый шаблон мини-сайта', 'type' => 'select', 'source' => 'site_templates', 'nullable' => true, 'virtual' => true],
+            'template_id' => [
+                'label' => 'Шаблон мини-сайта',
+                'type' => 'select',
+                'source' => 'site_templates',
+                'nullable' => true,
+                'virtual' => true,
+                'hint' => 'Не выбрано = использовать мини-сайт вышестоящего лидера. Выберите шаблон, если нужна отдельная стартовая страница.',
+            ],
             'name' => ['label' => app_text('auto.k_aee78fe86022'), 'required' => true],
             'email' => ['label' => 'Email', 'type' => 'email'],
             'phone' => ['label' => app_text('auto.k_87ec4b495b56')],
@@ -1084,6 +1098,61 @@ function validate_payload(array $fields, array $payload): array
     return $errors;
 }
 
+function validate_unique_payload(string $moduleKey, array $module, array $payload, ?int $recordId = null): array
+{
+    $uniqueFields = match ($moduleKey) {
+        'resellers', 'managers' => [
+            'referral_code' => 'Реферальный код',
+        ],
+        default => [],
+    };
+
+    $errors = [];
+    foreach ($uniqueFields as $field => $label) {
+        $value = trim((string)($payload[$field] ?? ''));
+        if ($value === '') {
+            continue;
+        }
+
+        $sql = "SELECT id FROM {$module['table']} WHERE `$field` = :value";
+        $params = ['value' => $value];
+        if ($recordId) {
+            $sql .= ' AND id <> :id';
+            $params['id'] = $recordId;
+        }
+        $sql .= ' LIMIT 1';
+
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        $existingId = $stmt->fetchColumn();
+        if ($existingId !== false) {
+            $errors[] = $label . ' "' . $value . '" уже используется. Укажите другой код.';
+        }
+    }
+
+    return $errors;
+}
+
+function friendly_save_error(Throwable $e, array $payload): string
+{
+    $message = $e->getMessage();
+    $isDuplicate = ($e instanceof PDOException && (int)($e->errorInfo[1] ?? 0) === 1062)
+        || stripos($message, 'Duplicate entry') !== false;
+
+    if ($isDuplicate) {
+        if (stripos($message, 'referral_code') !== false) {
+            $code = trim((string)($payload['referral_code'] ?? ''));
+            return $code !== ''
+                ? 'Реферальный код "' . $code . '" уже используется. Укажите другой код.'
+                : 'Такой реферальный код уже используется. Укажите другой код.';
+        }
+
+        return 'Такая запись уже существует. Проверьте уникальные поля.';
+    }
+
+    return app_text('auto.k_02613f541f5f') . ' ' . $message;
+}
+
 function validate_scope_payload(string $moduleKey, array $payload, array $admin, ?int $recordId = null): array
 {
     $errors = [];
@@ -1361,15 +1430,139 @@ function validate_leader_limit_payload(string $moduleKey, array $payload, ?int $
     return array_values(array_unique($errors));
 }
 
-function apply_role_defaults(string $moduleKey, array $payload, array $admin): array
+function reseller_parent_id_for_limits(array $payload, ?int $recordId = null): ?int
+{
+    $parentId = nullable_int_value($payload['parent_reseller_id'] ?? null);
+    if ($parentId || !$recordId) {
+        return $parentId;
+    }
+
+    $stmt = db()->prepare('SELECT parent_reseller_id FROM resellers WHERE id = :id LIMIT 1');
+    $stmt->execute(['id' => $recordId]);
+    $storedParentId = $stmt->fetchColumn();
+
+    return $storedParentId ? (int)$storedParentId : null;
+}
+
+function limit_field_value(array $payload, string $field): ?int
+{
+    $value = nullable_int_value($payload[$field] ?? null);
+    return $value !== null && $value >= 0 ? $value : null;
+}
+
+function validate_child_limit_caps(string $moduleKey, array $payload, ?int $recordId = null): array
+{
+    if ($moduleKey !== 'resellers') {
+        return [];
+    }
+
+    $parentId = reseller_parent_id_for_limits($payload, $recordId);
+    if (!$parentId) {
+        return [];
+    }
+
+    $parent = team_reseller_row($parentId);
+    if (!$parent) {
+        return [];
+    }
+
+    $errors = [];
+    $childLimits = [
+        'direct_leader_limit' => limit_field_value($payload, 'direct_leader_limit'),
+        'branch_leader_limit' => limit_field_value($payload, 'branch_leader_limit'),
+        'direct_manager_limit' => limit_field_value($payload, 'direct_manager_limit'),
+        'branch_manager_limit' => limit_field_value($payload, 'branch_manager_limit'),
+        'per_child_manager_limit' => limit_field_value($payload, 'per_child_manager_limit'),
+    ];
+
+    $directLeaderLimit = $childLimits['direct_leader_limit'];
+    $branchLeaderLimit = $childLimits['branch_leader_limit'];
+    if ($directLeaderLimit !== null && $branchLeaderLimit !== null && $directLeaderLimit > $branchLeaderLimit) {
+        $errors[] = 'Лимит прямых лидеров не может быть больше лимита лидеров во всей ветке этого лидера.';
+    }
+
+    $directManagerLimit = $childLimits['direct_manager_limit'];
+    $branchManagerLimit = $childLimits['branch_manager_limit'];
+    if ($directManagerLimit !== null && $branchManagerLimit !== null && $directManagerLimit > $branchManagerLimit) {
+        $errors[] = 'Лимит прямых консультантов не может быть больше лимита консультантов во всей ветке этого лидера.';
+    }
+
+    $parentDirectLeaderLimit = team_limit_value($parent, 'direct_leader_limit');
+    if ($parentDirectLeaderLimit !== null && $directLeaderLimit !== null && $directLeaderLimit > $parentDirectLeaderLimit) {
+        $errors[] = 'Лимит прямых лидеров нельзя поставить больше, чем у вышестоящего лидера "' . team_reseller_label($parentId) . '": максимум ' . $parentDirectLeaderLimit . '.';
+    }
+
+    $parentBranchLeaderLimit = team_limit_value($parent, 'branch_leader_limit');
+    if ($parentBranchLeaderLimit !== null) {
+        foreach (['direct_leader_limit' => 'Лимит прямых лидеров', 'branch_leader_limit' => 'Лимит лидеров во всей ветке'] as $field => $label) {
+            $value = $childLimits[$field];
+            if ($value !== null && $value > $parentBranchLeaderLimit) {
+                $errors[] = $label . ' нельзя поставить больше лимита лидеров всей ветки вышестоящего лидера "' . team_reseller_label($parentId) . '": максимум ' . $parentBranchLeaderLimit . '.';
+            }
+        }
+    }
+
+    $parentBranchManagerLimit = team_limit_value($parent, 'branch_manager_limit', 'manager_limit');
+    if ($parentBranchManagerLimit !== null) {
+        foreach ([
+            'direct_manager_limit' => 'Лимит прямых консультантов',
+            'branch_manager_limit' => 'Лимит консультантов во всей ветке',
+            'per_child_manager_limit' => 'Лимит консультантов на одного дочернего лидера',
+        ] as $field => $label) {
+            $value = $childLimits[$field];
+            if ($value !== null && $value > $parentBranchManagerLimit) {
+                $errors[] = $label . ' нельзя поставить больше лимита консультантов всей ветки вышестоящего лидера "' . team_reseller_label($parentId) . '": максимум ' . $parentBranchManagerLimit . '.';
+            }
+        }
+    }
+
+    $parentPerChildManagerLimit = team_limit_value($parent, 'per_child_manager_limit');
+    if ($parentPerChildManagerLimit !== null) {
+        foreach (['direct_manager_limit' => 'Лимит прямых консультантов', 'branch_manager_limit' => 'Лимит консультантов во всей ветке'] as $field => $label) {
+            $value = $childLimits[$field];
+            if ($value !== null && $value > $parentPerChildManagerLimit) {
+                $errors[] = $label . ' для дочернего лидера нельзя поставить больше правила вышестоящего лидера "' . team_reseller_label($parentId) . '": максимум ' . $parentPerChildManagerLimit . '.';
+            }
+        }
+    }
+
+    return array_values(array_unique($errors));
+}
+
+function create_limit_block_reasons(string $moduleKey, array $admin): array
+{
+    if (($admin['role'] ?? '') !== 'reseller' || empty($admin['reseller_id'])) {
+        return [];
+    }
+
+    $resellerId = (int)$admin['reseller_id'];
+    if ($moduleKey === 'resellers') {
+        return validate_leader_limit_payload('resellers', [
+            'parent_reseller_id' => $resellerId,
+            'is_active' => 1,
+        ]);
+    }
+
+    if ($moduleKey === 'managers') {
+        return validate_manager_limit_payload('managers', [
+            'reseller_id' => $resellerId,
+            'is_active' => 1,
+        ]);
+    }
+
+    return [];
+}
+
+function apply_role_defaults(string $moduleKey, array $payload, array $admin, ?int $recordId = null): array
 {
     if (in_array($moduleKey, ['users', 'leads'], true) && !empty($payload['manager_id'])) {
         $payload['reseller_id'] = manager_reseller_id((int)$payload['manager_id']);
     }
 
     if ($admin['role'] === 'reseller' && $moduleKey === 'resellers') {
-        $parentId = nullable_int_value($payload['parent_reseller_id'] ?? null);
-        if (!$parentId || !team_is_reseller_in_branch((int)$admin['reseller_id'], $parentId, true)) {
+        if ($recordId) {
+            unset($payload['parent_reseller_id']);
+        } else {
             $payload['parent_reseller_id'] = $admin['reseller_id'];
         }
     }
@@ -1425,6 +1618,27 @@ function apply_role_defaults(string $moduleKey, array $payload, array $admin): a
 function nullable_int_value(mixed $value): ?int
 {
     return $value === null || $value === '' ? null : (int)$value;
+}
+
+function profile_template_id_for_module(string $moduleKey, int $recordId): ?int
+{
+    if (!in_array($moduleKey, ['managers', 'resellers'], true) || $recordId <= 0) {
+        return null;
+    }
+
+    $ownerType = $moduleKey === 'managers' ? 'manager' : 'reseller';
+    try {
+        $profile = ensure_consultant_profile($ownerType, $recordId);
+    } catch (Throwable $e) {
+        return null;
+    }
+
+    $templateId = nullable_int_value($profile['template_id'] ?? null);
+    if ($templateId) {
+        return $templateId;
+    }
+
+    return null;
 }
 
 function sync_active_leads_assignment(int $endUserId, ?int $resellerId, ?int $managerId): int
@@ -1806,7 +2020,7 @@ function save_manager_admin_access(int $managerId, array $managerPayload, array 
 
 function save_record(string $moduleKey, array $module, array $payload, ?int $id, array $admin): int
 {
-    $payload = apply_role_defaults($moduleKey, $payload, $admin);
+    $payload = apply_role_defaults($moduleKey, $payload, $admin, $id);
     $columns = array_keys($payload);
 
     if ($id) {
@@ -1891,7 +2105,8 @@ $id = isset($_GET['id']) ? (int)$_GET['id'] : null;
 $errors = [];
 $success = $_GET['success'] ?? null;
 $editRow = null;
-$canCreate = crud_create_enabled($moduleKey);
+$createLimitErrors = create_limit_block_reasons($moduleKey, $admin);
+$canCreate = crud_create_enabled($moduleKey) && !$createLimitErrors;
 $canEdit = crud_edit_enabled($moduleKey);
 $canDelete = crud_delete_enabled($moduleKey);
 $formFields = crud_form_fields($moduleKey, $module['fields']);
@@ -1900,6 +2115,43 @@ if (in_array($moduleKey, owned_modules(), true) && $admin['role'] !== 'superadmi
 }
 if ($moduleKey === 'integrations' && $admin['role'] !== 'superadmin') {
     unset($formFields['owner_type'], $formFields['owner_id']);
+}
+if ($moduleKey === 'resellers' && $admin['role'] === 'reseller') {
+    unset($formFields['parent_reseller_id']);
+}
+
+if ($action === 'limit_check') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    if (!in_array($moduleKey, ['managers', 'resellers'], true)) {
+        echo json_encode(['ok' => true, 'errors' => []], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    try {
+        verify_csrf();
+        $recordId = isset($_POST['id']) && $_POST['id'] !== '' ? (int)$_POST['id'] : null;
+        $payload = collect_payload($formFields);
+        $payload = normalize_module_payload($moduleKey, $payload);
+        $payload = apply_role_defaults($moduleKey, $payload, $admin, $recordId);
+        $limitErrors = array_merge(
+            validate_child_limit_caps($moduleKey, $payload, $recordId),
+            validate_manager_limit_payload($moduleKey, $payload, $recordId),
+            validate_leader_limit_payload($moduleKey, $payload, $recordId),
+        );
+
+        echo json_encode([
+            'ok' => count($limitErrors) === 0,
+            'errors' => array_values(array_unique($limitErrors)),
+        ], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode([
+            'ok' => false,
+            'errors' => ['Не удалось проверить лимиты: ' . $e->getMessage()],
+        ], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
 }
 
 if ($moduleKey === 'users' && $action === 'merge_search') {
@@ -1923,7 +2175,11 @@ if ($moduleKey === 'users' && $action === 'merge_search') {
     exit;
 }
 
-if ($action === 'create' && !$canCreate) {
+if ($action === 'create' && $createLimitErrors) {
+    $errors[] = 'Лимит закончился. Новые записи этого типа сейчас нельзя добавить.';
+    $errors = array_merge($errors, $createLimitErrors);
+    $action = 'list';
+} elseif ($action === 'create' && !$canCreate) {
     $errors[] = app_text('auto.k_868d1fd837c9');
     $action = 'list';
 }
@@ -2048,9 +2304,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($postAction === 'save') {
     if (($postId && !$canEdit) || (!$postId && !$canCreate)) {
-        $errors[] = $postId
-            ? app_text('auto.k_fd8f8d50baa8')
-            : app_text('auto.k_6eaca3d4de92');
+        if (!$postId && $createLimitErrors) {
+            $errors[] = 'Лимит закончился. Новые записи этого типа сейчас нельзя добавить.';
+            $errors = array_merge($errors, $createLimitErrors);
+        } else {
+            $errors[] = $postId
+                ? app_text('auto.k_fd8f8d50baa8')
+                : app_text('auto.k_6eaca3d4de92');
+        }
         $action = 'list';
     } else {
     if ($postId && !scoped_row_exists($moduleKey, $module, $postId, $admin)) {
@@ -2068,8 +2329,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = normalize_module_payload($moduleKey, $payload);
     $payload = apply_file_uploads($moduleKey, $formFields, $payload, $errors);
     $errors = array_merge($errors, validate_payload($formFields, $payload));
-    $payload = apply_role_defaults($moduleKey, $payload, $admin);
+    $payload = apply_role_defaults($moduleKey, $payload, $admin, $postId);
+    $errors = array_merge($errors, validate_unique_payload($moduleKey, $module, $payload, $postId));
     $errors = array_merge($errors, validate_scope_payload($moduleKey, $payload, $admin, $postId));
+    $errors = array_merge($errors, validate_child_limit_caps($moduleKey, $payload, $postId));
     $errors = array_merge($errors, validate_manager_limit_payload($moduleKey, $payload, $postId));
     $errors = array_merge($errors, validate_leader_limit_payload($moduleKey, $payload, $postId));
     if (!$errors) {
@@ -2080,7 +2343,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($errors) {
                     $action = $postId ? 'edit' : 'create';
                     $id = $savedId;
-                    $editRow = $payload + ['id' => $savedId];
+                    $editRow = $payload + ['id' => $savedId, 'template_id' => $templateId];
                 }
             }
             if ($moduleKey === 'resellers' && $admin['role'] === 'superadmin') {
@@ -2088,28 +2351,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($errors) {
                     $action = $postId ? 'edit' : 'create';
                     $id = $savedId;
-                    $editRow = $payload + ['id' => $savedId];
+                    $editRow = $payload + ['id' => $savedId, 'template_id' => $templateId];
                 }
             }
-            if (!$errors && $templateId && in_array($moduleKey, ['managers', 'resellers'], true)) {
+            if (!$errors && in_array($moduleKey, ['managers', 'resellers'], true)) {
                 $ownerType = $moduleKey === 'managers' ? 'manager' : 'reseller';
                 $profile = ensure_consultant_profile($ownerType, $savedId);
                 $profileId = (int)($profile['id'] ?? 0);
                 if ($profileId <= 0) {
                     throw new RuntimeException('Не удалось создать профиль мини-сайта.');
                 }
-                site_template_apply_to_profile($profileId, $ownerType, $savedId, $templateId);
+                if ($templateId) {
+                    site_template_apply_to_profile($profileId, $ownerType, $savedId, $templateId);
+                }
             }
             if (!$errors) {
                 redirect('crud.php?module=' . urlencode($moduleKey) . '&success=saved');
             }
             $postId = $savedId;
         } catch (Throwable $e) {
-            $errors[] = app_text('auto.k_02613f541f5f') . $e->getMessage();
+            $errors[] = friendly_save_error($e, $payload);
         }
     }
 
-    $editRow = $payload + ['id' => $postId];
+    $editRow = $payload + ['id' => $postId, 'template_id' => $templateId];
     $action = $postId ? 'edit' : 'create';
     }
     }
@@ -2131,6 +2396,8 @@ if ($action === 'edit' && $id) {
     $editRow = $stmt->fetch() ?: null;
     if (!$editRow) {
         $errors[] = 'Запись #' . (int)$id . ' не найдена или уже удалена.';
+    } elseif (in_array($moduleKey, ['managers', 'resellers'], true)) {
+        $editRow['template_id'] = profile_template_id_for_module($moduleKey, (int)$editRow['id']);
     }
 }
 
@@ -2141,6 +2408,9 @@ if ($leadChatOnly && !$editRow) {
 $rows = [];
 $listHtml = '';
 $displayColumns = crud_display_columns($moduleKey);
+$limitCheckUrl = in_array($moduleKey, ['managers', 'resellers'], true)
+    ? 'crud.php?module=' . urlencode($moduleKey) . '&action=limit_check'
+    : '';
 try {
     if (!$leadChatOnly) {
         [$listSql, $params] = crud_list_query($moduleKey, $module, $admin);
@@ -2200,16 +2470,28 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php foreach ($errors as $error): ?>
     <div class="alert"><?= h($error) ?></div>
 <?php endforeach; ?>
+<?php if ($createLimitErrors && $action === 'list' && in_array($moduleKey, ['managers', 'resellers'], true)): ?>
+    <div class="notice warning">
+        <strong>Лимит закончился.</strong>
+        Чтобы добавить новых участников, увеличьте лимит в подписке.
+        <?php foreach ($createLimitErrors as $limitError): ?>
+            <br><?= h($limitError) ?>
+        <?php endforeach; ?>
+    </div>
+<?php endif; ?>
 <?php if ($moduleKey === 'integrations'): ?>
     <?= render_vk_connection_help_link() ?>
 <?php endif; ?>
 <?php if (($action === 'create' || $action === 'edit') && !$leadChatOnly): ?>
     <section class="panel form-panel">
         <h2><?= h(crud_form_title($moduleKey, $action)) ?></h2>
-        <form method="post" class="crud-form" enctype="multipart/form-data">
+        <form method="post" class="crud-form" enctype="multipart/form-data" <?= $limitCheckUrl !== '' ? 'data-limit-check-url="' . h($limitCheckUrl) . '"' : '' ?>>
             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="id" value="<?= h((string)($editRow['id'] ?? '')) ?>">
+            <?php if ($limitCheckUrl !== ''): ?>
+                <div class="limit-check-message" data-limit-check-message hidden></div>
+            <?php endif; ?>
             <?php foreach ($formFields as $name => $field): ?>
                 <?php
                 $type = $field['type'] ?? 'text';
@@ -2277,6 +2559,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
                             <?= isset($field['min']) ? 'min="' . h((string)$field['min']) . '"' : '' ?>
                             <?= !empty($field['readonly']) ? 'readonly' : '' ?>
                         >
+                    <?php endif; ?>
+                    <?php if (!empty($field['hint'])): ?>
+                        <small class="field-hint"><?= h((string)$field['hint']) ?></small>
                     <?php endif; ?>
                 </label>
             <?php endforeach; ?>

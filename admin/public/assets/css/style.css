@@ -2337,6 +2337,12 @@ button {
     border-color: #c6ead5;
 }
 
+.notice.warning {
+    background: #fffbeb;
+    border-color: #fcd34d;
+    color: #92400e;
+}
+
 .alert {
     border-color: #ffd1cc;
 }
@@ -4675,4 +4681,32 @@ button {
         right: calc(12px + env(safe-area-inset-right));
         top: calc(8px + env(safe-area-inset-top));
     }
+}
+
+.field-hint {
+    display: block;
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.limit-check-message {
+    grid-column: 1 / -1;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.limit-check-message.is-pending {
+    background: #f7fbfc;
+    color: var(--muted);
+}
+
+.limit-check-message.is-error {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #991b1b;
 }

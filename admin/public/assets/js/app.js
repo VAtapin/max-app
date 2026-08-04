@@ -122,6 +122,7 @@ function initAdminRemoteModals(root = document) {
                 initAdminResultModals(modal);
                 initAdminRemoteModals(modal);
                 initUserMergeSearch(modal);
+                initLimitChecks(modal);
                 initImagePreviewModal(modal);
                 initResponsiveTables(modal);
             } catch (error) {
@@ -274,6 +275,117 @@ function initUserMergeSearch(root = document) {
         }
 
         loadItems('');
+    });
+}
+
+function initLimitChecks(root = document) {
+    root.querySelectorAll('form[data-limit-check-url]').forEach((form) => {
+        if (form.dataset.limitCheckBound === '1') {
+            return;
+        }
+        form.dataset.limitCheckBound = '1';
+
+        const url = form.dataset.limitCheckUrl || '';
+        const message = form.querySelector('[data-limit-check-message]');
+        const submit = form.querySelector('button[type="submit"]');
+        const submitInitiallyDisabled = submit ? submit.disabled : false;
+        let timer = null;
+        let controller = null;
+        let lastErrors = [];
+
+        if (!url || !message) {
+            return;
+        }
+
+        const setSubmitBlocked = (blocked) => {
+            if (!submit || submitInitiallyDisabled) {
+                return;
+            }
+            submit.disabled = blocked;
+        };
+
+        const renderMessage = (errors = [], pending = false) => {
+            message.classList.remove('is-error', 'is-pending');
+
+            if (pending) {
+                message.hidden = false;
+                message.classList.add('is-pending');
+                message.textContent = 'Проверяю лимиты...';
+                setSubmitBlocked(lastErrors.length > 0);
+                return;
+            }
+
+            if (!errors.length) {
+                message.hidden = true;
+                message.textContent = '';
+                setSubmitBlocked(false);
+                return;
+            }
+
+            message.hidden = false;
+            message.classList.add('is-error');
+            message.innerHTML = `<strong>Нельзя сохранить с такими лимитами.</strong><br>${errors.map(escapeAdminHtml).join('<br>')}`;
+            setSubmitBlocked(true);
+        };
+
+        const runCheck = async () => {
+            if (controller) {
+                controller.abort();
+            }
+            controller = new AbortController();
+
+            try {
+                const payload = new FormData(form);
+                const response = await fetch(url, {
+                    method: 'POST',
+                    body: payload,
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    signal: controller.signal,
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                lastErrors = Array.isArray(data.errors) ? data.errors.filter(Boolean) : [];
+                renderMessage(lastErrors);
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    return;
+                }
+                lastErrors = [];
+                renderMessage([]);
+            } finally {
+                controller = null;
+            }
+        };
+
+        const scheduleCheck = () => {
+            window.clearTimeout(timer);
+            renderMessage(lastErrors, true);
+            timer = window.setTimeout(runCheck, 350);
+        };
+
+        form.querySelectorAll('input, select').forEach((control) => {
+            if (control.type === 'hidden' || control.type === 'file') {
+                return;
+            }
+            control.addEventListener('input', scheduleCheck);
+            control.addEventListener('change', scheduleCheck);
+        });
+
+        form.addEventListener('submit', (event) => {
+            if (!lastErrors.length) {
+                return;
+            }
+            event.preventDefault();
+            renderMessage(lastErrors);
+            message.scrollIntoView({behavior: 'smooth', block: 'center'});
+        });
+
+        scheduleCheck();
     });
 }
 
@@ -454,6 +566,7 @@ initAdminResultModals();
 initAdminModalBackdrop();
 initAdminRemoteModals();
 initUserMergeSearch();
+initLimitChecks();
 initLeadMediaModal();
 initImagePreviewModal();
 initResponsiveTables();
