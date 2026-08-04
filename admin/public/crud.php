@@ -26,8 +26,9 @@ $modules = [
                 'type' => 'select',
                 'source' => 'site_templates',
                 'nullable' => true,
+                'nullable_label' => 'Как у вышестоящего лидера',
                 'virtual' => true,
-                'hint' => 'Не выбрано = использовать мини-сайт вышестоящего лидера. Выберите шаблон, если нужна отдельная стартовая страница.',
+                'hint' => 'Этот пункт применяет мини-сайт вышестоящего лидера. Выберите шаблон только если нужна отдельная стартовая страница.',
             ],
             'name' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
             'email' => ['label' => 'Email', 'type' => 'email'],
@@ -58,8 +59,9 @@ $modules = [
                 'type' => 'select',
                 'source' => 'site_templates',
                 'nullable' => true,
+                'nullable_label' => 'Как у лидера',
                 'virtual' => true,
-                'hint' => 'Не выбрано = использовать мини-сайт вышестоящего лидера. Выберите шаблон, если нужна отдельная стартовая страница.',
+                'hint' => 'Этот пункт применяет мини-сайт выбранного лидера. Выберите шаблон только если нужна отдельная стартовая страница.',
             ],
             'name' => ['label' => app_text('auto.k_aee78fe86022'), 'required' => true],
             'email' => ['label' => 'Email', 'type' => 'email'],
@@ -2365,8 +2367,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($profileId <= 0) {
                     throw new RuntimeException('Не удалось создать профиль мини-сайта.');
                 }
-                if ($templateId) {
+                $currentTemplateId = nullable_int_value($profile['template_id'] ?? null);
+                $inheritsProfile = consultant_profile_inherits($profile);
+                if ($templateId && ($currentTemplateId !== $templateId || $inheritsProfile)) {
                     site_template_apply_to_profile($profileId, $ownerType, $savedId, $templateId);
+                } elseif (!$templateId && !$inheritsProfile) {
+                    $parentProfile = consultant_parent_profile($ownerType, $savedId);
+                    if ($parentProfile) {
+                        consultant_profile_reset_to_parent($profileId, (int)$parentProfile['id']);
+                    }
                 }
             }
             if (!$errors) {
@@ -2521,7 +2530,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <?php elseif ($type === 'select'): ?>
                         <select name="<?= h($name) ?>">
                             <?php if ($field['nullable'] ?? false): ?>
-                                <option value=""><?= h(app_text('auto.k_24da5932344a')) ?></option>
+                                <option value=""><?= h((string)($field['nullable_label'] ?? app_text('auto.k_24da5932344a'))) ?></option>
                             <?php endif; ?>
                             <?php if (isset($field['options'])): ?>
                                 <?php foreach ($field['options'] as $option): ?>
