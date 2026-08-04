@@ -10,6 +10,7 @@ require_once __DIR__ . '/../app/core/client_journey.php';
 require_once __DIR__ . '/../app/core/content_ownership.php';
 require_once __DIR__ . '/../app/core/integration_guides.php';
 require_once __DIR__ . '/../app/core/site_templates.php';
+require_once __DIR__ . '/../app/core/consultant_profiles.php';
 
 $admin = require_auth();
 
@@ -2092,7 +2093,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (!$errors && $templateId && in_array($moduleKey, ['managers', 'resellers'], true)) {
                 $ownerType = $moduleKey === 'managers' ? 'manager' : 'reseller';
-                $profileId = ensure_consultant_profile($ownerType, $savedId);
+                $profile = ensure_consultant_profile($ownerType, $savedId);
+                $profileId = (int)($profile['id'] ?? 0);
+                if ($profileId <= 0) {
+                    throw new RuntimeException('Не удалось создать профиль мини-сайта.');
+                }
                 site_template_apply_to_profile($profileId, $ownerType, $savedId, $templateId);
             }
             if (!$errors) {
