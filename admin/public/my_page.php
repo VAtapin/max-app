@@ -108,6 +108,53 @@ function about_section_titles(array $blocks): array
     return $defaults;
 }
 
+function profile_public_base_url(): string
+{
+    $configured = trim((string)(app_config()['app']['public_url'] ?? ''));
+    if ($configured !== '') {
+        return rtrim($configured, '/');
+    }
+
+    $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host === '') {
+        return 'https://swpro.ru';
+    }
+
+    return 'https://' . $host;
+}
+
+function profile_public_url(array $profile): string
+{
+    return profile_public_base_url() . '/?m=' . rawurlencode((string)($profile['slug'] ?? ''));
+}
+
+function profile_slug_from_public_address(string $value, string $fallback): string
+{
+    $value = trim(str_replace('&amp;', '&', $value));
+    if ($value === '') {
+        return $fallback;
+    }
+
+    if (preg_match('/[?&]m=([^&#]+)/', $value, $matches)) {
+        return rawurldecode((string)$matches[1]);
+    }
+
+    $query = parse_url($value, PHP_URL_QUERY);
+    if (is_string($query) && $query !== '') {
+        parse_str($query, $params);
+        if (isset($params['m']) && trim((string)$params['m']) !== '') {
+            return (string)$params['m'];
+        }
+    }
+
+    $path = parse_url($value, PHP_URL_PATH);
+    if (is_string($path) && trim($path, '/') !== '') {
+        return basename(trim($path, '/'));
+    }
+
+    return $value;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $postAction = (string)($_POST['action'] ?? 'save_profile');
@@ -163,7 +210,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $welcomeImagePath = consultant_profile_upload('welcome_image_path', $currentWelcomePath, $errors);
     $cashbackImagePath = consultant_profile_upload('cashback_image_path', $currentCashbackPath, $errors);
     $cooperationImagePath = consultant_profile_upload('cooperation_image_path', $currentCooperationPath, $errors);
-    $slug = consultant_unique_slug(consultant_slug((string)($_POST['slug'] ?? ''), $owner['owner_type'] . '-' . $owner['owner_id']), $profileId);
+    $publicAddress = (string)($_POST['page_url'] ?? $_POST['slug'] ?? '');
+    $slug = consultant_unique_slug(
+        consultant_slug(
+            profile_slug_from_public_address($publicAddress, $owner['owner_type'] . '-' . $owner['owner_id']),
+            $owner['owner_type'] . '-' . $owner['owner_id']
+        ),
+        $profileId
+    );
 
     if (!$errors) {
         $stmt = db()->prepare(
@@ -299,7 +353,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 ?>
 <div class="toolbar">
     <h1><?= h(app_text('consultant_profile.title')) ?></h1>
-    <a class="button secondary-button" target="_blank" rel="noopener" href="/?m=<?= h((string)$profile['slug']) ?>"><?= h(app_text('consultant_profile.open_public')) ?></a>
+    <a class="button secondary-button" target="_blank" rel="noopener" href="<?= h(profile_public_url($profile)) ?>"><?= h(app_text('consultant_profile.open_public')) ?></a>
 </div>
 
 <?php if ($success === 'saved'): ?>
@@ -397,9 +451,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <input name="display_name" value="<?= h((string)$profile['display_name']) ?>" required>
             </label>
             <label class="field">
-                <span><?= h(app_text('consultant_profile.slug')) ?></span>
-                <input name="slug" value="<?= h((string)$profile['slug']) ?>">
-                <small class="cell-muted"><?= h(app_text('consultant_profile.slug_hint')) ?></small>
+                <span>Адрес сайта</span>
+                <input name="page_url" value="<?= h(profile_public_url($profile)) ?>">
+                <small class="cell-muted">Показываем полную ссылку. Можно вставить полную ссылку или короткий адрес, система сохранит правильный адрес страницы.</small>
             </label>
             <label class="field">
                 <span><?= h(app_text('consultant_profile.profile_title')) ?></span>
@@ -629,7 +683,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 
     <div class="sticky-actions">
         <button type="submit"><?= h(app_text('auto.k_4864057d626a')) ?></button>
-        <a class="button secondary-button" target="_blank" rel="noopener" href="/?m=<?= h((string)$profile['slug']) ?>"><?= h(app_text('consultant_profile.open_public')) ?></a>
+        <a class="button secondary-button" target="_blank" rel="noopener" href="<?= h(profile_public_url($profile)) ?>"><?= h(app_text('consultant_profile.open_public')) ?></a>
     </div>
 </form>
 

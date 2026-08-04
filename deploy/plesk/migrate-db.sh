@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 SQL
 
+applied_count=0
+skipped_count=0
+
 for migration in database/migrations/*.sql; do
   [[ -e "$migration" ]] || continue
   migration_name="$(basename "$migration")"
@@ -59,7 +62,7 @@ for migration in database/migrations/*.sql; do
       -e "SELECT COUNT(*) FROM schema_migrations WHERE migration = '$migration_name'"
   )"
   if [[ "$applied" == "1" ]]; then
-    echo "Skipping $migration_name (already applied)."
+    ((skipped_count+=1))
     continue
   fi
 
@@ -77,6 +80,11 @@ for migration in database/migrations/*.sql; do
     --default-character-set=utf8mb4 \
     "$DB_DATABASE" \
     -e "INSERT INTO schema_migrations (migration) VALUES ('$migration_name')"
+  ((applied_count+=1))
 done
 
+if [[ "$skipped_count" -gt 0 ]]; then
+  echo "Already applied migrations: $skipped_count."
+fi
+echo "New migrations applied: $applied_count."
 echo "Migrations complete."

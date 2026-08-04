@@ -1535,6 +1535,80 @@ function validate_child_limit_caps(string $moduleKey, array $payload, ?int $reco
     return array_values(array_unique($errors));
 }
 
+function add_limit_field_cap(array &$caps, string $field, ?int $max, string $source): void
+{
+    if ($max === null) {
+        return;
+    }
+
+    if (!isset($caps[$field]) || $max < (int)$caps[$field]['max']) {
+        $caps[$field] = [
+            'max' => $max,
+            'source' => $source,
+        ];
+    }
+}
+
+function child_limit_field_caps(string $moduleKey, array $payload, ?int $recordId = null): array
+{
+    if ($moduleKey !== 'resellers') {
+        return [];
+    }
+
+    $parentId = reseller_parent_id_for_limits($payload, $recordId);
+    if (!$parentId) {
+        return [];
+    }
+
+    $parent = team_reseller_row($parentId);
+    if (!$parent) {
+        return [];
+    }
+
+    $parentLabel = team_reseller_label($parentId);
+    $caps = [];
+
+    $parentDirectLeaderLimit = team_limit_value($parent, 'direct_leader_limit');
+    add_limit_field_cap(
+        $caps,
+        'direct_leader_limit',
+        $parentDirectLeaderLimit,
+        'У вышестоящего лидера "' . $parentLabel . '" лимит прямых лидеров: ' . $parentDirectLeaderLimit . '.'
+    );
+
+    $parentBranchLeaderLimit = team_limit_value($parent, 'branch_leader_limit');
+    foreach (['direct_leader_limit', 'branch_leader_limit'] as $field) {
+        add_limit_field_cap(
+            $caps,
+            $field,
+            $parentBranchLeaderLimit,
+            'У вышестоящего лидера "' . $parentLabel . '" лимит лидеров во всей ветке: ' . $parentBranchLeaderLimit . '.'
+        );
+    }
+
+    $parentBranchManagerLimit = team_limit_value($parent, 'branch_manager_limit', 'manager_limit');
+    foreach (['direct_manager_limit', 'branch_manager_limit', 'per_child_manager_limit'] as $field) {
+        add_limit_field_cap(
+            $caps,
+            $field,
+            $parentBranchManagerLimit,
+            'У вышестоящего лидера "' . $parentLabel . '" лимит консультантов во всей ветке: ' . $parentBranchManagerLimit . '.'
+        );
+    }
+
+    $parentPerChildManagerLimit = team_limit_value($parent, 'per_child_manager_limit');
+    foreach (['direct_manager_limit', 'branch_manager_limit'] as $field) {
+        add_limit_field_cap(
+            $caps,
+            $field,
+            $parentPerChildManagerLimit,
+            'У вышестоящего лидера "' . $parentLabel . '" лимит консультантов на дочернего лидера: ' . $parentPerChildManagerLimit . '.'
+        );
+    }
+
+    return $caps;
+}
+
 function create_limit_block_reasons(string $moduleKey, array $admin): array
 {
     if (($admin['role'] ?? '') !== 'reseller' || empty($admin['reseller_id'])) {
@@ -2149,6 +2223,7 @@ if ($action === 'limit_check') {
         echo json_encode([
             'ok' => count($limitErrors) === 0,
             'errors' => array_values(array_unique($limitErrors)),
+            'field_limits' => child_limit_field_caps($moduleKey, $payload, $recordId),
         ], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
         http_response_code(500);
@@ -2451,6 +2526,20 @@ if (in_array($moduleKey, ['managers', 'resellers'], true) && $admin['role'] === 
     }
 }
 
+$limitFieldCaps = [];
+if (in_array($moduleKey, ['managers', 'resellers'], true) && ($action === 'create' || $action === 'edit')) {
+    $limitSeed = [];
+    foreach ($formFields as $fieldName => $fieldConfig) {
+        if (!empty($fieldConfig['virtual']) || !empty($fieldConfig['readonly'])) {
+            continue;
+        }
+        $limitSeed[$fieldName] = $editRow[$fieldName] ?? ($fieldConfig['default'] ?? null);
+    }
+    $limitSeed = normalize_module_payload($moduleKey, $limitSeed);
+    $limitSeed = apply_role_defaults($moduleKey, $limitSeed, $admin, isset($editRow['id']) ? (int)$editRow['id'] : null);
+    $limitFieldCaps = child_limit_field_caps($moduleKey, $limitSeed, isset($editRow['id']) ? (int)$editRow['id'] : null);
+}
+
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
 <div class="toolbar">
@@ -2564,14 +2653,30 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         <input type="checkbox" name="<?= h($name) ?>" value="1" <?= (int)$value === 1 ? 'checked' : '' ?>>
                     <?php else: ?>
                         <?php $inputValue = $type === 'datetime-local' ? datetime_for_input($value ? (string)$value : null) : (string)$value; ?>
+                        <?php
+                        $isLimitField = $moduleKey === 'resellers' && in_array($name, [
+                            'direct_leader_limit',
+                            'branch_leader_limit',
+                            'direct_manager_limit',
+                            'branch_manager_limit',
+                            'per_child_manager_limit',
+                        ], true);
+                        $limitCap = $isLimitField ? ($limitFieldCaps[$name] ?? null) : null;
+                        ?>
                         <input
                             type="<?= h($type) ?>"
                             name="<?= h($name) ?>"
                             value="<?= h($inputValue) ?>"
                             <?= isset($field['step']) ? 'step="' . h($field['step']) . '"' : '' ?>
                             <?= isset($field['min']) ? 'min="' . h((string)$field['min']) . '"' : '' ?>
+                            <?= $limitCap ? 'max="' . h((string)$limitCap['max']) . '"' : '' ?>
+                            <?= $isLimitField ? 'data-limit-field="' . h($name) . '"' : '' ?>
+                            <?= $limitCap ? 'data-limit-max="' . h((string)$limitCap['max']) . '" data-limit-source="' . h((string)$limitCap['source']) . '"' : '' ?>
                             <?= !empty($field['readonly']) ? 'readonly' : '' ?>
                         >
+                        <?php if ($isLimitField): ?>
+                            <small class="limit-field-message" data-limit-field-message="<?= h($name) ?>" hidden></small>
+                        <?php endif; ?>
                     <?php endif; ?>
                     <?php if (!empty($field['hint'])): ?>
                         <small class="field-hint"><?= h((string)$field['hint']) ?></small>

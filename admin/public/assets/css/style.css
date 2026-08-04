@@ -2307,6 +2307,16 @@ button {
     outline: 0;
 }
 
+.field input.is-limit-info {
+    border-color: #7dd3fc;
+    box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.09);
+}
+
+.field input.is-limit-error {
+    border-color: #fca5a5;
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.10);
+}
+
 .form-actions,
 .sticky-actions {
     border-top: 1px solid var(--line);
@@ -4693,7 +4703,7 @@ button {
 
 .limit-check-message {
     grid-column: 1 / -1;
-    border: 1px solid var(--border);
+    border: 1px solid var(--line);
     border-radius: 8px;
     padding: 12px 14px;
     font-size: 14px;
@@ -4708,5 +4718,27 @@ button {
 .limit-check-message.is-error {
     border-color: #fecaca;
     background: #fef2f2;
+    color: #991b1b;
+}
+
+.limit-field-message {
+    border-radius: 10px;
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+    margin-top: 2px;
+    padding: 8px 10px;
+}
+
+.limit-field-message.is-info {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    color: #075985;
+}
+
+.limit-field-message.is-error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
     color: #991b1b;
 }

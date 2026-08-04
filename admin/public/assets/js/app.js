@@ -297,6 +297,11 @@ function initLimitChecks(root = document) {
             return;
         }
 
+        const limitInputs = Array.from(form.querySelectorAll('[data-limit-field]'));
+        const fieldMessages = new Map(
+            Array.from(form.querySelectorAll('[data-limit-field-message]')).map((node) => [node.dataset.limitFieldMessage, node])
+        );
+
         const setSubmitBlocked = (blocked) => {
             if (!submit || submitInitiallyDisabled) {
                 return;
@@ -304,13 +309,127 @@ function initLimitChecks(root = document) {
             submit.disabled = blocked;
         };
 
+        const numericValue = (control) => {
+            if (!control || control.value === '') {
+                return null;
+            }
+            const value = Number(control.value);
+            return Number.isFinite(value) ? value : null;
+        };
+
+        const fieldLabel = (control) => {
+            const label = control?.closest('.field')?.querySelector('span')?.textContent?.trim();
+            return label || 'Поле';
+        };
+
+        const maxCandidates = (control) => {
+            const candidates = [];
+            const configuredMax = Number(control.dataset.limitMax || control.getAttribute('max') || '');
+            if (Number.isFinite(configuredMax)) {
+                candidates.push({
+                    max: configuredMax,
+                    source: control.dataset.limitSource || `Максимум: ${configuredMax}.`,
+                });
+            }
+
+            const name = control.name;
+            const branchLeaderLimit = numericValue(form.elements.branch_leader_limit);
+            const branchManagerLimit = numericValue(form.elements.branch_manager_limit);
+            if (name === 'direct_leader_limit' && branchLeaderLimit !== null) {
+                candidates.push({
+                    max: branchLeaderLimit,
+                    source: 'Лимит прямых лидеров не может быть больше лимита лидеров во всей ветке этого лидера.',
+                });
+            }
+            if (name === 'direct_manager_limit' && branchManagerLimit !== null) {
+                candidates.push({
+                    max: branchManagerLimit,
+                    source: 'Лимит прямых консультантов не может быть больше лимита консультантов во всей ветке этого лидера.',
+                });
+            }
+
+            return candidates.filter((item) => Number.isFinite(item.max));
+        };
+
+        const activeCap = (control) => {
+            const candidates = maxCandidates(control);
+            if (!candidates.length) {
+                return null;
+            }
+            return candidates.reduce((current, item) => item.max < current.max ? item : current, candidates[0]);
+        };
+
+        const setFieldState = (control, state, text) => {
+            const note = fieldMessages.get(control.name);
+            control.classList.remove('is-limit-error', 'is-limit-info');
+            if (!note || !text) {
+                if (note) {
+                    note.hidden = true;
+                    note.textContent = '';
+                    note.classList.remove('is-error', 'is-info');
+                }
+                return;
+            }
+
+            control.classList.add(state === 'error' ? 'is-limit-error' : 'is-limit-info');
+            note.hidden = false;
+            note.textContent = text;
+            note.classList.toggle('is-error', state === 'error');
+            note.classList.toggle('is-info', state !== 'error');
+        };
+
+        const enforceLimitInput = (control, showInfo = false) => {
+            const cap = activeCap(control);
+            if (!cap) {
+                setFieldState(control, '', '');
+                control.removeAttribute('max');
+                return false;
+            }
+
+            control.setAttribute('max', String(cap.max));
+            const value = numericValue(control);
+            if (value !== null && value > cap.max) {
+                control.value = String(cap.max);
+                setFieldState(control, 'error', `${fieldLabel(control)}: максимум ${cap.max}. ${cap.source}`);
+                return true;
+            }
+
+            if (showInfo || value !== null) {
+                setFieldState(control, 'info', `${fieldLabel(control)}: можно поставить до ${cap.max}.`);
+            } else {
+                setFieldState(control, '', '');
+            }
+            return false;
+        };
+
+        const enforceAllLimitInputs = (showInfo = false) => {
+            let clamped = false;
+            limitInputs.forEach((control) => {
+                clamped = enforceLimitInput(control, showInfo) || clamped;
+            });
+            return clamped;
+        };
+
+        const applyFieldLimits = (limits = {}) => {
+            limitInputs.forEach((control) => {
+                const limit = limits[control.name] || null;
+                if (limit && Number.isFinite(Number(limit.max))) {
+                    control.dataset.limitMax = String(limit.max);
+                    control.dataset.limitSource = limit.source || '';
+                    control.setAttribute('max', String(limit.max));
+                } else {
+                    delete control.dataset.limitMax;
+                    delete control.dataset.limitSource;
+                    control.removeAttribute('max');
+                }
+            });
+            enforceAllLimitInputs();
+        };
+
         const renderMessage = (errors = [], pending = false) => {
             message.classList.remove('is-error', 'is-pending');
 
             if (pending) {
-                message.hidden = false;
-                message.classList.add('is-pending');
-                message.textContent = 'Проверяю лимиты...';
                 setSubmitBlocked(lastErrors.length > 0);
                 return;
             }
@@ -350,6 +469,7 @@ function initLimitChecks(root = document) {
                 }
                 const data = await response.json();
                 lastErrors = Array.isArray(data.errors) ? data.errors.filter(Boolean) : [];
+                applyFieldLimits(data.field_limits || {});
                 renderMessage(lastErrors);
             } catch (error) {
                 if (error.name === 'AbortError') {
@@ -364,6 +484,7 @@ function initLimitChecks(root = document) {
 
         const scheduleCheck = () => {
             window.clearTimeout(timer);
+            enforceAllLimitInputs();
             renderMessage(lastErrors, true);
             timer = window.setTimeout(runCheck, 350);
         };
@@ -372,11 +493,23 @@ function initLimitChecks(root = document) {
             if (control.type === 'hidden' || control.type === 'file') {
                 return;
             }
-            control.addEventListener('input', scheduleCheck);
-            control.addEventListener('change', scheduleCheck);
+            control.addEventListener('input', () => {
+                enforceAllLimitInputs(true);
+                scheduleCheck();
+            });
+            control.addEventListener('change', () => {
+                enforceAllLimitInputs(true);
+                scheduleCheck();
+            });
         });
 
         form.addEventListener('submit', (event) => {
+            if (enforceAllLimitInputs(true)) {
+                event.preventDefault();
+                const firstError = form.querySelector('.is-limit-error');
+                firstError?.scrollIntoView({behavior: 'smooth', block: 'center'});
+                return;
+            }
             if (!lastErrors.length) {
                 return;
             }
@@ -385,6 +518,7 @@ function initLimitChecks(root = document) {
             message.scrollIntoView({behavior: 'smooth', block: 'center'});
         });
 
+        enforceAllLimitInputs();
         scheduleCheck();
     });
 }
