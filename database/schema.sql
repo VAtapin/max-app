@@ -48,12 +48,36 @@ DROP TABLE IF EXISTS managers;
 DROP TABLE IF EXISTS resellers;
 DROP TABLE IF EXISTS help_faq_sections;
 DROP TABLE IF EXISTS settings;
+DROP TABLE IF EXISTS subscription_plans;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+CREATE TABLE subscription_plans (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  slug VARCHAR(100) NOT NULL UNIQUE,
+  title VARCHAR(190) NOT NULL,
+  description TEXT NULL,
+  billing_basis ENUM('direct','branch') NOT NULL DEFAULT 'branch',
+  direct_leader_limit INT UNSIGNED NULL,
+  branch_leader_limit INT UNSIGNED NULL,
+  direct_consultant_limit INT UNSIGNED NULL,
+  branch_consultant_limit INT UNSIGNED NULL,
+  per_child_consultant_limit INT UNSIGNED NULL,
+  price_per_leader DECIMAL(10,2) NULL,
+  price_per_consultant DECIMAL(10,2) NULL,
+  fixed_monthly_price DECIMAL(10,2) NULL,
+  payment_terms TEXT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  sort_order INT NOT NULL DEFAULT 100,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_subscription_plans_active (is_active, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE resellers (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   parent_reseller_id BIGINT UNSIGNED NULL,
+  subscription_plan_id BIGINT UNSIGNED NULL,
   name VARCHAR(190) NOT NULL,
   email VARCHAR(190) NULL,
   phone VARCHAR(50) NULL,
@@ -75,6 +99,7 @@ CREATE TABLE resellers (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_resellers_referral_code (referral_code),
   INDEX idx_resellers_parent_reseller_id (parent_reseller_id),
+  INDEX idx_resellers_subscription_plan_id (subscription_plan_id),
   CONSTRAINT fk_resellers_parent
     FOREIGN KEY (parent_reseller_id) REFERENCES resellers(id)
     ON DELETE SET NULL ON UPDATE CASCADE
@@ -1018,6 +1043,7 @@ CREATE TABLE consultant_notifications (
 CREATE TABLE leader_subscriptions (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   reseller_id BIGINT UNSIGNED NOT NULL,
+  subscription_plan_id BIGINT UNSIGNED NULL,
   consultant_limit INT UNSIGNED NULL,
   leader_limit INT UNSIGNED NULL,
   price_per_consultant DECIMAL(10,2) NULL,
@@ -1042,6 +1068,7 @@ CREATE TABLE leader_subscriptions (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_leader_subscriptions_reseller (reseller_id, status, ends_at),
+  INDEX idx_leader_subscriptions_plan (subscription_plan_id),
   CONSTRAINT fk_leader_subscriptions_reseller
     FOREIGN KEY (reseller_id) REFERENCES resellers(id)
     ON DELETE CASCADE ON UPDATE CASCADE,

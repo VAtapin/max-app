@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/content_ownership.php';
 require_once __DIR__ . '/table_ui.php';
+require_once __DIR__ . '/subscription_plans.php';
 
 function crud_create_enabled(string $moduleKey): bool
 {
@@ -632,10 +633,10 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
             ? (int)$row['branch_manager_limit']
             : ($row['manager_limit'] !== null && $row['manager_limit'] !== '' ? (int)$row['manager_limit'] : null);
 
-        return 'Лидеры: ' . (int)$summary['direct_leaders'] . '/' . ($directLeaderLimit !== null ? $directLeaderLimit : 'без лимита')
-            . ' прямые, ' . (int)$summary['branch_leaders'] . '/' . ($branchLeaderLimit !== null ? $branchLeaderLimit : 'без лимита') . ' ветка'
-            . "\nКонсультанты: " . (int)$summary['direct_consultants'] . '/' . ($directManagerLimit !== null ? $directManagerLimit : 'без лимита')
-            . ' прямые, ' . (int)$summary['branch_consultants'] . '/' . ($branchManagerLimit !== null ? $branchManagerLimit : 'без лимита') . ' ветка';
+        return 'Лидеры 1-го уровня: ' . (int)$summary['direct_leaders'] . '/' . ($directLeaderLimit !== null ? $directLeaderLimit : 'без лимита')
+            . "\nВсего лидеров в ветке: " . (int)$summary['branch_leaders'] . '/' . ($branchLeaderLimit !== null ? $branchLeaderLimit : 'без лимита')
+            . "\nКонсультанты 1-го уровня: " . (int)$summary['direct_consultants'] . '/' . ($directManagerLimit !== null ? $directManagerLimit : 'без лимита')
+            . "\nВсего консультантов в ветке: " . (int)$summary['branch_consultants'] . '/' . ($branchManagerLimit !== null ? $branchManagerLimit : 'без лимита');
     }
 
     if ($column === 'owner_label' && in_array($moduleKey, ['categories', 'products', 'tests', 'content', 'broadcasts'], true)) {
@@ -664,11 +665,19 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
         $status = !empty($row['subscription_status'])
             ? leader_subscription_status_label((string)$row['subscription_status'])
             : 'Назначена';
-        $amount = $row['amount_due'] !== null ? number_format((float)$row['amount_due'], 2, ',', ' ') . ' руб.' : 'сумма не задана';
+        $billing = !empty($row['subscription_plan_id'])
+            ? subscription_plan_usage_amount((int)$row['id'])
+            : null;
+        $amount = $billing
+            ? subscription_money_text((float)$billing['amount_due'])
+            : ($row['amount_due'] !== null ? number_format((float)$row['amount_due'], 2, ',', ' ') . ' руб.' : 'сумма не задана');
         $period = trim((string)($row['subscription_starts_at'] ?? '')) . ' - ' . trim((string)($row['subscription_ends_at'] ?? ''));
         $lines = [$planTitle !== '' ? $planTitle : 'Индивидуальная подписка', $status];
         if ($amount !== 'сумма не задана') {
-            $lines[] = $amount;
+            $lines[] = 'К оплате сейчас: ' . $amount;
+        }
+        if ($billing) {
+            $lines[] = 'Активно: лидеры ' . (int)$billing['leaders'] . ', консультанты ' . (int)$billing['consultants'];
         }
         $period = trim($period, " -");
         if ($period !== '') {

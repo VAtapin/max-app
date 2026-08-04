@@ -1,10 +1,12 @@
 <?php
 
+require_once __DIR__ . '/team_tree.php';
+
 function subscription_billing_basis_labels(): array
 {
     return [
         'branch' => 'Вся ветка',
-        'direct' => 'Только прямой уровень',
+        'direct' => 'Только 1-й уровень',
     ];
 }
 
@@ -71,6 +73,15 @@ function subscription_money_text(?float $value): string
     return $value === null ? '—' : number_format($value, 2, ',', ' ') . ' руб.';
 }
 
+function subscription_money_value(mixed $value): float
+{
+    if ($value === null || $value === '') {
+        return 0.0;
+    }
+
+    return round((float)$value, 2);
+}
+
 function subscription_limit_text(?int $limit): string
 {
     return $limit === null ? 'без лимита' : (string)$limit;
@@ -112,30 +123,97 @@ function subscription_plan_options(bool $activeOnly = true): array
 
 function subscription_plan_amount(array $plan): ?float
 {
-    if (($plan['fixed_monthly_price'] ?? null) !== null && $plan['fixed_monthly_price'] !== '') {
-        return round((float)$plan['fixed_monthly_price'], 2);
+    $base = subscription_money_value($plan['fixed_monthly_price'] ?? null);
+
+    return $base > 0 ? $base : null;
+}
+
+function subscription_plan_for_reseller(int $resellerId, bool $activeOnly = false): ?array
+{
+    if ($resellerId <= 0) {
+        return null;
     }
 
+    try {
+        $stmt = db()->prepare('SELECT subscription_plan_id FROM resellers WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $resellerId]);
+        $planId = $stmt->fetchColumn();
+    } catch (Throwable) {
+        return null;
+    }
+
+    return $planId ? subscription_plan_row((int)$planId, $activeOnly) : null;
+}
+
+function subscription_plan_billing_usage(int $resellerId, array $plan): array
+{
+    $summary = team_branch_summary($resellerId);
     $basis = (string)($plan['billing_basis'] ?? 'branch');
-    $leaderLimit = $basis === 'direct'
-        ? ($plan['direct_leader_limit'] ?? null)
-        : ($plan['branch_leader_limit'] ?? null);
-    $consultantLimit = $basis === 'direct'
-        ? ($plan['direct_consultant_limit'] ?? null)
-        : ($plan['branch_consultant_limit'] ?? null);
-
-    $amount = 0.0;
-    $hasAmount = false;
-    if ($leaderLimit !== null && $leaderLimit !== '' && ($plan['price_per_leader'] ?? null) !== null && $plan['price_per_leader'] !== '') {
-        $amount += (int)$leaderLimit * (float)$plan['price_per_leader'];
-        $hasAmount = true;
-    }
-    if ($consultantLimit !== null && $consultantLimit !== '' && ($plan['price_per_consultant'] ?? null) !== null && $plan['price_per_consultant'] !== '') {
-        $amount += (int)$consultantLimit * (float)$plan['price_per_consultant'];
-        $hasAmount = true;
+    if (!isset(subscription_billing_basis_labels()[$basis])) {
+        $basis = 'branch';
     }
 
-    return $hasAmount ? round($amount, 2) : null;
+    return [
+        'basis' => $basis,
+        'basis_label' => subscription_billing_basis_labels()[$basis],
+        'leaders' => $basis === 'direct'
+            ? (int)$summary['direct_leaders']
+            : (int)$summary['branch_leaders'],
+        'consultants' => $basis === 'direct'
+            ? (int)$summary['direct_consultants']
+            : (int)$summary['branch_consultants'],
+        'summary' => $summary,
+    ];
+}
+
+function subscription_plan_usage_amount(int $resellerId, ?array $plan = null): ?array
+{
+    $plan = $plan ?: subscription_plan_for_reseller($resellerId, false);
+    if (!$plan) {
+        return null;
+    }
+
+    $usage = subscription_plan_billing_usage($resellerId, $plan);
+    $leaderPrice = subscription_money_value($plan['price_per_leader'] ?? null);
+    $consultantPrice = subscription_money_value($plan['price_per_consultant'] ?? null);
+    $baseAmount = subscription_money_value($plan['fixed_monthly_price'] ?? null);
+    $leaderAmount = round((int)$usage['leaders'] * $leaderPrice, 2);
+    $consultantAmount = round((int)$usage['consultants'] * $consultantPrice, 2);
+
+    return [
+        'plan' => $plan,
+        'basis' => $usage['basis'],
+        'basis_label' => $usage['basis_label'],
+        'leaders' => (int)$usage['leaders'],
+        'consultants' => (int)$usage['consultants'],
+        'summary' => $usage['summary'],
+        'price_per_leader' => $leaderPrice,
+        'price_per_consultant' => $consultantPrice,
+        'base_amount' => $baseAmount,
+        'leader_amount' => $leaderAmount,
+        'consultant_amount' => $consultantAmount,
+        'amount_due' => round($baseAmount + $leaderAmount + $consultantAmount, 2),
+    ];
+}
+
+function subscription_plan_formula_text(array $plan): string
+{
+    $parts = [];
+    $base = subscription_money_value($plan['fixed_monthly_price'] ?? null);
+    $leaderPrice = subscription_money_value($plan['price_per_leader'] ?? null);
+    $consultantPrice = subscription_money_value($plan['price_per_consultant'] ?? null);
+
+    if ($base > 0) {
+        $parts[] = 'база ' . subscription_money_text($base);
+    }
+    if ($leaderPrice > 0) {
+        $parts[] = 'активные лидеры x ' . subscription_money_text($leaderPrice);
+    }
+    if ($consultantPrice > 0) {
+        $parts[] = 'активные консультанты x ' . subscription_money_text($consultantPrice);
+    }
+
+    return $parts ? implode(' + ', $parts) : 'стоимость не задана';
 }
 
 function subscription_plan_apply_to_reseller_payload(array $payload): array

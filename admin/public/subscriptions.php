@@ -245,10 +245,10 @@ function subscription_plan_sort_link(string $key, string $label, array $meta): s
 function subscription_plan_limits_html(array $plan): string
 {
     $items = [
-        'Прямые лидеры' => $plan['direct_leader_limit'] !== null ? (int)$plan['direct_leader_limit'] : null,
-        'Лидеры ветки' => $plan['branch_leader_limit'] !== null ? (int)$plan['branch_leader_limit'] : null,
-        'Прямые консультанты' => $plan['direct_consultant_limit'] !== null ? (int)$plan['direct_consultant_limit'] : null,
-        'Консультанты ветки' => $plan['branch_consultant_limit'] !== null ? (int)$plan['branch_consultant_limit'] : null,
+        'Лидеры 1-го уровня' => $plan['direct_leader_limit'] !== null ? (int)$plan['direct_leader_limit'] : null,
+        'Всего лидеров в ветке' => $plan['branch_leader_limit'] !== null ? (int)$plan['branch_leader_limit'] : null,
+        'Консультанты 1-го уровня' => $plan['direct_consultant_limit'] !== null ? (int)$plan['direct_consultant_limit'] : null,
+        'Всего консультантов в ветке' => $plan['branch_consultant_limit'] !== null ? (int)$plan['branch_consultant_limit'] : null,
         'На дочернего лидера' => $plan['per_child_consultant_limit'] !== null ? (int)$plan['per_child_consultant_limit'] : null,
     ];
 
@@ -265,17 +265,16 @@ function subscription_plan_limits_html(array $plan): string
 
 function subscription_plan_prices_html(array $plan): string
 {
-    $amount = subscription_plan_amount($plan);
     ob_start();
     ?>
     <div class="compact-lines">
-        <span><strong>Итого:</strong> <?= h(subscription_money_text($amount)) ?></span>
         <span><strong>Расчёт:</strong> <?= h(subscription_billing_basis_labels()[$plan['billing_basis'] ?? 'branch'] ?? 'Вся ветка') ?></span>
-        <span><strong>Лидер:</strong> <?= h(subscription_money_text($plan['price_per_leader'] !== null ? (float)$plan['price_per_leader'] : null)) ?></span>
-        <span><strong>Консультант:</strong> <?= h(subscription_money_text($plan['price_per_consultant'] !== null ? (float)$plan['price_per_consultant'] : null)) ?></span>
-        <?php if ($plan['fixed_monthly_price'] !== null): ?>
-            <span><strong>Фиксировано:</strong> <?= h(subscription_money_text((float)$plan['fixed_monthly_price'])) ?></span>
+        <span><strong>Лидер:</strong> <?= h(subscription_money_text($plan['price_per_leader'] !== null ? (float)$plan['price_per_leader'] : null)) ?> / активный</span>
+        <span><strong>Консультант:</strong> <?= h(subscription_money_text($plan['price_per_consultant'] !== null ? (float)$plan['price_per_consultant'] : null)) ?> / активный</span>
+        <?php if (subscription_money_value($plan['fixed_monthly_price'] ?? null) > 0): ?>
+            <span><strong>База:</strong> <?= h(subscription_money_text((float)$plan['fixed_monthly_price'])) ?> / месяц</span>
         <?php endif; ?>
+        <span><strong>Формула:</strong> <?= h(subscription_plan_formula_text($plan)) ?></span>
     </div>
     <?php
     return trim(ob_get_clean());
@@ -391,16 +390,16 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <label class="field"><span>Сортировка</span><input type="number" name="sort_order" value="<?= h((string)($editPlan['sort_order'] ?? 100)) ?>"></label>
             <label class="field wide"><span>Описание</span><textarea name="description" rows="3"><?= h((string)($editPlan['description'] ?? '')) ?></textarea></label>
 
-            <label class="field"><span>Лимит прямых лидеров</span><input type="number" min="0" name="direct_leader_limit" value="<?= h((string)($editPlan['direct_leader_limit'] ?? '')) ?>" placeholder="без лимита"></label>
-            <label class="field"><span>Лимит лидеров во всей ветке</span><input type="number" min="0" name="branch_leader_limit" value="<?= h((string)($editPlan['branch_leader_limit'] ?? '')) ?>" placeholder="без лимита"></label>
-            <label class="field"><span>Лимит прямых консультантов</span><input type="number" min="0" name="direct_consultant_limit" value="<?= h((string)($editPlan['direct_consultant_limit'] ?? '')) ?>" placeholder="без лимита"></label>
-            <label class="field"><span>Лимит консультантов во всей ветке</span><input type="number" min="0" name="branch_consultant_limit" value="<?= h((string)($editPlan['branch_consultant_limit'] ?? '')) ?>" placeholder="без лимита"></label>
+            <label class="field"><span>Лимит лидеров 1-го уровня</span><input type="number" min="0" name="direct_leader_limit" value="<?= h((string)($editPlan['direct_leader_limit'] ?? '')) ?>" placeholder="без лимита"></label>
+            <label class="field"><span>Лимит всех лидеров в ветке</span><input type="number" min="0" name="branch_leader_limit" value="<?= h((string)($editPlan['branch_leader_limit'] ?? '')) ?>" placeholder="без лимита"></label>
+            <label class="field"><span>Лимит консультантов 1-го уровня</span><input type="number" min="0" name="direct_consultant_limit" value="<?= h((string)($editPlan['direct_consultant_limit'] ?? '')) ?>" placeholder="без лимита"></label>
+            <label class="field"><span>Лимит всех консультантов в ветке</span><input type="number" min="0" name="branch_consultant_limit" value="<?= h((string)($editPlan['branch_consultant_limit'] ?? '')) ?>" placeholder="без лимита"></label>
             <label class="field"><span>Консультантов на дочернего лидера</span><input type="number" min="0" name="per_child_consultant_limit" value="<?= h((string)($editPlan['per_child_consultant_limit'] ?? '')) ?>" placeholder="без лимита"></label>
 
             <label class="field"><span>Цена за лидера в месяц</span><input type="number" step="0.01" min="0" name="price_per_leader" value="<?= h((string)($editPlan['price_per_leader'] ?? '')) ?>" placeholder="0,00"></label>
             <label class="field"><span>Цена за консультанта в месяц</span><input type="number" step="0.01" min="0" name="price_per_consultant" value="<?= h((string)($editPlan['price_per_consultant'] ?? '')) ?>" placeholder="0,00"></label>
-            <label class="field"><span>Фиксированная цена в месяц</span><input type="number" step="0.01" min="0" name="fixed_monthly_price" value="<?= h((string)($editPlan['fixed_monthly_price'] ?? '')) ?>" placeholder="если нужен фикс"></label>
-            <div class="field"><span>Расчёт по подписке</span><strong id="subscription-plan-preview">—</strong></div>
+            <label class="field"><span>Базовая часть в месяц</span><input type="number" step="0.01" min="0" name="fixed_monthly_price" value="<?= h((string)($editPlan['fixed_monthly_price'] ?? '')) ?>" placeholder="если нужен минимум"></label>
+            <div class="field"><span>Формула начисления</span><strong id="subscription-plan-preview">—</strong></div>
             <label class="field wide"><span>Условия</span><textarea name="payment_terms" rows="4"><?= h((string)($editPlan['payment_terms'] ?? '')) ?></textarea></label>
             <label class="check-row"><input type="checkbox" name="is_active" value="1" <?= (int)($editPlan['is_active'] ?? 1) === 1 ? 'checked' : '' ?>><span>Подписка активна и доступна для выбора</span></label>
             <div class="form-actions">
@@ -416,16 +415,14 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 const numberValue = (name) => Number(String(form.elements[name]?.value || '0').replace(',', '.')) || 0;
                 const money = (value) => new Intl.NumberFormat('ru-RU', {style: 'currency', currency: 'RUB'}).format(value);
                 const updatePreview = () => {
+                    const parts = [];
                     const fixed = numberValue('fixed_monthly_price');
-                    if (fixed > 0) {
-                        preview.textContent = money(fixed);
-                        return;
-                    }
-                    const basis = form.elements.billing_basis?.value || 'branch';
-                    const leaders = numberValue(basis === 'direct' ? 'direct_leader_limit' : 'branch_leader_limit');
-                    const consultants = numberValue(basis === 'direct' ? 'direct_consultant_limit' : 'branch_consultant_limit');
-                    const total = leaders * numberValue('price_per_leader') + consultants * numberValue('price_per_consultant');
-                    preview.textContent = total > 0 ? money(total) : '—';
+                    const leaderPrice = numberValue('price_per_leader');
+                    const consultantPrice = numberValue('price_per_consultant');
+                    if (fixed > 0) parts.push(`база ${money(fixed)}`);
+                    if (leaderPrice > 0) parts.push(`активные лидеры × ${money(leaderPrice)}`);
+                    if (consultantPrice > 0) parts.push(`активные консультанты × ${money(consultantPrice)}`);
+                    preview.textContent = parts.length ? parts.join(' + ') : 'стоимость не задана';
                 };
                 form.querySelectorAll('input, select').forEach((control) => {
                     control.addEventListener('input', updatePreview);
@@ -450,7 +447,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <th><?= subscription_plan_sort_link('title', 'Подписка', $meta) ?></th>
                     <th>Условия</th>
                     <th>Лимиты</th>
-                    <th><?= subscription_plan_sort_link('fixed_monthly_price', 'Стоимость', $meta) ?></th>
+                    <th><?= subscription_plan_sort_link('fixed_monthly_price', 'Тариф', $meta) ?></th>
                     <th><?= subscription_plan_sort_link('leaders_count', 'Лидеры', $meta) ?></th>
                     <th><?= subscription_plan_sort_link('is_active', 'Статус', $meta) ?></th>
                     <th>Действия</th>
@@ -467,7 +464,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                             <?php if (!empty($row['payment_terms'])): ?><br><span class="cell-muted"><?= h((string)$row['payment_terms']) ?></span><?php endif; ?>
                         </td>
                         <td data-label="Лимиты" data-column="limits"><?= subscription_plan_limits_html($row) ?></td>
-                        <td data-label="Стоимость" data-column="price"><?= subscription_plan_prices_html($row) ?></td>
+                        <td data-label="Тариф" data-column="price"><?= subscription_plan_prices_html($row) ?></td>
                         <td data-label="Лидеры" data-column="leaders_count"><?= (int)$row['leaders_count'] ?></td>
                         <td data-label="Статус" data-column="is_active"><span class="<?= h(subscription_plan_status_class($isActive)) ?>"><?= $isActive ? 'Активна' : 'Отключена' ?></span></td>
                         <td data-label="Действия" data-column="actions" class="row-actions">
