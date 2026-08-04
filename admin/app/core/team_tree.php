@@ -8,15 +8,21 @@ function team_reseller_rows(bool $activeOnly = false): array
         return $cache[$key];
     }
 
-    $sql = 'SELECT id, parent_reseller_id, name, is_active,
-                   manager_limit, direct_leader_limit, branch_leader_limit,
-                   direct_manager_limit, branch_manager_limit, per_child_manager_limit,
-                   price_per_leader, price_per_consultant
-            FROM resellers';
+    $sql = 'SELECT r.id, r.parent_reseller_id, r.subscription_plan_id, r.name, r.is_active,
+                   COALESCE(sp.direct_consultant_limit, r.manager_limit) AS manager_limit,
+                   COALESCE(sp.direct_leader_limit, r.direct_leader_limit) AS direct_leader_limit,
+                   COALESCE(sp.branch_leader_limit, r.branch_leader_limit) AS branch_leader_limit,
+                   COALESCE(sp.direct_consultant_limit, r.direct_manager_limit) AS direct_manager_limit,
+                   COALESCE(sp.branch_consultant_limit, r.branch_manager_limit) AS branch_manager_limit,
+                   COALESCE(sp.per_child_consultant_limit, r.per_child_manager_limit) AS per_child_manager_limit,
+                   COALESCE(sp.price_per_leader, r.price_per_leader) AS price_per_leader,
+                   COALESCE(sp.price_per_consultant, r.price_per_consultant) AS price_per_consultant
+            FROM resellers r
+            LEFT JOIN subscription_plans sp ON sp.id = r.subscription_plan_id AND sp.is_active = 1';
     if ($activeOnly) {
-        $sql .= ' WHERE is_active = 1';
+        $sql .= ' WHERE r.is_active = 1';
     }
-    $sql .= ' ORDER BY parent_reseller_id IS NOT NULL, parent_reseller_id, name, id';
+    $sql .= ' ORDER BY r.parent_reseller_id IS NOT NULL, r.parent_reseller_id, r.name, r.id';
 
     $rows = [];
     try {
@@ -27,6 +33,7 @@ function team_reseller_rows(bool $activeOnly = false): array
         foreach (db()->query('SELECT id, name, is_active, manager_limit FROM resellers ORDER BY name, id')->fetchAll() as $row) {
             $row += [
                 'parent_reseller_id' => null,
+                'subscription_plan_id' => null,
                 'direct_leader_limit' => null,
                 'branch_leader_limit' => null,
                 'direct_manager_limit' => $row['manager_limit'] ?? null,

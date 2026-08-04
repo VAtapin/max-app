@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
 require_once __DIR__ . '/../app/core/client_journey.php';
+require_once __DIR__ . '/../app/core/table_ui.php';
 
 $admin = require_auth();
 if (!can_manage('results', $admin)) {
@@ -28,38 +29,36 @@ if ($userId > 0) {
     $params['user_id'] = $userId;
 }
 
-$perPage = 25;
-$page = max(1, (int)($_GET['page'] ?? 1));
+$resultSortMap = [
+    'id' => '`id`',
+    'completed_at' => '`completed_at`',
+    'client_name' => '`client_name`',
+    'test_title' => '`test_title`',
+    'manager_name' => '`manager_name`',
+];
 
-$countStmt = db()->prepare(
-    'SELECT COUNT(*)
-     FROM user_test_sessions uts
-     INNER JOIN end_users eu ON eu.id = uts.end_user_id
-     WHERE ' . implode(' AND ', $where)
-);
-$countStmt->execute($params);
-$totalRows = (int)$countStmt->fetchColumn();
-$totalPages = max(1, (int)ceil($totalRows / $perPage));
-if ($page > $totalPages) {
-    $page = $totalPages;
-}
-$offset = ($page - 1) * $perPage;
-
-$stmt = db()->prepare(
+$pageData = admin_table_paginated_rows(
     'SELECT uts.*, t.title AS test_title,
             eu.id AS end_user_id, eu.first_name, eu.last_name, eu.username,
             eu.gender, eu.birth_date, eu.age_years, eu.city, eu.client_stage,
+            TRIM(CONCAT(COALESCE(eu.first_name, ""), " ", COALESCE(eu.last_name, ""))) AS client_name,
             m.name AS manager_name
      FROM user_test_sessions uts
      INNER JOIN tests t ON t.id = uts.test_id
      INNER JOIN end_users eu ON eu.id = uts.end_user_id
      LEFT JOIN managers m ON m.id = eu.manager_id
-     WHERE ' . implode(' AND ', $where) . '
-     ORDER BY uts.completed_at DESC, uts.id DESC
-     LIMIT ' . $perPage . ' OFFSET ' . $offset
+     WHERE ' . implode(' AND ', $where),
+    $params,
+    $resultSortMap,
+    ['test_title', 'client_name', 'username', 'city', 'client_stage', 'manager_name'],
+    'completed_at',
+    'desc'
 );
-$stmt->execute($params);
-$sessions = $stmt->fetchAll();
+$sessions = $pageData['rows'];
+$tableMeta = $pageData['meta'];
+$totalRows = (int)$tableMeta['total'];
+$page = (int)$tableMeta['page'];
+$totalPages = (int)$tableMeta['page_count'];
 
 if ($admin['role'] === 'manager') {
     $mark = db()->prepare(
@@ -107,9 +106,7 @@ function result_client_profile_line(array $session): string
 
 function result_pagination_url(int $page): string
 {
-    $query = $_GET;
-    $query['page'] = $page;
-    return 'results.php?' . http_build_query($query);
+    return admin_table_url(['page' => $page], 'results.php');
 }
 
 function result_scale_items_for_sessions(array $sessionIds): array
@@ -227,23 +224,28 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <?php if ($userId): ?><a class="button secondary-button" href="results.php">Все результаты</a><?php endif; ?>
 </div>
 
-<?php if (!$sessions): ?>
-    <section class="panel"><div class="empty-state">Завершённых чек-апов пока нет.</div></section>
-<?php else: ?>
-    <section class="panel results-table-panel">
+<section class="panel results-table-panel">
+    <?= render_admin_table_tools($tableMeta, [], [
+        'hidden' => $userId > 0 ? ['user_id' => $userId] : [],
+        'reset_url' => $userId > 0 ? 'results.php?user_id=' . (int)$userId : 'results.php',
+        'search_placeholder' => 'Клиент, город, тест, консультант',
+    ]) ?>
+    <?php if (!$sessions): ?>
+        <div class="empty-state">Завершённых чек-апов пока нет.</div>
+    <?php else: ?>
         <div class="table-summary">
             Страница <?= (int)$page ?> из <?= (int)$totalPages ?> · показано <?= count($sessions) ?> из <?= (int)$totalRows ?>
         </div>
         <div class="table-scroll">
-            <table class="data-table results-table">
+            <table class="data-table responsive-table results-table" data-module="results">
                 <thead>
                     <tr>
-                        <th>Дата</th>
-                        <th>Клиент</th>
+                        <th><?= render_admin_sort_link('completed_at', 'Дата', $tableMeta, $resultSortMap, 'results.php') ?></th>
+                        <th><?= render_admin_sort_link('client_name', 'Клиент', $tableMeta, $resultSortMap, 'results.php') ?></th>
                         <th>Анкета</th>
-                        <th>Тест</th>
+                        <th><?= render_admin_sort_link('test_title', 'Тест', $tableMeta, $resultSortMap, 'results.php') ?></th>
                         <th>Главный сигнал</th>
-                        <th>Консультант</th>
+                        <th><?= render_admin_sort_link('manager_name', 'Консультант', $tableMeta, $resultSortMap, 'results.php') ?></th>
                         <th>Действия</th>
                     </tr>
                 </thead>
@@ -255,16 +257,16 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     $modalId = 'result-modal-' . $sessionId;
                     ?>
                     <tr class="clickable-row" data-result-modal="<?= h($modalId) ?>">
-                        <td><span class="badge badge-sent"><?= h((string)$session['completed_at']) ?></span></td>
-                        <td>
+                        <td data-label="Дата" data-column="completed_at"><span class="badge badge-sent"><?= h((string)$session['completed_at']) ?></span></td>
+                        <td data-label="Клиент" data-column="client_name">
                             <strong><?= h(result_client_name($session)) ?></strong>
                             <div class="cell-muted">ID <?= (int)$session['end_user_id'] ?></div>
                         </td>
-                        <td><?= h(result_client_profile_line($session)) ?></td>
-                        <td><?= h((string)$session['test_title']) ?></td>
-                        <td><?= h(result_top_scale_label($scales)) ?></td>
-                        <td><?= h((string)($session['manager_name'] ?: '—')) ?></td>
-                        <td>
+                        <td data-label="Анкета" data-column="client_profile"><?= h(result_client_profile_line($session)) ?></td>
+                        <td data-label="Тест" data-column="test_title"><?= h((string)$session['test_title']) ?></td>
+                        <td data-label="Главный сигнал" data-column="top_signal"><?= h(result_top_scale_label($scales)) ?></td>
+                        <td data-label="Консультант" data-column="manager_name"><?= h((string)($session['manager_name'] ?: '—')) ?></td>
+                        <td data-label="Действия" data-column="actions">
                             <button type="button" class="button secondary-button compact-button" data-result-modal="<?= h($modalId) ?>">Открыть</button>
                         </td>
                     </tr>
@@ -272,37 +274,11 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 </tbody>
             </table>
         </div>
-        <?php if ($totalPages > 1): ?>
-            <nav class="pagination results-pagination" aria-label="Страницы результатов">
-                <?php if ($page > 1): ?>
-                    <a class="button secondary-button" href="<?= h(result_pagination_url($page - 1)) ?>">Назад</a>
-                <?php endif; ?>
-                <?php
-                $startPage = max(1, $page - 2);
-                $endPage = min($totalPages, $page + 2);
-                ?>
-                <?php if ($startPage > 1): ?>
-                    <a class="button secondary-button" href="<?= h(result_pagination_url(1)) ?>">1</a>
-                    <?php if ($startPage > 2): ?><span class="pagination-gap">...</span><?php endif; ?>
-                <?php endif; ?>
-                <?php for ($i = $startPage; $i <= $endPage; $i++): ?>
-                    <?php if ($i === $page): ?>
-                        <span class="button pagination-current"><?= (int)$i ?></span>
-                    <?php else: ?>
-                        <a class="button secondary-button" href="<?= h(result_pagination_url($i)) ?>"><?= (int)$i ?></a>
-                    <?php endif; ?>
-                <?php endfor; ?>
-                <?php if ($endPage < $totalPages): ?>
-                    <?php if ($endPage < $totalPages - 1): ?><span class="pagination-gap">...</span><?php endif; ?>
-                    <a class="button secondary-button" href="<?= h(result_pagination_url($totalPages)) ?>"><?= (int)$totalPages ?></a>
-                <?php endif; ?>
-                <?php if ($page < $totalPages): ?>
-                    <a class="button secondary-button" href="<?= h(result_pagination_url($page + 1)) ?>">Вперёд</a>
-                <?php endif; ?>
-            </nav>
-        <?php endif; ?>
-    </section>
+        <?= render_admin_pagination($tableMeta, 'results.php') ?>
+    <?php endif; ?>
+</section>
 
+<?php if ($sessions): ?>
     <?php foreach ($sessions as $session): ?>
         <?php
         $sessionId = (int)$session['id'];

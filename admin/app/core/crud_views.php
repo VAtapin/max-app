@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/content_ownership.php';
+require_once __DIR__ . '/table_ui.php';
 
 function crud_create_enabled(string $moduleKey): bool
 {
@@ -98,7 +99,7 @@ function crud_display_columns(string $moduleKey): array
             'referral_code' => app_text('auto.k_b162c37f62ea'),
             'team_capacity' => 'Ветка',
             'billing_summary' => 'Плательщик',
-            'subscription_summary' => 'Подписка и сумма',
+            'subscription_summary' => 'Подписка',
             'users_count' => app_text('auto.k_0f0b8f55edcc'),
             'state' => app_text('auto.k_f7f293b5c58c'),
         ],
@@ -422,9 +423,15 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
         return [
             "SELECT r.id, r.parent_reseller_id, parent.name AS parent_name,
                     r.name, r.email, r.phone, r.billing_name, r.billing_inn, r.billing_email,
-                    r.billing_comment, r.referral_code, r.manager_limit,
-                    r.direct_leader_limit, r.branch_leader_limit,
-                    r.direct_manager_limit, r.branch_manager_limit, r.per_child_manager_limit,
+                    r.billing_comment, r.referral_code, r.subscription_plan_id,
+                    COALESCE(sp.direct_consultant_limit, r.manager_limit) AS manager_limit,
+                    COALESCE(sp.direct_leader_limit, r.direct_leader_limit) AS direct_leader_limit,
+                    COALESCE(sp.branch_leader_limit, r.branch_leader_limit) AS branch_leader_limit,
+                    COALESCE(sp.direct_consultant_limit, r.direct_manager_limit) AS direct_manager_limit,
+                    COALESCE(sp.branch_consultant_limit, r.branch_manager_limit) AS branch_manager_limit,
+                    COALESCE(sp.per_child_consultant_limit, r.per_child_manager_limit) AS per_child_manager_limit,
+                    sp.title AS subscription_plan_title,
+                    sp.slug AS subscription_plan_slug,
                     IF(r.is_active = 1, 'active', 'inactive') AS state,
                     (SELECT COUNT(*) FROM managers m WHERE m.reseller_id = r.id) AS managers_count,
                     (SELECT COUNT(*) FROM managers m WHERE m.reseller_id = r.id AND m.is_active = 1) AS active_managers_count,
@@ -441,6 +448,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
                     (SELECT COUNT(*) FROM end_users eu WHERE eu.reseller_id = r.id) AS users_count
              FROM resellers r
              LEFT JOIN resellers parent ON parent.id = r.parent_reseller_id
+             LEFT JOIN subscription_plans sp ON sp.id = r.subscription_plan_id
              LEFT JOIN (
                 SELECT s.*
                 FROM leader_subscriptions s
@@ -649,13 +657,25 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
     }
 
     if ($moduleKey === 'resellers' && $column === 'subscription_summary') {
-        if (empty($row['subscription_status'])) {
+        $planTitle = trim((string)($row['subscription_plan_title'] ?? ''));
+        if ($planTitle === '' && empty($row['subscription_status'])) {
             return 'Нет подписки';
         }
-        $status = leader_subscription_status_label((string)$row['subscription_status']);
+        $status = !empty($row['subscription_status'])
+            ? leader_subscription_status_label((string)$row['subscription_status'])
+            : 'Назначена';
         $amount = $row['amount_due'] !== null ? number_format((float)$row['amount_due'], 2, ',', ' ') . ' руб.' : 'сумма не задана';
         $period = trim((string)($row['subscription_starts_at'] ?? '')) . ' - ' . trim((string)($row['subscription_ends_at'] ?? ''));
-        return $status . "\n" . $amount . "\n" . trim($period, " -");
+        $lines = [$planTitle !== '' ? $planTitle : 'Индивидуальная подписка', $status];
+        if ($amount !== 'сумма не задана') {
+            $lines[] = $amount;
+        }
+        $period = trim($period, " -");
+        if ($period !== '') {
+            $lines[] = $period;
+        }
+
+        return implode("\n", $lines);
     }
 
     if ($column === 'display_name' || $column === 'user_name') {
@@ -944,6 +964,211 @@ function render_lead_pagination(int $rowCount): string
     </div>
     <?php
     return trim(ob_get_clean());
+}
+
+function crud_table_request(): array
+{
+    return admin_table_request([], 'id', 'desc');
+}
+
+function crud_search_columns(string $moduleKey): array
+{
+    return match ($moduleKey) {
+        'resellers' => ['id', 'name', 'parent_name', 'email', 'phone', 'billing_name', 'billing_email', 'referral_code', 'subscription_plan_title', 'subscription_status', 'state'],
+        'managers' => ['id', 'name', 'email', 'phone', 'referral_code', 'reseller_name', 'state'],
+        'users' => ['id', 'full_name', 'username', 'platform', 'platform_user_id', 'city', 'reseller_name', 'manager_name', 'client_stage', 'platform_accounts_summary'],
+        'platform_accounts' => ['id', 'full_name', 'user_username', 'display_name', 'username', 'platform', 'platform_user_id'],
+        'categories' => ['id', 'title', 'slug', 'owner_type', 'state'],
+        'products' => ['id', 'title', 'category_title', 'price', 'state'],
+        'tests' => ['id', 'title', 'category_title', 'scoring_type', 'state'],
+        'broadcasts' => ['id', 'title', 'owner_label', 'platform', 'target_type', 'status'],
+        'content' => ['id', 'title', 'owner_label', 'content_type', 'section_type', 'category_title', 'status'],
+        'integrations' => ['id', 'title', 'owner_label', 'platform', 'external_id', 'state'],
+        default => ['id', 'title', 'name', 'email', 'status'],
+    };
+}
+
+function crud_sort_columns(string $moduleKey): array
+{
+    $common = ['id' => '`id`'];
+    return $common + match ($moduleKey) {
+        'resellers' => [
+            'name' => '`name`',
+            'parent_name' => '`parent_name`',
+            'contacts' => '`email`',
+            'referral_code' => '`referral_code`',
+            'subscription_summary' => '`subscription_plan_title`',
+            'users_count' => '`users_count`',
+            'state' => '`state`',
+        ],
+        'managers' => [
+            'name' => '`name`',
+            'reseller_name' => '`reseller_name`',
+            'contacts' => '`email`',
+            'referral_code' => '`referral_code`',
+            'users_count' => '`users_count`',
+            'state' => '`state`',
+        ],
+        'users' => [
+            'display_name' => '`full_name`',
+            'client_stage' => '`client_stage`',
+            'checkup_status' => '`completed_tests_count`',
+            'manager_name' => '`manager_name`',
+            'last_activity_at' => '`last_activity_at`',
+        ],
+        'platform_accounts' => [
+            'user_name' => '`full_name`',
+            'platform_account' => '`platform`',
+            'username' => '`username`',
+            'created_at' => '`created_at`',
+        ],
+        'categories' => [
+            'title' => '`title`',
+            'slug' => '`slug`',
+            'products_count' => '`products_count`',
+            'sort_order' => '`sort_order`',
+            'state' => '`state`',
+        ],
+        'products' => [
+            'title' => '`title`',
+            'category_title' => '`category_title`',
+            'price' => '`price`',
+            'sort_order' => '`sort_order`',
+            'state' => '`state`',
+        ],
+        'tests' => [
+            'title' => '`title`',
+            'category_title' => '`category_title`',
+            'test_type' => '`scoring_type`',
+            'questions_count' => '`questions_count`',
+            'sort_order' => '`sort_order`',
+            'state' => '`state`',
+        ],
+        'broadcasts' => [
+            'title' => '`title`',
+            'owner_label' => '`owner_label`',
+            'platform' => '`platform`',
+            'status' => '`status`',
+            'scheduled_at' => '`scheduled_at`',
+        ],
+        'content' => [
+            'title' => '`title`',
+            'owner_label' => '`owner_label`',
+            'content_type' => '`content_type`',
+            'section_type' => '`section_type`',
+            'status' => '`status`',
+            'publish_at' => '`publish_at`',
+        ],
+        'integrations' => [
+            'title' => '`title`',
+            'owner_label' => '`owner_label`',
+            'platform' => '`platform`',
+            'external_id' => '`external_id`',
+            'state' => '`state`',
+        ],
+        default => [
+            'title' => '`title`',
+            'name' => '`name`',
+            'status' => '`status`',
+        ],
+    };
+}
+
+function crud_strip_order_limit(string $sql): string
+{
+    return admin_table_strip_order_limit($sql);
+}
+
+function crud_paginated_rows(string $moduleKey, string $sql, array $params, array $columns): array
+{
+    $searchColumns = array_intersect(crud_search_columns($moduleKey), array_merge(array_keys($columns), [
+        'id', 'name', 'title', 'email', 'phone', 'username', 'full_name', 'parent_name', 'reseller_name',
+        'manager_name', 'platform', 'platform_user_id', 'city', 'referral_code', 'subscription_plan_title',
+        'subscription_status', 'owner_label', 'category_title', 'status', 'state', 'external_id',
+        'platform_accounts_summary', 'billing_name', 'billing_email',
+    ]));
+
+    return admin_table_paginated_rows($sql, $params, crud_sort_columns($moduleKey), $searchColumns, 'id', 'desc');
+}
+
+function crud_list_url(array $overrides = []): string
+{
+    return admin_table_url($overrides, 'crud.php');
+}
+
+function render_crud_table_tools(string $moduleKey, array $meta): string
+{
+    if (!$meta || $moduleKey === 'leads') {
+        return '';
+    }
+
+    $filters = [];
+    if ($moduleKey === 'users') {
+        $stageOptions = ['' => 'Все этапы'];
+        foreach (client_stage_labels() as $value => $label) {
+            $stageOptions[(string)$value] = (string)$label;
+        }
+        $filters = [
+            [
+                'name' => 'user_scope',
+                'label' => 'Записи',
+                'options' => [
+                    'clients' => 'Клиенты',
+                    'visitors' => 'Без консультанта',
+                    'all' => 'Все записи',
+                ],
+                'value' => users_scope_filter(),
+            ],
+            [
+                'name' => 'client_stage',
+                'label' => 'Этап',
+                'options' => $stageOptions,
+            ],
+            [
+                'name' => 'checkup',
+                'label' => 'Чек-ап',
+                'options' => [
+                    '' => 'Любой',
+                    'not_started' => 'Не начат',
+                    'started' => 'Начат',
+                    'completed' => 'Завершён',
+                ],
+            ],
+            [
+                'name' => 'activity',
+                'label' => 'Активность',
+                'options' => [
+                    '' => 'Любая',
+                    'active_7' => 'Был активен за 7 дней',
+                    'inactive_14' => 'Неактивен 14 дней',
+                ],
+            ],
+        ];
+    }
+
+    return render_admin_table_tools($meta, $filters, [
+        'hidden' => ['module' => $moduleKey],
+        'reset_url' => 'crud.php?module=' . urlencode($moduleKey),
+        'search_placeholder' => 'Имя, email, код, статус',
+    ]);
+}
+
+function render_sortable_header(string $moduleKey, string $key, string $label, array $meta): string
+{
+    if (!$meta || $moduleKey === 'leads' || !isset(crud_sort_columns($moduleKey)[$key])) {
+        return h($label);
+    }
+
+    return render_admin_sort_link($key, $label, $meta, crud_sort_columns($moduleKey), 'crud.php');
+}
+
+function render_crud_pagination(string $moduleKey, array $meta): string
+{
+    if (!$meta || $moduleKey === 'leads' || (int)($meta['page_count'] ?? 1) <= 1) {
+        return '';
+    }
+
+    return render_admin_pagination($meta, 'crud.php');
 }
 
 function lead_display_message(string $message): string
@@ -1495,23 +1720,25 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
     return trim(ob_get_clean());
 }
 
-function render_crud_list(string $moduleKey, array $columns, array $rows, bool $canEdit, bool $canDelete, array $admin = []): string
+function render_crud_list(string $moduleKey, array $columns, array $rows, bool $canEdit, bool $canDelete, array $admin = [], array $meta = []): string
 {
     ob_start();
     ?>
     <?php if ($moduleKey === 'leads'): ?>
         <?= render_lead_filters() ?>
+    <?php else: ?>
+        <?= render_crud_table_tools($moduleKey, $meta) ?>
     <?php endif; ?>
-    <div class="table-summary"><?= h(app_text('auto.k_b1062a5651c3')) ?><?= count($rows) ?></div>
+    <div class="table-summary"><?= h(app_text('auto.k_b1062a5651c3')) ?><?= (int)($meta['total'] ?? count($rows)) ?></div>
     <?php if ($rows): ?>
         <?php if ($moduleKey === 'leads'): ?>
             <?= render_lead_cards($rows, $canEdit, $canDelete) ?>
         <?php else: ?>
-        <table class="data-table" data-module="<?= h($moduleKey) ?>">
+        <table class="data-table responsive-table" data-module="<?= h($moduleKey) ?>">
             <thead>
                 <tr>
                     <?php foreach ($columns as $key => $label): ?>
-                        <th data-column="<?= h((string)$key) ?>"><?= h($label) ?></th>
+                        <th data-column="<?= h((string)$key) ?>"><?= render_sortable_header($moduleKey, (string)$key, (string)$label, $meta) ?></th>
                     <?php endforeach; ?>
                     <?php if ($canEdit || $canDelete): ?>
                         <th data-column="actions"><?= h(app_text('auto.k_9978ac34b293')) ?></th>
@@ -1522,10 +1749,10 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
                 <?php foreach ($rows as $row): ?>
                     <tr>
                         <?php foreach ($columns as $key => $label): ?>
-                            <td data-column="<?= h((string)$key) ?>"><?= render_cell($moduleKey, $key, $row) ?></td>
+                            <td data-column="<?= h((string)$key) ?>" data-label="<?= h((string)$label) ?>"><?= render_cell($moduleKey, $key, $row) ?></td>
                         <?php endforeach; ?>
                         <?php if ($canEdit || $canDelete): ?>
-                            <td class="row-actions" data-column="actions">
+                            <td class="row-actions" data-column="actions" data-label="<?= h(app_text('auto.k_9978ac34b293')) ?>">
                                 <?php if ($canEdit): ?>
                                     <a class="link-button" href="crud.php?module=<?= h($moduleKey) ?>&action=edit&id=<?= (int)$row['id'] ?>"><?= h(crud_action_label($moduleKey)) ?></a>
                                 <?php endif; ?>
@@ -1566,6 +1793,8 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
     <?php if ($moduleKey === 'leads'): ?>
         <?= render_lead_pagination(count($rows)) ?>
         <?= render_lead_media_modal() ?>
+    <?php else: ?>
+        <?= render_crud_pagination($moduleKey, $meta) ?>
     <?php endif; ?>
     <?php
     return trim(ob_get_clean());

@@ -47,7 +47,7 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                     'users' => ['Клиенты', 'crud.php?module=users'],
                     'results' => ['Результаты чек-апов', 'results.php'],
                     'leads' => ['Обращения', 'crud.php?module=leads'],
-                    'subscriptions' => ['Оплата лидеров', 'subscriptions.php'],
+                    'subscriptions' => ['Подписка', 'subscriptions.php'],
                 ],
                 'Контент' => [
                     'categories' => ['Категории продуктов', 'crud.php?module=categories'],

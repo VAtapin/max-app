@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
+require_once __DIR__ . '/../app/core/table_ui.php';
 
 $admin = require_auth();
 if (($admin['role'] ?? '') !== 'superadmin') {
@@ -322,18 +323,17 @@ if ($action === 'create' && $_SERVER['REQUEST_METHOD'] === 'POST' && $errors) {
     $editRow = array_merge($_POST, ['is_active' => isset($_POST['is_active']) ? 1 : 0]);
 }
 
-$resellers = admin_account_resellers();
-$managers = admin_account_managers();
+$resellers = [];
+$managers = [];
+if ($action === 'create' || $action === 'edit') {
+    $resellers = admin_account_resellers();
+    $managers = admin_account_managers();
+}
 
-$q = trim((string)($_GET['q'] ?? ''));
 $roleFilter = (string)($_GET['role'] ?? '');
 $activeFilter = (string)($_GET['active'] ?? '');
 $where = [];
 $params = [];
-if ($q !== '') {
-    $where[] = '(au.name LIKE :q OR au.email LIKE :q OR au.phone LIKE :q OR au.telegram_id LIKE :q OR au.max_id LIKE :q OR au.vk_id LIKE :q OR r.name LIKE :q OR m.name LIKE :q)';
-    $params['q'] = '%' . $q . '%';
-}
 if (isset($roles[$roleFilter])) {
     $where[] = 'au.role = :role';
     $params['role'] = $roleFilter;
@@ -343,46 +343,49 @@ if ($activeFilter === '1' || $activeFilter === '0') {
     $params['is_active'] = (int)$activeFilter;
 }
 $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
-$perPage = 30;
-$page = max(1, (int)($_GET['page'] ?? 1));
-$countStmt = db()->prepare(
-    'SELECT COUNT(*)
+$accountSortMap = [
+    'id' => '`id`',
+    'name' => '`name`',
+    'role' => '`role_order`',
+    'binding' => '`reseller_name`',
+    'email' => '`email`',
+    'two_factor' => '`two_factor_required`',
+    'is_active' => '`is_active`',
+    'created_at' => '`created_at`',
+];
+$pageData = admin_table_paginated_rows(
+    'SELECT au.*, r.name AS reseller_name, m.name AS manager_name,
+            CASE au.role WHEN "superadmin" THEN 1 WHEN "reseller" THEN 2 ELSE 3 END AS role_order
      FROM admin_users au
      LEFT JOIN resellers r ON r.id = au.reseller_id
      LEFT JOIN managers m ON m.id = au.manager_id
-     ' . $whereSql
+     ' . $whereSql,
+    $params,
+    $accountSortMap,
+    ['name', 'email', 'phone', 'telegram_id', 'max_id', 'vk_id', 'reseller_name', 'manager_name', 'role'],
+    'role',
+    'asc'
 );
-$countStmt->execute($params);
-$totalRows = (int)$countStmt->fetchColumn();
-$totalPages = max(1, (int)ceil($totalRows / $perPage));
-$page = min($page, $totalPages);
-$offset = ($page - 1) * $perPage;
-$listStmt = db()->prepare(
-    'SELECT au.*, r.name AS reseller_name, m.name AS manager_name
-     FROM admin_users au
-     LEFT JOIN resellers r ON r.id = au.reseller_id
-     LEFT JOIN managers m ON m.id = au.manager_id
-     ' . $whereSql . '
-     ORDER BY CASE au.role WHEN "superadmin" THEN 1 WHEN "reseller" THEN 2 ELSE 3 END, au.id DESC
-     LIMIT ' . $perPage . ' OFFSET ' . $offset
-);
-$listStmt->execute($params);
-$accounts = $listStmt->fetchAll();
+$accounts = $pageData['rows'];
+$tableMeta = $pageData['meta'];
+$totalRows = (int)$tableMeta['total'];
+$totalPages = (int)$tableMeta['page_count'];
+$page = (int)$tableMeta['page'];
 
 function admin_account_page_url(int $page): string
 {
-    $query = $_GET;
-    unset($query['action'], $query['id'], $query['success']);
-    $query['page'] = $page;
-
-    return 'admin_accounts.php?' . http_build_query($query);
+    return admin_table_url(['page' => $page], 'admin_accounts.php');
 }
 
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
 <div class="toolbar">
     <h1><?= h($title) ?></h1>
-    <a class="button" href="admin_accounts.php?action=create">Добавить</a>
+    <?php if ($action === 'list'): ?>
+        <a class="button" href="admin_accounts.php?action=create">Добавить</a>
+    <?php else: ?>
+        <a class="button secondary-button" href="admin_accounts.php">К списку пользователей</a>
+    <?php endif; ?>
 </div>
 
 <?php if ($success === 'saved'): ?>
@@ -506,32 +509,29 @@ require __DIR__ . '/../app/views/layouts/header.php';
     </script>
 <?php endif; ?>
 
+<?php if ($action === 'list'): ?>
 <section class="panel">
-    <form method="get" class="filters admin-account-filters">
-        <label>
-            <span>Поиск</span>
-            <input type="search" name="q" value="<?= h($q) ?>" placeholder="Имя, email, телефон, ID, VK, Telegram, MAX">
-        </label>
-        <label>
-            <span>Роль</span>
-            <select name="role">
-                <option value="">Все роли</option>
-                <?php foreach ($roles as $role => $label): ?>
-                    <option value="<?= h($role) ?>" <?= $roleFilter === $role ? 'selected' : '' ?>><?= h($label) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </label>
-        <label>
-            <span>Статус</span>
-            <select name="active">
-                <option value="">Любой</option>
-                <option value="1" <?= $activeFilter === '1' ? 'selected' : '' ?>>Активные</option>
-                <option value="0" <?= $activeFilter === '0' ? 'selected' : '' ?>>Отключённые</option>
-            </select>
-        </label>
-        <button type="submit">Показать</button>
-        <a class="button secondary-button" href="admin_accounts.php">Сбросить</a>
-    </form>
+    <?= render_admin_table_tools($tableMeta, [
+        [
+            'name' => 'role',
+            'label' => 'Роль',
+            'options' => ['' => 'Все роли'] + $roles,
+            'value' => $roleFilter,
+        ],
+        [
+            'name' => 'active',
+            'label' => 'Статус',
+            'options' => [
+                '' => 'Любой',
+                '1' => 'Активные',
+                '0' => 'Отключённые',
+            ],
+            'value' => $activeFilter,
+        ],
+    ], [
+        'reset_url' => 'admin_accounts.php',
+        'search_placeholder' => 'Имя, email, телефон, ID, VK, Telegram, MAX',
+    ]) ?>
 
     <p class="table-summary">Найдено записей: <?= (int)$totalRows ?></p>
     <?php if (!$accounts): ?>
@@ -540,14 +540,14 @@ require __DIR__ . '/../app/views/layouts/header.php';
         <table class="data-table responsive-table" data-module="admin-accounts">
             <thead>
             <tr>
-                <th>ID</th>
-                <th>Пользователь</th>
-                <th>Роль</th>
+                <th><?= render_admin_sort_link('id', 'ID', $tableMeta, $accountSortMap, 'admin_accounts.php') ?></th>
+                <th><?= render_admin_sort_link('name', 'Пользователь', $tableMeta, $accountSortMap, 'admin_accounts.php') ?></th>
+                <th><?= render_admin_sort_link('role', 'Роль', $tableMeta, $accountSortMap, 'admin_accounts.php') ?></th>
                 <th>Привязка</th>
-                <th>Контакты</th>
-                <th>2FA</th>
-                <th>Статус</th>
-                <th>Создан</th>
+                <th><?= render_admin_sort_link('email', 'Контакты', $tableMeta, $accountSortMap, 'admin_accounts.php') ?></th>
+                <th><?= render_admin_sort_link('two_factor', '2FA', $tableMeta, $accountSortMap, 'admin_accounts.php') ?></th>
+                <th><?= render_admin_sort_link('is_active', 'Статус', $tableMeta, $accountSortMap, 'admin_accounts.php') ?></th>
+                <th><?= render_admin_sort_link('created_at', 'Создан', $tableMeta, $accountSortMap, 'admin_accounts.php') ?></th>
                 <th>Действия</th>
             </tr>
             </thead>
@@ -611,24 +611,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <?php endforeach; ?>
             </tbody>
         </table>
-        <?php if ($totalPages > 1): ?>
-            <?php $startPage = max(1, $page - 2); $endPage = min($totalPages, $page + 2); ?>
-            <nav class="pagination" aria-label="Страницы админов">
-                <?php if ($page > 1): ?><a class="button secondary-button" href="<?= h(admin_account_page_url($page - 1)) ?>">Назад</a><?php endif; ?>
-                <?php if ($startPage > 1): ?><a class="button secondary-button" href="<?= h(admin_account_page_url(1)) ?>">1</a><?php endif; ?>
-                <?php if ($startPage > 2): ?><span class="pagination-gap">...</span><?php endif; ?>
-                <?php for ($i = $startPage; $i <= $endPage; $i++): ?>
-                    <?php if ($i === $page): ?>
-                        <span class="button pagination-current"><?= (int)$i ?></span>
-                    <?php else: ?>
-                        <a class="button secondary-button" href="<?= h(admin_account_page_url($i)) ?>"><?= (int)$i ?></a>
-                    <?php endif; ?>
-                <?php endfor; ?>
-                <?php if ($endPage < $totalPages - 1): ?><span class="pagination-gap">...</span><?php endif; ?>
-                <?php if ($endPage < $totalPages): ?><a class="button secondary-button" href="<?= h(admin_account_page_url($totalPages)) ?>"><?= (int)$totalPages ?></a><?php endif; ?>
-                <?php if ($page < $totalPages): ?><a class="button secondary-button" href="<?= h(admin_account_page_url($page + 1)) ?>">Вперёд</a><?php endif; ?>
-            </nav>
-        <?php endif; ?>
+        <?= render_admin_pagination($tableMeta, 'admin_accounts.php') ?>
     <?php endif; ?>
 </section>
+<?php endif; ?>
 <?php require __DIR__ . '/../app/views/layouts/footer.php'; ?>

@@ -11,6 +11,7 @@ require_once __DIR__ . '/../app/core/content_ownership.php';
 require_once __DIR__ . '/../app/core/integration_guides.php';
 require_once __DIR__ . '/../app/core/site_templates.php';
 require_once __DIR__ . '/../app/core/consultant_profiles.php';
+require_once __DIR__ . '/../app/core/subscription_plans.php';
 
 $admin = require_auth();
 
@@ -18,7 +19,7 @@ $modules = [
     'resellers' => [
         'title' => app_text('auto.k_32cea47742bf'),
         'table' => 'resellers',
-        'columns' => ['id', 'parent_reseller_id', 'name', 'email', 'phone', 'billing_name', 'billing_inn', 'billing_email', 'billing_comment', 'referral_code', 'manager_limit', 'direct_leader_limit', 'branch_leader_limit', 'direct_manager_limit', 'branch_manager_limit', 'per_child_manager_limit', 'price_per_leader', 'price_per_consultant', 'is_active'],
+        'columns' => ['id', 'parent_reseller_id', 'subscription_plan_id', 'name', 'email', 'phone', 'billing_name', 'billing_inn', 'billing_email', 'billing_comment', 'referral_code', 'manager_limit', 'direct_leader_limit', 'branch_leader_limit', 'direct_manager_limit', 'branch_manager_limit', 'per_child_manager_limit', 'price_per_leader', 'price_per_consultant', 'is_active'],
         'fields' => [
             'parent_reseller_id' => ['label' => 'Вышестоящий лидер', 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
             'template_id' => [
@@ -37,14 +38,15 @@ $modules = [
             'billing_inn' => ['label' => 'ИНН плательщика'],
             'billing_email' => ['label' => 'Email для счетов', 'type' => 'email'],
             'billing_comment' => ['label' => 'Комментарий для оплаты', 'type' => 'textarea'],
+            'subscription_plan_id' => [
+                'label' => 'Подписка',
+                'type' => 'select',
+                'source' => 'subscription_plans',
+                'nullable' => true,
+                'nullable_label' => 'Нет подписки',
+                'hint' => 'Лимиты и стоимость берутся из выбранной подписки. Тарифы настраиваются в разделе «Подписка».',
+            ],
             'referral_code' => ['label' => app_text('auto.k_a9d3a61b02f2'), 'required' => true],
-            'direct_leader_limit' => ['label' => 'Лимит прямых лидеров', 'type' => 'number', 'min' => 0, 'nullable' => true],
-            'branch_leader_limit' => ['label' => 'Лимит лидеров во всей ветке', 'type' => 'number', 'min' => 0, 'nullable' => true],
-            'direct_manager_limit' => ['label' => 'Лимит прямых консультантов', 'type' => 'number', 'min' => 0, 'nullable' => true],
-            'branch_manager_limit' => ['label' => 'Лимит консультантов во всей ветке', 'type' => 'number', 'min' => 0, 'nullable' => true],
-            'per_child_manager_limit' => ['label' => 'Лимит консультантов на одного дочернего лидера', 'type' => 'number', 'min' => 0, 'nullable' => true],
-            'price_per_leader' => ['label' => 'Цена за лидера в месяц', 'type' => 'number', 'step' => '0.01', 'min' => 0, 'nullable' => true],
-            'price_per_consultant' => ['label' => 'Цена за консультанта в месяц', 'type' => 'number', 'step' => '0.01', 'min' => 0, 'nullable' => true],
             'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
         ],
     ],
@@ -764,6 +766,7 @@ function select_options(string $source, array $admin): array
         'content_posts' => ['table' => 'content_posts', 'label' => 'title'],
         'tests' => ['table' => 'tests', 'label' => 'title'],
         'site_templates' => ['table' => 'site_templates', 'label' => 'title'],
+        'subscription_plans' => ['table' => 'subscription_plans', 'label' => 'title'],
     ];
     if (!isset($allowed[$source])) {
         return [];
@@ -808,6 +811,9 @@ function select_options(string $source, array $admin): array
         $stmt = db()->prepare("SELECT {$alias}.id, {$alias}.{$item['label']} AS label FROM {$item['table']} {$alias} $where ORDER BY {$alias}.id DESC LIMIT 500");
         $stmt->execute($params);
         return $stmt->fetchAll();
+    }
+    if ($source === 'subscription_plans') {
+        return subscription_plan_options(true);
     }
 
     $stmt = db()->prepare("SELECT id, {$item['label']} AS label FROM {$item['table']} $where ORDER BY id DESC LIMIT 500");
@@ -2214,10 +2220,18 @@ if ($action === 'limit_check') {
         $payload = collect_payload($formFields);
         $payload = normalize_module_payload($moduleKey, $payload);
         $payload = apply_role_defaults($moduleKey, $payload, $admin, $recordId);
+        $limitPayload = $payload;
+        if ($moduleKey === 'resellers') {
+            $planErrors = subscription_plan_validate_reseller_payload($payload);
+            if (!$planErrors) {
+                $limitPayload = subscription_plan_apply_to_reseller_payload($payload);
+            }
+        }
         $limitErrors = array_merge(
-            validate_child_limit_caps($moduleKey, $payload, $recordId),
-            validate_manager_limit_payload($moduleKey, $payload, $recordId),
-            validate_leader_limit_payload($moduleKey, $payload, $recordId),
+            $planErrors ?? [],
+            validate_child_limit_caps($moduleKey, $limitPayload, $recordId),
+            validate_manager_limit_payload($moduleKey, $limitPayload, $recordId),
+            validate_leader_limit_payload($moduleKey, $limitPayload, $recordId),
         );
 
         echo json_encode([
@@ -2411,11 +2425,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = apply_file_uploads($moduleKey, $formFields, $payload, $errors);
     $errors = array_merge($errors, validate_payload($formFields, $payload));
     $payload = apply_role_defaults($moduleKey, $payload, $admin, $postId);
+    $limitPayload = $payload;
+    if ($moduleKey === 'resellers') {
+        $errors = array_merge($errors, subscription_plan_validate_reseller_payload($payload));
+        if (!$errors) {
+            $limitPayload = subscription_plan_apply_to_reseller_payload($payload);
+        }
+    }
     $errors = array_merge($errors, validate_unique_payload($moduleKey, $module, $payload, $postId));
     $errors = array_merge($errors, validate_scope_payload($moduleKey, $payload, $admin, $postId));
-    $errors = array_merge($errors, validate_child_limit_caps($moduleKey, $payload, $postId));
-    $errors = array_merge($errors, validate_manager_limit_payload($moduleKey, $payload, $postId));
-    $errors = array_merge($errors, validate_leader_limit_payload($moduleKey, $payload, $postId));
+    $errors = array_merge($errors, validate_child_limit_caps($moduleKey, $limitPayload, $postId));
+    $errors = array_merge($errors, validate_manager_limit_payload($moduleKey, $limitPayload, $postId));
+    $errors = array_merge($errors, validate_leader_limit_payload($moduleKey, $limitPayload, $postId));
     if (!$errors) {
         try {
             $savedId = save_record($moduleKey, $module, $payload, $postId, $admin);
@@ -2495,17 +2516,24 @@ if ($leadChatOnly && !$editRow) {
 
 $rows = [];
 $listHtml = '';
+$listMeta = [];
 $displayColumns = crud_display_columns($moduleKey);
 $limitCheckUrl = in_array($moduleKey, ['managers', 'resellers'], true)
     ? 'crud.php?module=' . urlencode($moduleKey) . '&action=limit_check'
     : '';
 try {
-    if (!$leadChatOnly) {
+    if (!$leadChatOnly && $action === 'list') {
         [$listSql, $params] = crud_list_query($moduleKey, $module, $admin);
-        $stmt = db()->prepare($listSql);
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll();
-        $listHtml = render_crud_list($moduleKey, $displayColumns, $rows, $canEdit, $canDelete, $admin);
+        if ($moduleKey === 'leads') {
+            $stmt = db()->prepare($listSql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll();
+        } else {
+            $pageData = crud_paginated_rows($moduleKey, $listSql, $params, $displayColumns);
+            $rows = $pageData['rows'];
+            $listMeta = $pageData['meta'];
+        }
+        $listHtml = render_crud_list($moduleKey, $displayColumns, $rows, $canEdit, $canDelete, $admin, $listMeta);
     }
 } catch (Throwable $e) {
     $errors[] = app_text('auto.k_49fb23bb29cf') . $e->getMessage();
@@ -2968,52 +2996,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php if ($moduleKey === 'leads'): ?>
     <?= render_lead_media_modal() ?>
 <?php endif; ?>
-<?php $showList = !($moduleKey === 'users' && $action === 'edit') && !$leadChatOnly; ?>
+<?php $showList = $action === 'list' && !$leadChatOnly; ?>
 <?php if ($showList): ?>
-    <?php if ($moduleKey === 'users'): ?>
-        <section class="panel">
-            <form method="get" class="filters">
-                <input type="hidden" name="module" value="users">
-                <label>
-                    <span>Записи</span>
-                    <?php $userScope = users_scope_filter(); ?>
-                    <select name="user_scope">
-                        <option value="clients" <?= $userScope === 'clients' ? 'selected' : '' ?>>Клиенты</option>
-                        <option value="visitors" <?= $userScope === 'visitors' ? 'selected' : '' ?>>Без консультанта</option>
-                        <option value="all" <?= $userScope === 'all' ? 'selected' : '' ?>>Все записи</option>
-                    </select>
-                </label>
-                <label>
-                    <span>Этап</span>
-                    <select name="client_stage">
-                        <option value="">Все этапы</option>
-                        <?php foreach (client_stage_labels() as $value => $label): ?>
-                            <option value="<?= h($value) ?>" <?= ($_GET['client_stage'] ?? '') === $value ? 'selected' : '' ?>><?= h($label) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </label>
-                <label>
-                    <span>Чек-ап</span>
-                    <select name="checkup">
-                        <option value="">Любой</option>
-                        <option value="not_started" <?= ($_GET['checkup'] ?? '') === 'not_started' ? 'selected' : '' ?>>Не начат</option>
-                        <option value="started" <?= ($_GET['checkup'] ?? '') === 'started' ? 'selected' : '' ?>>Начат</option>
-                        <option value="completed" <?= ($_GET['checkup'] ?? '') === 'completed' ? 'selected' : '' ?>>Завершён</option>
-                    </select>
-                </label>
-                <label>
-                    <span>Активность</span>
-                    <select name="activity">
-                        <option value="">Любая</option>
-                        <option value="active_7" <?= ($_GET['activity'] ?? '') === 'active_7' ? 'selected' : '' ?>>Был активен за 7 дней</option>
-                        <option value="inactive_14" <?= ($_GET['activity'] ?? '') === 'inactive_14' ? 'selected' : '' ?>>Неактивен 14 дней</option>
-                    </select>
-                </label>
-                <button type="submit">Применить</button>
-                <a class="button secondary-button" href="crud.php?module=users">Сбросить</a>
-            </form>
-        </section>
-    <?php endif; ?>
     <section class="panel">
         <?= $listHtml ?>
     </section>

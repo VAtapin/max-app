@@ -330,6 +330,48 @@ table {
     margin-bottom: 12px;
 }
 
+.table-tools {
+    background: #f8fbfc;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 12px;
+}
+
+.table-tools .table-search {
+    flex: 1 1 280px;
+}
+
+.filters input[type="search"] {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font: inherit;
+    min-height: 42px;
+    min-width: 220px;
+    padding: 9px 10px;
+}
+
+.sort-link {
+    color: inherit;
+    display: inline-flex;
+    font-weight: 800;
+    gap: 4px;
+}
+
+.sort-link.active,
+.sort-link:hover {
+    color: var(--accent);
+}
+
+.compact-lines {
+    display: grid;
+    gap: 5px;
+    min-width: 180px;
+}
+
+.compact-lines span {
+    display: block;
+}
+
 .empty-state {
     border: 1px dashed var(--line);
     border-radius: 6px;
