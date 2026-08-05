@@ -240,6 +240,37 @@ $modules = [
             'publish_at' => ['label' => app_text('auto.k_8ad0765b3c02'), 'type' => 'datetime-local', 'nullable' => true],
         ],
     ],
+    'site_templates' => [
+        'title' => 'Шаблоны мини-сайта',
+        'table' => 'site_templates',
+        'columns' => ['id', 'title', 'slug', 'description', 'owner_type', 'owner_id', 'profile_json', 'blocks_json', 'sort_order', 'is_active'],
+        'fields' => [
+            'title' => ['label' => 'Название', 'required' => true],
+            'slug' => [
+                'label' => 'Код шаблона',
+                'required' => true,
+                'hint' => 'Только латиница, цифры, дефис или подчёркивание.',
+            ],
+            'description' => ['label' => 'Описание', 'type' => 'textarea'],
+            'profile_json' => [
+                'label' => 'Первый экран',
+                'type' => 'textarea',
+                'required' => true,
+                'default' => site_template_default_profile_json(),
+                'rows' => 14,
+                'hint' => 'JSON. Можно использовать {{name}}, {{role_label}}, {{phone}}, {{email}}.',
+            ],
+            'blocks_json' => [
+                'label' => 'Блоки страницы',
+                'type' => 'textarea',
+                'default' => site_template_default_blocks_json(),
+                'rows' => 14,
+                'hint' => 'JSON-массив блоков мини-сайта.',
+            ],
+            'sort_order' => ['label' => app_text('auto.k_ed030118aad8'), 'type' => 'number', 'default' => 100],
+            'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
+        ],
+    ],
     'integrations' => [
         'title' => app_text('integrations.title'),
         'table' => 'messaging_integrations',
@@ -346,6 +377,10 @@ function scope_where_for_module(string $moduleKey, array $admin): array
     if ($moduleKey === 'managers' && $admin['role'] === 'reseller') {
         [$where, $params] = team_sql_in_condition('reseller_id', team_reseller_branch_ids((int)$admin['reseller_id'], true), 'scope_manager_branch');
         return ['WHERE ' . $where, $params];
+    }
+
+    if ($moduleKey === 'site_templates') {
+        return site_template_admin_scope_condition($admin);
     }
 
     if (in_array($moduleKey, owned_modules(), true)) {
@@ -813,6 +848,10 @@ function select_options(string $source, array $admin): array
         return [];
     }
 
+    if ($source === 'site_templates') {
+        return site_template_options($admin);
+    }
+
     $item = $allowed[$source];
     $where = '';
     $params = [];
@@ -1028,6 +1067,10 @@ function normalize_module_payload(string $moduleKey, array $payload): array
         $payload['callback_secret'] = integration_callback_secret();
     }
 
+    if ($moduleKey === 'site_templates') {
+        $payload = site_template_normalize_payload($payload);
+    }
+
     return $payload;
 }
 
@@ -1157,6 +1200,9 @@ function validate_unique_payload(string $moduleKey, array $module, array $payloa
         'resellers', 'managers' => [
             'referral_code' => 'Реферальный код',
         ],
+        'site_templates' => [
+            'slug' => 'Код шаблона',
+        ],
         default => [],
     };
 
@@ -1200,6 +1246,13 @@ function friendly_save_error(Throwable $e, array $payload): string
                 : 'Такой реферальный код уже используется. Укажите другой код.';
         }
 
+        if (stripos($message, 'slug') !== false) {
+            $code = trim((string)($payload['slug'] ?? ''));
+            return $code !== ''
+                ? 'Код шаблона "' . $code . '" уже используется. Укажите другой код.'
+                : 'Такой код шаблона уже используется. Укажите другой код.';
+        }
+
         return 'Такая запись уже существует. Проверьте уникальные поля.';
     }
 
@@ -1214,6 +1267,10 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin,
         if ($code === '' || !preg_match('/^[A-Z0-9_-]{3,64}$/', $code)) {
             $errors[] = app_text('referrals.invalid_code');
         }
+    }
+
+    if ($moduleKey === 'site_templates') {
+        $errors = array_merge($errors, site_template_validate_payload($payload));
     }
 
     if ($moduleKey === 'resellers') {
@@ -1711,6 +1768,23 @@ function apply_role_defaults(string $moduleKey, array $payload, array $admin, ?i
         $payload['owner_type'] = $admin['role'];
         $payload['owner_id'] = $admin['role'] === 'reseller' ? $admin['reseller_id'] : $admin['manager_id'];
     }
+    if ($moduleKey === 'site_templates') {
+        if ($recordId) {
+            unset($payload['owner_type'], $payload['owner_id'], $payload['source_template_id']);
+        } elseif ($admin['role'] === 'reseller') {
+            $payload['owner_type'] = 'reseller';
+            $payload['owner_id'] = $admin['reseller_id'];
+            $payload['source_template_id'] = null;
+        } elseif ($admin['role'] === 'manager') {
+            $payload['owner_type'] = 'manager';
+            $payload['owner_id'] = $admin['manager_id'];
+            $payload['source_template_id'] = null;
+        } else {
+            $payload['owner_type'] = null;
+            $payload['owner_id'] = null;
+            $payload['source_template_id'] = null;
+        }
+    }
     if ($moduleKey === 'integrations' && $admin['role'] === 'manager') {
         $payload['owner_type'] = 'manager';
         $payload['owner_id'] = $admin['manager_id'];
@@ -1895,6 +1969,7 @@ function detach_owner_content(string $ownerType, int $ownerId): void
         'product_categories' => ['column' => 'is_active', 'value' => 0],
         'products' => ['column' => 'is_active', 'value' => 0],
         'tests' => ['column' => 'is_active', 'value' => 0],
+        'site_templates' => ['column' => 'is_active', 'value' => 0],
         'content_posts' => ['column' => 'status', 'value' => 'hidden'],
         'broadcasts' => ['column' => 'status', 'value' => 'cancelled'],
     ];
@@ -1949,6 +2024,14 @@ function delete_crud_record(string $moduleKey, array $module, int $id, array $ad
             $stmt = $pdo->prepare('UPDATE content_posts SET status = "hidden" WHERE id = :id');
             $stmt->execute(['id' => $id]);
             log_activity('admin', (int)$admin['id'], 'hide_content_posts', 'content_posts', $id);
+            $pdo->commit();
+            return;
+        }
+
+        if ($moduleKey === 'site_templates') {
+            $stmt = $pdo->prepare('UPDATE site_templates SET is_active = 0 WHERE id = :id');
+            $stmt->execute(['id' => $id]);
+            log_activity('admin', (int)$admin['id'], 'hide_site_templates', 'site_templates', $id);
             $pdo->commit();
             return;
         }
@@ -2465,7 +2548,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $templateId = nullable_int_value($_POST['template_id'] ?? null);
+    if ($templateId && in_array($moduleKey, ['managers', 'resellers'], true) && !site_template_row($templateId, $admin)) {
+        $errors[] = 'Шаблон мини-сайта недоступен для вашей ветки.';
+    }
     $payload = collect_payload($formFields);
+    if ($moduleKey === 'site_templates') {
+        $payload = site_template_apply_editor_payload($payload, $_POST);
+    }
     $payload = normalize_module_payload($moduleKey, $payload);
     $payload = apply_file_uploads($moduleKey, $formFields, $payload, $errors);
     $errors = array_merge($errors, validate_payload($formFields, $payload));
@@ -2684,6 +2773,10 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         $value = lead_display_message((string)$value);
                     }
                 }
+                if ($moduleKey === 'site_templates' && in_array($name, ['profile_json', 'blocks_json'], true)) {
+                    echo '<textarea name="' . h($name) . '" hidden>' . h((string)$value) . '</textarea>';
+                    continue;
+                }
                 ?>
                 <label class="field">
                     <span class="field-label-line">
@@ -2701,7 +2794,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         <?php endif; ?>
                     </span>
                     <?php if ($type === 'textarea'): ?>
-                        <textarea name="<?= h($name) ?>" rows="4" <?= !empty($field['readonly']) ? 'readonly' : '' ?>><?= h((string)$value) ?></textarea>
+                        <textarea name="<?= h($name) ?>" rows="<?= max(3, (int)($field['rows'] ?? 4)) ?>" <?= !empty($field['readonly']) ? 'readonly' : '' ?>><?= h((string)$value) ?></textarea>
                     <?php elseif ($type === 'select'): ?>
                         <select name="<?= h($name) ?>">
                             <?php if ($field['nullable'] ?? false): ?>
@@ -2768,6 +2861,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         <small class="field-hint"><?= h((string)$field['hint']) ?></small>
                     <?php endif; ?>
                 </label>
+                <?php if ($moduleKey === 'site_templates' && $name === 'description'): ?>
+                    <?php render_site_template_editor($editRow ?: null); ?>
+                <?php endif; ?>
             <?php endforeach; ?>
             <?php if ($moduleKey === 'broadcasts'): ?>
                 <section class="field wide broadcast-preview" id="broadcast-preview">

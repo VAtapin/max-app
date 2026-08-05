@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/content_ownership.php';
+require_once __DIR__ . '/site_templates.php';
 require_once __DIR__ . '/table_ui.php';
 require_once __DIR__ . '/subscription_plans.php';
 
@@ -39,6 +40,7 @@ function crud_form_title(string $moduleKey, string $action): string
             'tests' => app_text('auto.k_74f8257e9b63'),
             'broadcasts' => app_text('auto.k_e822b9f8ad3a'),
             'content' => app_text('auto.k_f257071b2057'),
+            'site_templates' => 'Добавить шаблон мини-сайта',
             default => app_text('auto.k_909a83238c9a'),
         };
     }
@@ -53,6 +55,7 @@ function crud_form_title(string $moduleKey, string $action): string
         'tests' => app_text('auto.k_058863fd2c04'),
         'broadcasts' => app_text('auto.k_3a60e45259e0'),
         'content' => app_text('auto.k_1fc7d815c49f'),
+        'site_templates' => 'Редактировать шаблон мини-сайта',
         default => app_text('auto.k_e99ceeeb190e'),
     };
 }
@@ -192,6 +195,15 @@ function crud_display_columns(string $moduleKey): array
             'media_summary' => app_text('auto.k_012475a7b6b0'),
             'status' => app_text('auto.k_f7f293b5c58c'),
             'publish_at' => app_text('auto.k_eb8ec7038ec2'),
+        ],
+        'site_templates' => [
+            'id' => 'ID',
+            'title' => 'Шаблон',
+            'owner_label' => 'Владелец',
+            'slug' => 'Код',
+            'description' => 'Описание',
+            'sort_order' => app_text('auto.k_c00d5a4cbda0'),
+            'state' => app_text('auto.k_f7f293b5c58c'),
         ],
         'integrations' => [
             'id' => 'ID',
@@ -574,6 +586,26 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
              LEFT JOIN managers m ON m.id = cp.owner_id AND cp.owner_type = 'manager'
              $where
              ORDER BY cp.id DESC
+             LIMIT 100",
+            $params,
+        ];
+    }
+
+    if ($moduleKey === 'site_templates') {
+        [$where, $params] = site_template_admin_scope_condition($admin, 'st');
+        return [
+            "SELECT st.id, st.title, st.slug, st.description, st.owner_type, st.owner_id, st.sort_order,
+                    IF(st.is_active = 1, 'active', 'inactive') AS state,
+                    CASE
+                        WHEN st.owner_type = 'reseller' THEN CONCAT('Лидер: ', COALESCE(r.name, CONCAT('#', st.owner_id)))
+                        WHEN st.owner_type = 'manager' THEN CONCAT('Консультант: ', COALESCE(m.name, CONCAT('#', st.owner_id)))
+                        ELSE 'Глобальный'
+                    END AS owner_label
+             FROM site_templates st
+             LEFT JOIN resellers r ON r.id = st.owner_id AND st.owner_type = 'reseller'
+             LEFT JOIN managers m ON m.id = st.owner_id AND st.owner_type = 'manager'
+             $where
+             ORDER BY st.sort_order ASC, st.id DESC
              LIMIT 100",
             $params,
         ];
@@ -1018,6 +1050,7 @@ function crud_search_columns(string $moduleKey): array
         'tests' => ['id', 'title', 'category_title', 'scoring_type', 'state'],
         'broadcasts' => ['id', 'title', 'owner_label', 'platform', 'target_type', 'status'],
         'content' => ['id', 'title', 'owner_label', 'content_type', 'section_type', 'category_title', 'status'],
+        'site_templates' => ['id', 'title', 'slug', 'description', 'owner_label', 'state'],
         'integrations' => ['id', 'title', 'owner_label', 'platform', 'external_id', 'state'],
         default => ['id', 'title', 'name', 'email', 'status'],
     };
@@ -1093,6 +1126,13 @@ function crud_sort_columns(string $moduleKey): array
             'section_type' => '`section_type`',
             'status' => '`status`',
             'publish_at' => '`publish_at`',
+        ],
+        'site_templates' => [
+            'title' => '`title`',
+            'owner_label' => '`owner_label`',
+            'slug' => '`slug`',
+            'sort_order' => '`sort_order`',
+            'state' => '`state`',
         ],
         'integrations' => [
             'title' => '`title`',

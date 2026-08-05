@@ -207,13 +207,18 @@ CREATE TABLE site_templates (
   slug VARCHAR(100) NOT NULL UNIQUE,
   title VARCHAR(190) NOT NULL,
   description VARCHAR(500) NULL,
+  owner_type ENUM('reseller','manager') NULL,
+  owner_id BIGINT UNSIGNED NULL,
+  source_template_id BIGINT UNSIGNED NULL,
   profile_json JSON NOT NULL,
   blocks_json JSON NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   sort_order INT NOT NULL DEFAULT 100,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_site_templates_active (is_active, sort_order)
+  INDEX idx_site_templates_active (is_active, sort_order),
+  INDEX idx_site_templates_owner (owner_type, owner_id),
+  INDEX idx_site_templates_source (source_template_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE consultant_profiles (

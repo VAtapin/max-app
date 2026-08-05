@@ -56,6 +56,7 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                     'tests' => [app_text('auto.k_663c94d30018'), 'crud.php?module=tests'],
                     'broadcasts' => ['Рассылки', 'crud.php?module=broadcasts'],
                     'content' => ['Материалы сайта', 'crud.php?module=content'],
+                    'site_templates' => ['Шаблоны мини-сайта', 'crud.php?module=site_templates'],
                 ],
                 'Настройки' => [
                     'admin_accounts' => ['Пользователи админки', 'admin_accounts.php'],

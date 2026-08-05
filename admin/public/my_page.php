@@ -162,8 +162,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $profileId = (int)$profile['id'];
     if ($postAction === 'apply_template') {
         $templateId = (int)($_POST['template_id'] ?? 0);
+        $ownerAdmin = profile_owner_admin($owner);
         try {
-            if (!$templateId || !site_template_apply_to_profile($profileId, $owner['owner_type'], (int)$owner['owner_id'], $templateId, true)) {
+            if (!$templateId || !site_template_row($templateId, $ownerAdmin) || !site_template_apply_to_profile($profileId, $owner['owner_type'], (int)$owner['owner_id'], $templateId, true)) {
                 $errors[] = 'Выберите активный шаблон оформления.';
             }
         } catch (Throwable $e) {
@@ -345,7 +346,7 @@ $aboutTitles = about_section_titles($blocks);
 $selectedProducts = consultant_selected_ids($effectiveProfileId, 'profile_products', 'product_id');
 $selectedMaterials = consultant_selected_ids($effectiveProfileId, 'profile_materials', 'content_post_id');
 $ownerOptions = consultant_options_for_admin($admin);
-$templateOptions = site_template_options();
+$templateOptions = site_template_options(profile_owner_admin($owner));
 $parentProfile = consultant_parent_profile($owner['owner_type'], (int)$owner['owner_id']);
 $isInheritedProfile = consultant_profile_inherits($storedProfile);
 
