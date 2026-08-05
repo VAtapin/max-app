@@ -52,21 +52,33 @@ function render_vk_connection_guide(): string
         ],
         [
             'title' => 'Создайте ключ доступа',
-            'text' => 'В правом меню откройте «Дополнительно», затем «Работа с API». На вкладке «Ключи доступа» нажмите «Создать ключ».',
-            'image' => '/admin/uploads/help/vk-api-keys-marked.png',
+            'text' => 'В правом меню VK откройте «Дополнительно», затем «Работа с API». На вкладке «Ключи доступа» нажмите «Создать ключ».',
+            'image' => '/admin/uploads/help/vk-api-access-token-marked.jpg',
             'alt' => 'Раздел ключей доступа VK API',
         ],
         [
             'title' => 'Выберите права ключа',
-            'text' => 'В окне создания ключа отметьте права: управление сообществом, сообщения сообщества, фотографии, документы, истории и стена. После подтверждения VK покажет ключ: скопируйте его в SWPro в поле «Ключ доступа».',
-            'image' => '/admin/uploads/help/vk-api-key-rights-marked.png',
+            'text' => 'В окне создания ключа отметьте права: управление сообществом, сообщения сообщества, фотографии, документы, истории и стена. После подтверждения VK покажет ключ вида vk1.a...: скопируйте его в SWPro в поле «Ключ доступа».',
+            'image' => '/admin/uploads/help/vk-api-access-token-marked.jpg',
             'alt' => 'Окно выбора прав ключа доступа VK',
         ],
         [
-            'title' => 'Настройте Callback API',
-            'text' => 'Откройте вкладку Callback API. В поле «Адрес» вставьте адрес сервера из SWPro, в поле «Секретный ключ» укажите свой секретный ключ и нажмите «Сохранить». Скопируйте из VK числовой group_id и строку подтверждения в SWPro, затем нажмите «Подтвердить».',
-            'image' => '/admin/uploads/help/vk-callback-server-marked.png',
+            'title' => 'Скопируйте group_id',
+            'text' => 'Откройте вкладку Callback API. В сером блоке подтверждения VK показывает JSON с group_id. Скопируйте только число и вставьте его в поле «group_id» в SWPro.',
+            'image' => '/admin/uploads/help/vk-callback-group-id-marked.png',
             'alt' => 'Настройки сервера Callback API в VK',
+        ],
+        [
+            'title' => 'Скопируйте строку, которую должен вернуть сервер',
+            'text' => 'В этом же блоке VK показывает «Строка, которую должен вернуть сервер». Скопируйте ее в одноименное поле SWPro.',
+            'image' => '/admin/uploads/help/vk-callback-confirmation-marked.png',
+            'alt' => 'Строка подтверждения сервера Callback API в VK',
+        ],
+        [
+            'title' => 'Укажите секретный ключ',
+            'text' => 'SWPro генерирует «Секретный ключ» автоматически при создании подключения. Скопируйте его из SWPro, вставьте в VK в поле «Секретный ключ» и нажмите «Сохранить».',
+            'image' => '/admin/uploads/help/vk-callback-secret-marked.png',
+            'alt' => 'Секретный ключ Callback API в VK',
         ],
         [
             'title' => 'Отметьте события Callback API',
@@ -122,10 +134,10 @@ function render_vk_connection_guide(): string
             <h3>Что потом заполнить в SWPro</h3>
             <dl>
                 <div><dt>Платформа</dt><dd>VK</dd></div>
-                <div><dt>ID группы/канала</dt><dd>Числовой <code>group_id</code> из Callback API.</dd></div>
+                <div><dt>group_id</dt><dd>Число из JSON в блоке подтверждения Callback API.</dd></div>
                 <div><dt>Ключ доступа</dt><dd>Ключ из вкладки «Ключи доступа».</dd></div>
-                <div><dt>Callback: строка подтверждения</dt><dd>Строка, которую VK просит вернуть серверу.</dd></div>
-                <div><dt>Callback: секретный ключ</dt><dd>Ваш секретный ключ. Он должен совпадать в VK и SWPro.</dd></div>
+                <div><dt>Строка, которую должен вернуть сервер</dt><dd>Строка из блока подтверждения Callback API.</dd></div>
+                <div><dt>Секретный ключ</dt><dd>Ключ, который SWPro сгенерировал в подключении. Он должен совпадать в VK и SWPro.</dd></div>
                 <div><dt>Адрес Callback API</dt><dd><code><?= h($callbackUrl) ?></code></dd></div>
             </dl>
         </div>

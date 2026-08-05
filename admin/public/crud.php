@@ -252,35 +252,35 @@ $modules = [
             'external_id' => [
                 'label' => app_text('integrations.external_id'),
                 'help' => [
-                    'title' => 'ID группы VK',
-                    'text' => 'Откройте Callback API: VK показывает числовой group_id в блоке подтверждения сервера.',
-                    'image' => '/admin/uploads/help/vk-callback-server-marked.png',
+                    'title' => 'group_id',
+                    'text' => 'В VK откройте Callback API. В сером блоке подтверждения скопируйте число из JSON после group_id.',
+                    'image' => '/admin/uploads/help/vk-callback-group-id-marked.png',
                 ],
             ],
             'access_token' => [
                 'label' => app_text('integrations.access_token'),
                 'type' => 'textarea',
                 'help' => [
-                    'title' => 'Ключ доступа VK',
-                    'text' => 'В VK откройте «Дополнительно» → «Работа с API» → «Ключи доступа», создайте ключ и скопируйте его в это поле.',
-                    'image' => '/admin/uploads/help/vk-api-key-rights-marked.png',
+                    'title' => 'Ключ доступа',
+                    'text' => 'В VK откройте «Дополнительно» -> «Работа с API» -> «Ключи доступа», создайте ключ и скопируйте строку вида vk1.a... в это поле.',
+                    'image' => '/admin/uploads/help/vk-api-access-token-marked.jpg',
                 ],
             ],
             'callback_confirmation_code' => [
                 'label' => app_text('integrations.callback_confirmation_code'),
                 'help' => [
-                    'title' => 'Строка подтверждения',
-                    'text' => 'В Callback API VK показывает строку, которую должен вернуть сервер. Скопируйте ее сюда.',
-                    'image' => '/admin/uploads/help/vk-callback-server-marked.png',
+                    'title' => 'Строка, которую должен вернуть сервер',
+                    'text' => 'В VK на вкладке Callback API скопируйте строку после слов «Строка, которую должен вернуть сервер».',
+                    'image' => '/admin/uploads/help/vk-callback-confirmation-marked.png',
                 ],
             ],
             'callback_secret' => [
                 'label' => app_text('integrations.callback_secret'),
                 'default' => integration_callback_secret(),
                 'help' => [
-                    'title' => 'Секретный ключ Callback',
-                    'text' => 'SWPro генерирует этот ключ сам. Скопируйте его в VK в поле «Секретный ключ» и сохраните.',
-                    'image' => '/admin/uploads/help/vk-callback-server-marked.png',
+                    'title' => 'Секретный ключ',
+                    'text' => 'SWPro генерирует этот ключ сам. Скопируйте его в VK в поле «Секретный ключ» и нажмите «Сохранить».',
+                    'image' => '/admin/uploads/help/vk-callback-secret-marked.png',
                 ],
             ],
             'callback_last_event_at' => ['label' => app_text('integrations.callback_last_event_at'), 'readonly' => true],
