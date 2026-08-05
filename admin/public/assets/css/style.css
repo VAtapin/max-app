@@ -1662,6 +1662,33 @@ button:disabled {
     grid-column: 1 / -1;
 }
 
+.profile-slug-control {
+    align-items: stretch;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: max-content minmax(120px, 1fr) auto;
+}
+
+.profile-slug-prefix {
+    align-items: center;
+    background: #f8fafc;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    display: flex;
+    font-size: 14px;
+    padding: 0 12px;
+    white-space: nowrap;
+}
+
+.profile-slug-control input {
+    min-width: 0;
+}
+
+.profile-slug-control button {
+    white-space: nowrap;
+}
+
 .block-settings {
     display: grid;
     gap: 10px;
@@ -2022,6 +2049,15 @@ button:disabled {
     .profile-form-grid,
     .block-row {
         grid-template-columns: 1fr;
+    }
+
+    .profile-slug-control {
+        grid-template-columns: 1fr;
+    }
+
+    .profile-slug-prefix {
+        min-height: 42px;
+        white-space: normal;
     }
 }
 

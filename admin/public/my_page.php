@@ -450,11 +450,18 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <span><?= h(app_text('consultant_profile.display_name')) ?></span>
                 <input name="display_name" value="<?= h((string)$profile['display_name']) ?>" required>
             </label>
-            <label class="field">
+            <div class="field profile-slug-field">
                 <span>Адрес сайта</span>
-                <input name="page_url" value="<?= h(profile_public_url($profile)) ?>">
-                <small class="cell-muted">Показываем полную ссылку. Можно вставить полную ссылку или короткий адрес, система сохранит правильный адрес страницы.</small>
-            </label>
+                <div
+                    class="profile-slug-control"
+                    data-profile-slug-control
+                    data-base-url="<?= h(profile_public_base_url() . '/?m=') ?>"
+                >
+                    <span class="profile-slug-prefix"><?= h(profile_public_base_url() . '/?m=') ?></span>
+                    <input name="page_url" value="<?= h((string)($profile['slug'] ?? '')) ?>" autocomplete="off">
+                    <button type="button" class="secondary-button" data-profile-copy-url>Скопировать</button>
+                </div>
+            </div>
             <label class="field">
                 <span><?= h(app_text('consultant_profile.profile_title')) ?></span>
                 <input name="title" value="<?= h((string)$profile['title']) ?>">
@@ -693,6 +700,37 @@ require __DIR__ . '/../app/views/layouts/header.php';
         const form = event.target.closest('form');
         form.querySelector('[name="owner_type"]').value = ownerType;
         form.querySelector('[name="owner_id"]').value = ownerId;
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const control = document.querySelector('[data-profile-slug-control]');
+        const button = document.querySelector('[data-profile-copy-url]');
+        const input = control?.querySelector('input[name="page_url"]');
+        if (!control || !button || !input) return;
+
+        const initialText = button.textContent;
+        const copyText = async (text) => {
+            try {
+                await navigator.clipboard.writeText(text);
+            } catch (_) {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.setAttribute('readonly', '');
+                textarea.style.position = 'fixed';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                textarea.remove();
+            }
+        };
+
+        button.addEventListener('click', async () => {
+            const slug = (input.value || '').trim();
+            await copyText((control.dataset.baseUrl || '') + encodeURIComponent(slug));
+            button.textContent = 'Скопировано';
+            setTimeout(() => button.textContent = initialText, 1500);
+        });
     });
 </script>
 <?php require __DIR__ . '/../app/views/layouts/footer.php'; ?>
