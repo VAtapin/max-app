@@ -582,10 +582,18 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
     if ($moduleKey === 'integrations') {
         [$where, $params] = integration_scope_condition($admin);
         return [
-            "SELECT id, title, CONCAT(owner_type, ' #', owner_id) AS owner_label, platform, external_id, callback_last_event_at, IF(is_active = 1, 'active', 'inactive') AS state
-             FROM messaging_integrations
+            "SELECT i.id, i.title,
+                    CASE
+                        WHEN i.owner_type = 'manager' THEN CONCAT('#', i.owner_id, ' ', COALESCE(NULLIF(m.name, ''), 'без имени'))
+                        WHEN i.owner_type = 'reseller' THEN CONCAT('#', i.owner_id, ' ', COALESCE(NULLIF(r.name, ''), 'без имени'))
+                        ELSE 'Общее'
+                    END AS owner_label,
+                    i.platform, i.external_id, i.callback_last_event_at, IF(i.is_active = 1, 'active', 'inactive') AS state
+             FROM messaging_integrations i
+             LEFT JOIN managers m ON m.id = i.owner_id AND i.owner_type = 'manager'
+             LEFT JOIN resellers r ON r.id = i.owner_id AND i.owner_type = 'reseller'
              $where
-             ORDER BY id DESC
+             ORDER BY i.id DESC
              LIMIT 100",
             $params,
         ];
@@ -601,10 +609,28 @@ function is_technical_client_name(string $name): bool
     return in_array(trim($name), ['Web User', 'VK User'], true);
 }
 
+function crud_format_ru_datetime(mixed $value): string
+{
+    $raw = trim((string)$value);
+    if ($raw === '') {
+        return app_text('auto.k_1b93795b9768');
+    }
+
+    try {
+        return (new DateTimeImmutable($raw))->format('d.m.Y H:i');
+    } catch (Throwable) {
+        return $raw;
+    }
+}
+
 function crud_cell_value(string $moduleKey, string $column, array $row): string
 {
     if ($column === 'contacts') {
         return trim(($row['email'] ?? '') . "\n" . ($row['phone'] ?? '')) ?: app_text('auto.k_1b93795b9768');
+    }
+
+    if ($moduleKey === 'integrations' && $column === 'callback_last_event_at') {
+        return crud_format_ru_datetime($row[$column] ?? null);
     }
 
     if ($moduleKey === 'resellers' && $column === 'manager_capacity') {

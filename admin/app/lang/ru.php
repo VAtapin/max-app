@@ -99,7 +99,7 @@ return [
         'access_token' => 'Ключ доступа',
         'callback_confirmation_code' => 'Callback: строка подтверждения',
         'callback_secret' => 'Callback: секретный ключ',
-        'callback_last_event_at' => 'Последнее входящее событие',
+        'callback_last_event_at' => 'Последнее событие',
         'callback_last_error' => 'Последняя ошибка Callback',
         'owner_forbidden' => 'Нельзя сохранить подключение для чужого владельца.',
         'vk_connection_missing' => 'Для этой заявки не найдено активное VK-подключение консультанта или лидера.',
