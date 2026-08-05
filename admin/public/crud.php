@@ -2525,6 +2525,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = 'list';
     }
 
+    if ($moduleKey === 'site_templates' && $postAction === 'import_global_site_templates') {
+        if (!$canCreate) {
+            $errors[] = app_text('auto.k_6eaca3d4de92');
+        } else {
+            try {
+                $summary = site_template_import_global_for_admin($admin);
+                redirect(
+                    'crud.php?module=site_templates&success=templates_imported'
+                    . '&imported=' . (int)$summary['imported']
+                    . '&restored=' . (int)$summary['restored']
+                    . '&skipped=' . (int)$summary['skipped']
+                );
+            } catch (Throwable $e) {
+                $errors[] = 'Не удалось импортировать базовые шаблоны: ' . $e->getMessage();
+            }
+        }
+        $action = 'list';
+    }
+
     if ($postAction === 'save') {
     if (($postId && !$canEdit) || (!$postId && !$canCreate)) {
         if (!$postId && $createLimitErrors) {
@@ -2709,7 +2728,16 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <?php if ($leadChatOnly): ?>
         <a class="button secondary-button" href="crud.php?module=leads">К списку обращений</a>
     <?php elseif ($canCreate): ?>
-        <a class="button" href="crud.php?module=<?= h($moduleKey) ?>&action=create"><?= h(app_text('auto.k_559a87f7cc13')) ?></a>
+        <div class="toolbar-actions">
+            <?php if ($moduleKey === 'site_templates' && site_template_current_owner($admin)): ?>
+                <form method="post" class="inline-form toolbar-inline-form">
+                    <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="import_global_site_templates">
+                    <button type="submit" class="secondary-button">Импортировать базовые</button>
+                </form>
+            <?php endif; ?>
+            <a class="button" href="crud.php?module=<?= h($moduleKey) ?>&action=create"><?= h(app_text('auto.k_559a87f7cc13')) ?></a>
+        </div>
     <?php endif; ?>
 </div>
 <?php if ($success === 'saved'): ?>
@@ -2725,6 +2753,18 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <div class="notice success"><?= h(app_text('content_ownership.personal_copy')) ?></div>
 <?php elseif ($success === 'content_reset'): ?>
     <div class="notice success">Личная версия сброшена. Теперь снова используется версия выше.</div>
+<?php elseif ($success === 'templates_imported'): ?>
+    <?php
+    $importedTemplates = (int)($_GET['imported'] ?? 0);
+    $restoredTemplates = (int)($_GET['restored'] ?? 0);
+    $skippedTemplates = (int)($_GET['skipped'] ?? 0);
+    ?>
+    <div class="notice success">
+        Базовые шаблоны импортированы.
+        Новых: <?= $importedTemplates ?>,
+        восстановлено: <?= $restoredTemplates ?>,
+        уже были: <?= $skippedTemplates ?>.
+    </div>
 <?php elseif ($success === 'broadcast_sent'): ?>
     <div class="notice success"><?= h(app_text('broadcasts.run_success', [
         'sent' => (int)($_GET['sent'] ?? 0),

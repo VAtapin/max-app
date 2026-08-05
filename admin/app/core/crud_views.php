@@ -1863,7 +1863,11 @@ function render_crud_list(string $moduleKey, array $columns, array $rows, bool $
         </table>
         <?php endif; ?>
     <?php else: ?>
-        <div class="empty-state"><?= h(app_text('auto.k_488eec688217')) ?></div>
+        <?php if ($moduleKey === 'site_templates' && site_template_current_owner($admin)): ?>
+            <div class="empty-state">Личных шаблонов пока нет. Импортируйте базовые шаблоны, чтобы быстро получить стартовые варианты и отредактировать их под себя.</div>
+        <?php else: ?>
+            <div class="empty-state"><?= h(app_text('auto.k_488eec688217')) ?></div>
+        <?php endif; ?>
     <?php endif; ?>
     <?php if ($moduleKey === 'leads'): ?>
         <?= render_lead_pagination(count($rows)) ?>

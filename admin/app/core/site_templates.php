@@ -81,6 +81,147 @@ function site_template_available_scope_condition(array $admin, string $alias = '
     return ['WHERE (' . implode(' OR ', $conditions) . ')', $params];
 }
 
+function site_template_current_owner(array $admin): ?array
+{
+    if (($admin['role'] ?? '') === 'reseller' && !empty($admin['reseller_id'])) {
+        return ['owner_type' => 'reseller', 'owner_id' => (int)$admin['reseller_id']];
+    }
+
+    if (($admin['role'] ?? '') === 'manager' && !empty($admin['manager_id'])) {
+        return ['owner_type' => 'manager', 'owner_id' => (int)$admin['manager_id']];
+    }
+
+    return null;
+}
+
+function site_template_owner_slug_suffix(string $ownerType, int $ownerId): string
+{
+    return ($ownerType === 'reseller' ? 'leader' : 'consultant') . '-' . $ownerId;
+}
+
+function site_template_unique_slug(string $baseSlug, string $ownerType, int $ownerId): string
+{
+    $baseSlug = site_template_slugify($baseSlug);
+    if ($baseSlug === '') {
+        $baseSlug = 'template';
+    }
+
+    $suffix = site_template_owner_slug_suffix($ownerType, $ownerId);
+    $base = substr($baseSlug . '-' . $suffix, 0, 92);
+    $candidate = $base;
+    $index = 2;
+    $pdo = db();
+
+    while (true) {
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM site_templates WHERE slug = :slug');
+        $stmt->execute(['slug' => $candidate]);
+        if ((int)$stmt->fetchColumn() === 0) {
+            return $candidate;
+        }
+
+        $tail = '-' . $index;
+        $candidate = substr($base, 0, 100 - strlen($tail)) . $tail;
+        $index++;
+    }
+}
+
+function site_template_import_global_for_admin(array $admin): array
+{
+    $owner = site_template_current_owner($admin);
+    if (!$owner) {
+        throw new RuntimeException('Импорт базовых шаблонов доступен только лидеру или консультанту.');
+    }
+
+    $pdo = db();
+    $globalStmt = $pdo->query(
+        "SELECT id, slug, title, description, profile_json, blocks_json, sort_order
+         FROM site_templates
+         WHERE owner_type IS NULL AND is_active = 1
+         ORDER BY sort_order ASC, id ASC"
+    );
+    $globalTemplates = $globalStmt->fetchAll();
+    if (!$globalTemplates) {
+        return ['imported' => 0, 'restored' => 0, 'skipped' => 0];
+    }
+
+    $summary = ['imported' => 0, 'restored' => 0, 'skipped' => 0];
+    $pdo->beginTransaction();
+
+    try {
+        $findExisting = $pdo->prepare(
+            "SELECT id, is_active
+             FROM site_templates
+             WHERE owner_type = :owner_type
+               AND owner_id = :owner_id
+               AND source_template_id = :source_template_id
+             LIMIT 1"
+        );
+        $restoreExisting = $pdo->prepare(
+            "UPDATE site_templates
+             SET title = :title,
+                 description = :description,
+                 profile_json = :profile_json,
+                 blocks_json = :blocks_json,
+                 sort_order = :sort_order,
+                 is_active = 1
+             WHERE id = :id"
+        );
+        $insertCopy = $pdo->prepare(
+            "INSERT INTO site_templates
+                (slug, title, description, owner_type, owner_id, source_template_id, profile_json, blocks_json, sort_order, is_active)
+             VALUES
+                (:slug, :title, :description, :owner_type, :owner_id, :source_template_id, :profile_json, :blocks_json, :sort_order, 1)"
+        );
+
+        foreach ($globalTemplates as $template) {
+            $findExisting->execute([
+                'owner_type' => $owner['owner_type'],
+                'owner_id' => $owner['owner_id'],
+                'source_template_id' => (int)$template['id'],
+            ]);
+            $existing = $findExisting->fetch();
+
+            if ($existing && (int)$existing['is_active'] === 1) {
+                $summary['skipped']++;
+                continue;
+            }
+
+            if ($existing) {
+                $restoreExisting->execute([
+                    'id' => (int)$existing['id'],
+                    'title' => (string)$template['title'],
+                    'description' => $template['description'],
+                    'profile_json' => (string)$template['profile_json'],
+                    'blocks_json' => $template['blocks_json'],
+                    'sort_order' => (int)$template['sort_order'],
+                ]);
+                $summary['restored']++;
+                continue;
+            }
+
+            $insertCopy->execute([
+                'slug' => site_template_unique_slug((string)$template['slug'], $owner['owner_type'], $owner['owner_id']),
+                'title' => (string)$template['title'],
+                'description' => $template['description'],
+                'owner_type' => $owner['owner_type'],
+                'owner_id' => $owner['owner_id'],
+                'source_template_id' => (int)$template['id'],
+                'profile_json' => (string)$template['profile_json'],
+                'blocks_json' => $template['blocks_json'],
+                'sort_order' => (int)$template['sort_order'],
+            ]);
+            $summary['imported']++;
+        }
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+
+    return $summary;
+}
+
 function site_template_options(?array $admin = null): array
 {
     try {

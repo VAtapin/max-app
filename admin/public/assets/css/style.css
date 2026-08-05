@@ -167,6 +167,19 @@ a.stat:hover {
     margin-bottom: 16px;
 }
 
+.toolbar-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.toolbar-inline-form {
+    display: inline-flex;
+    margin-left: 0;
+}
+
 .referral-panel {
     display: grid;
     gap: 14px;
