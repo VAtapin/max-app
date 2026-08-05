@@ -654,6 +654,12 @@ function initImagePreviewModal(root = document) {
             imageNode.alt = trigger.dataset.imageTitle || 'Скриншот';
             frame.appendChild(imageNode);
             bodyNode.appendChild(frame);
+            if (trigger.dataset.imageCaption) {
+                const caption = document.createElement('p');
+                caption.className = 'image-preview-caption';
+                caption.textContent = trigger.dataset.imageCaption;
+                bodyNode.appendChild(caption);
+            }
         }
         if (typeof modal.showModal === 'function' && !modal.open) {
             modal.showModal();

@@ -15,6 +15,17 @@ require_once __DIR__ . '/../app/core/subscription_plans.php';
 
 $admin = require_auth();
 
+function integration_callback_secret(): string
+{
+    try {
+        $random = bin2hex(random_bytes(12));
+    } catch (Throwable) {
+        $random = str_replace('.', '', uniqid('', true));
+    }
+
+    return 'swpro_vk_' . $random;
+}
+
 $modules = [
     'resellers' => [
         'title' => app_text('auto.k_32cea47742bf'),
@@ -238,10 +249,40 @@ $modules = [
             'owner_id' => ['label' => app_text('integrations.owner_id'), 'type' => 'number', 'required' => true],
             'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['VK', 'OK', 'telegram', 'MAX'], 'required' => true],
             'title' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
-            'external_id' => ['label' => app_text('integrations.external_id')],
-            'access_token' => ['label' => app_text('integrations.access_token'), 'type' => 'textarea'],
-            'callback_confirmation_code' => ['label' => app_text('integrations.callback_confirmation_code')],
-            'callback_secret' => ['label' => app_text('integrations.callback_secret')],
+            'external_id' => [
+                'label' => app_text('integrations.external_id'),
+                'help' => [
+                    'title' => 'ID группы VK',
+                    'text' => 'Откройте Callback API: VK показывает числовой group_id в блоке подтверждения сервера.',
+                    'image' => '/admin/uploads/help/vk-callback-server-marked.png',
+                ],
+            ],
+            'access_token' => [
+                'label' => app_text('integrations.access_token'),
+                'type' => 'textarea',
+                'help' => [
+                    'title' => 'Ключ доступа VK',
+                    'text' => 'В VK откройте «Дополнительно» → «Работа с API» → «Ключи доступа», создайте ключ и скопируйте его в это поле.',
+                    'image' => '/admin/uploads/help/vk-api-key-rights-marked.png',
+                ],
+            ],
+            'callback_confirmation_code' => [
+                'label' => app_text('integrations.callback_confirmation_code'),
+                'help' => [
+                    'title' => 'Строка подтверждения',
+                    'text' => 'В Callback API VK показывает строку, которую должен вернуть сервер. Скопируйте ее сюда.',
+                    'image' => '/admin/uploads/help/vk-callback-server-marked.png',
+                ],
+            ],
+            'callback_secret' => [
+                'label' => app_text('integrations.callback_secret'),
+                'default' => integration_callback_secret(),
+                'help' => [
+                    'title' => 'Секретный ключ Callback',
+                    'text' => 'SWPro генерирует этот ключ сам. Скопируйте его в VK в поле «Секретный ключ» и сохраните.',
+                    'image' => '/admin/uploads/help/vk-callback-server-marked.png',
+                ],
+            ],
             'callback_last_event_at' => ['label' => app_text('integrations.callback_last_event_at'), 'readonly' => true],
             'callback_last_error' => ['label' => app_text('integrations.callback_last_error'), 'type' => 'textarea', 'readonly' => true],
             'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
@@ -981,6 +1022,10 @@ function normalize_module_payload(string $moduleKey, array $payload): array
 {
     if (in_array($moduleKey, ['managers', 'resellers'], true) && array_key_exists('referral_code', $payload)) {
         $payload['referral_code'] = normalize_referral_slug((string)$payload['referral_code']);
+    }
+
+    if ($moduleKey === 'integrations' && trim((string)($payload['callback_secret'] ?? '')) === '') {
+        $payload['callback_secret'] = integration_callback_secret();
     }
 
     return $payload;
@@ -2641,7 +2686,20 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 }
                 ?>
                 <label class="field">
-                    <span><?= h($field['label'] ?? $name) ?><?= ($field['required'] ?? false) ? ' *' : '' ?></span>
+                    <span class="field-label-line">
+                        <span><?= h($field['label'] ?? $name) ?><?= ($field['required'] ?? false) ? ' *' : '' ?></span>
+                        <?php if (!empty($field['help']) && is_array($field['help'])): ?>
+                            <button
+                                type="button"
+                                class="field-info-button"
+                                aria-label="Показать подсказку"
+                                data-image-preview
+                                data-image-src="<?= h((string)($field['help']['image'] ?? '')) ?>"
+                                data-image-title="<?= h((string)($field['help']['title'] ?? ($field['label'] ?? $name))) ?>"
+                                data-image-caption="<?= h((string)($field['help']['text'] ?? '')) ?>"
+                            >i</button>
+                        <?php endif; ?>
+                    </span>
                     <?php if ($type === 'textarea'): ?>
                         <textarea name="<?= h($name) ?>" rows="4" <?= !empty($field['readonly']) ? 'readonly' : '' ?>><?= h((string)$value) ?></textarea>
                     <?php elseif ($type === 'select'): ?>
