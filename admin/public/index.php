@@ -94,6 +94,24 @@ function dashboard_manager(array $admin): ?array
     return $manager ?: null;
 }
 
+function dashboard_reseller(array $admin): ?array
+{
+    if ($admin['role'] !== 'reseller' || empty($admin['reseller_id'])) {
+        return null;
+    }
+
+    $stmt = db()->prepare(
+        'SELECT id, name, referral_code
+         FROM resellers
+         WHERE id = :id AND is_active = 1
+         LIMIT 1'
+    );
+    $stmt->execute(['id' => (int)$admin['reseller_id']]);
+    $reseller = $stmt->fetch();
+
+    return $reseller ?: null;
+}
+
 function count_table(string $sql, array $params = []): int
 {
     $stmt = db()->prepare($sql);
@@ -172,15 +190,18 @@ $platformStmt = db()->prepare("SELECT platform, COUNT(*) AS total FROM end_users
 $platformStmt->execute($userParams);
 $platforms = $platformStmt->fetchAll();
 $dashboardManager = dashboard_manager($admin);
-$referralLinks = $dashboardManager ? manager_referral_links($dashboardManager) : [];
+$dashboardReseller = dashboard_reseller($admin);
+$referralOwner = $dashboardManager ?: $dashboardReseller;
+$referralTitle = $dashboardManager ? app_text('referrals.dashboard_title') : 'Реферальная ссылка лидера';
+$referralLinks = $referralOwner ? manager_referral_links($referralOwner) : [];
 
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
-<?php if ($dashboardManager && $referralLinks): ?>
+<?php if ($referralOwner && $referralLinks): ?>
     <section class="panel referral-panel">
         <div>
-            <h2><?= h(app_text('referrals.dashboard_title')) ?></h2>
-            <p class="cell-muted"><?= h(app_text('referrals.code')) ?>: <strong><?= h((string)$dashboardManager['referral_code']) ?></strong></p>
+            <h2><?= h($referralTitle) ?></h2>
+            <p class="cell-muted"><?= h(app_text('referrals.code')) ?>: <strong><?= h((string)$referralOwner['referral_code']) ?></strong></p>
         </div>
         <div class="referral-controls">
             <label class="field">
