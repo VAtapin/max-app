@@ -41,7 +41,7 @@ $pageData = admin_table_paginated_rows(
     'SELECT uts.*, t.title AS test_title,
             eu.id AS end_user_id, eu.first_name, eu.last_name, eu.username,
             eu.gender, eu.birth_date, eu.age_years, eu.city, eu.client_stage,
-            TRIM(CONCAT(COALESCE(eu.first_name, ""), " ", COALESCE(eu.last_name, ""))) AS client_name,
+            TRIM(CONCAT(COALESCE(eu.first_name, \'\'), \' \', COALESCE(eu.last_name, \'\'))) AS client_name,
             m.name AS manager_name
      FROM user_test_sessions uts
      INNER JOIN tests t ON t.id = uts.test_id
@@ -61,12 +61,19 @@ $page = (int)$tableMeta['page'];
 $totalPages = (int)$tableMeta['page_count'];
 
 if ($admin['role'] === 'manager') {
-    $mark = db()->prepare(
-        'UPDATE consultant_notifications
-         SET is_read = 1, read_at = NOW()
-         WHERE manager_id = :manager_id AND notification_type = "test_completed" AND is_read = 0'
-    );
-    $mark->execute(['manager_id' => $admin['manager_id']]);
+    try {
+        $mark = db()->prepare(
+            'UPDATE consultant_notifications
+             SET is_read = 1, read_at = NOW()
+             WHERE manager_id = :manager_id AND notification_type = :notification_type AND is_read = 0'
+        );
+        $mark->execute([
+            'manager_id' => (int)$admin['manager_id'],
+            'notification_type' => 'test_completed',
+        ]);
+    } catch (Throwable $e) {
+        error_log('Failed to mark test result notifications as read: ' . $e->getMessage());
+    }
 }
 
 function result_client_name(array $session): string
