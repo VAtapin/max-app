@@ -2112,6 +2112,31 @@ function reseller_admin_access(int $resellerId): ?array
     return $row ?: null;
 }
 
+function can_manage_team_admin_access(string $moduleKey, array $admin, ?int $recordId = null): bool
+{
+    if (!in_array($moduleKey, ['managers', 'resellers'], true)) {
+        return false;
+    }
+
+    if ($admin['role'] === 'superadmin') {
+        return true;
+    }
+
+    if ($admin['role'] !== 'reseller') {
+        return false;
+    }
+
+    if ($moduleKey === 'managers') {
+        return true;
+    }
+
+    if (!$recordId) {
+        return true;
+    }
+
+    return (int)($admin['reseller_id'] ?? 0) !== $recordId;
+}
+
 function save_reseller_admin_access(int $resellerId, array $resellerPayload, array $post, array &$errors): void
 {
     $email = trim((string)($post['admin_email'] ?? ''));
@@ -2593,7 +2618,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$errors) {
         try {
             $savedId = save_record($moduleKey, $module, $payload, $postId, $admin);
-            if ($moduleKey === 'managers' && $admin['role'] === 'superadmin') {
+            if ($moduleKey === 'managers' && can_manage_team_admin_access($moduleKey, $admin, $savedId)) {
                 save_manager_admin_access($savedId, $payload, $_POST, $errors);
                 if ($errors) {
                     $action = $postId ? 'edit' : 'create';
@@ -2601,7 +2626,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $editRow = $payload + ['id' => $savedId, 'template_id' => $templateId];
                 }
             }
-            if ($moduleKey === 'resellers' && $admin['role'] === 'superadmin') {
+            if ($moduleKey === 'resellers' && can_manage_team_admin_access($moduleKey, $admin, $savedId)) {
                 save_reseller_admin_access($savedId, $payload, $_POST, $errors);
                 if ($errors) {
                     $action = $postId ? 'edit' : 'create';
@@ -2694,7 +2719,9 @@ try {
 }
 
 $adminAccess = null;
-if (in_array($moduleKey, ['managers', 'resellers'], true) && $admin['role'] === 'superadmin' && ($action === 'create' || $action === 'edit')) {
+$adminAccessRecordId = !empty($editRow['id']) ? (int)$editRow['id'] : null;
+$canManageAdminAccess = can_manage_team_admin_access($moduleKey, $admin, $adminAccessRecordId);
+if ($canManageAdminAccess && ($action === 'create' || $action === 'edit')) {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $adminAccess = [
             'email' => trim((string)($_POST['admin_email'] ?? '')),
@@ -2938,7 +2965,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     });
                 </script>
             <?php endif; ?>
-            <?php if (in_array($moduleKey, ['managers', 'resellers'], true) && $admin['role'] === 'superadmin'): ?>
+            <?php if ($canManageAdminAccess): ?>
                 <fieldset class="field admin-access-group">
                     <legend><?= h(app_text('admin_access.title')) ?></legend>
                     <label class="field">
