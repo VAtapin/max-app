@@ -102,6 +102,82 @@ function subscription_limit_text(?int $limit): string
     return $limit === null ? 'без лимита' : (string)$limit;
 }
 
+function subscription_plan_global_owner_type(): string
+{
+    return 'superadmin';
+}
+
+function subscription_plan_global_owner_id(): int
+{
+    return 0;
+}
+
+function subscription_plan_owner_for_admin(array $admin): array
+{
+    if (($admin['role'] ?? '') === 'reseller' && !empty($admin['reseller_id'])) {
+        return ['owner_type' => 'reseller', 'owner_id' => (int)$admin['reseller_id']];
+    }
+
+    return ['owner_type' => subscription_plan_global_owner_type(), 'owner_id' => subscription_plan_global_owner_id()];
+}
+
+function subscription_plan_visibility_sql(?array $admin, string $alias = 'subscription_plans', bool $editableOnly = false): array
+{
+    $prefix = $alias !== '' ? $alias . '.' : '';
+    if (!$admin || ($admin['role'] ?? '') === 'superadmin') {
+        return ['', []];
+    }
+
+    if (($admin['role'] ?? '') !== 'reseller' || empty($admin['reseller_id'])) {
+        return [' AND 1 = 0', []];
+    }
+
+    $resellerId = (int)$admin['reseller_id'];
+    if ($editableOnly) {
+        return [
+            " AND {$prefix}owner_type = :plan_owner_type AND {$prefix}owner_id = :plan_owner_id",
+            ['plan_owner_type' => 'reseller', 'plan_owner_id' => $resellerId],
+        ];
+    }
+
+    $ancestorIds = team_reseller_ancestor_ids($resellerId, true);
+    [$ownerSql, $ownerParams] = team_sql_in_condition($prefix . 'owner_id', $ancestorIds, 'plan_owner');
+
+    return [
+        " AND (({$prefix}owner_type = :plan_global_owner_type AND {$prefix}owner_id = :plan_global_owner_id)"
+        . " OR ({$prefix}owner_type = :plan_reseller_owner_type AND {$ownerSql}))",
+        [
+            'plan_global_owner_type' => subscription_plan_global_owner_type(),
+            'plan_global_owner_id' => subscription_plan_global_owner_id(),
+            'plan_reseller_owner_type' => 'reseller',
+        ] + $ownerParams,
+    ];
+}
+
+function subscription_plan_can_edit(array $plan, array $admin): bool
+{
+    if (($admin['role'] ?? '') === 'superadmin') {
+        return true;
+    }
+
+    return ($admin['role'] ?? '') === 'reseller'
+        && (string)($plan['owner_type'] ?? '') === 'reseller'
+        && !empty($admin['reseller_id'])
+        && (int)($plan['owner_id'] ?? 0) === (int)$admin['reseller_id'];
+}
+
+function subscription_plan_owner_label(array $plan): string
+{
+    $ownerType = (string)($plan['owner_type'] ?? subscription_plan_global_owner_type());
+    $ownerId = (int)($plan['owner_id'] ?? 0);
+    if ($ownerType !== 'reseller' || $ownerId <= 0) {
+        return 'Глобальная';
+    }
+
+    $reseller = team_reseller_row($ownerId);
+    return 'Лидер: ' . (string)($reseller['name'] ?? ('#' . $ownerId));
+}
+
 function subscription_charge_limit(array $plan, string $field): int
 {
     if (!array_key_exists($field, $plan) || $plan[$field] === null || $plan[$field] === '') {
@@ -111,21 +187,25 @@ function subscription_charge_limit(array $plan, string $field): int
     return max(0, (int)$plan[$field]);
 }
 
-function subscription_plan_row(?int $planId, bool $activeOnly = false): ?array
+function subscription_plan_row(?int $planId, bool $activeOnly = false, ?array $admin = null, bool $editableOnly = false): ?array
 {
     if (!$planId) {
         return null;
     }
 
     $sql = 'SELECT * FROM subscription_plans WHERE id = :id';
+    $params = ['id' => $planId];
     if ($activeOnly) {
         $sql .= ' AND is_active = 1';
     }
+    [$scopeSql, $scopeParams] = subscription_plan_visibility_sql($admin, 'subscription_plans', $editableOnly);
+    $sql .= $scopeSql;
+    $params += $scopeParams;
     $sql .= ' LIMIT 1';
 
     try {
         $stmt = db()->prepare($sql);
-        $stmt->execute(['id' => $planId]);
+        $stmt->execute($params);
         $row = $stmt->fetch();
     } catch (Throwable $e) {
         return null;
@@ -134,11 +214,20 @@ function subscription_plan_row(?int $planId, bool $activeOnly = false): ?array
     return $row ?: null;
 }
 
-function subscription_plan_options(bool $activeOnly = true): array
+function subscription_plan_options(bool $activeOnly = true, ?array $admin = null): array
 {
     try {
-        $where = $activeOnly ? 'WHERE is_active = 1' : '';
-        $stmt = db()->query("SELECT id, title AS label FROM subscription_plans $where ORDER BY sort_order ASC, title ASC, id ASC");
+        $sql = 'SELECT id, title AS label, owner_type, owner_id FROM subscription_plans WHERE 1 = 1';
+        $params = [];
+        if ($activeOnly) {
+            $sql .= ' AND is_active = 1';
+        }
+        [$scopeSql, $scopeParams] = subscription_plan_visibility_sql($admin, 'subscription_plans', false);
+        $sql .= $scopeSql . " ORDER BY owner_type = 'superadmin' DESC, sort_order ASC, title ASC, id ASC";
+        $params += $scopeParams;
+
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     } catch (Throwable $e) {
         return [];
@@ -261,12 +350,12 @@ function subscription_plan_formula_text(array $plan): string
     return $parts ? implode(' + ', $parts) : 'стоимость не задана';
 }
 
-function subscription_plan_apply_to_reseller_payload(array $payload): array
+function subscription_plan_apply_to_reseller_payload(array $payload, ?array $admin = null): array
 {
     $planId = isset($payload['subscription_plan_id']) && $payload['subscription_plan_id'] !== ''
         ? (int)$payload['subscription_plan_id']
         : null;
-    $plan = subscription_plan_row($planId, true);
+    $plan = subscription_plan_row($planId, true, $admin);
 
     if (!$plan) {
         foreach ([
@@ -298,7 +387,7 @@ function subscription_plan_apply_to_reseller_payload(array $payload): array
     return $payload;
 }
 
-function subscription_plan_validate_reseller_payload(array $payload): array
+function subscription_plan_validate_reseller_payload(array $payload, ?array $admin = null): array
 {
     $planId = isset($payload['subscription_plan_id']) && $payload['subscription_plan_id'] !== ''
         ? (int)$payload['subscription_plan_id']
@@ -307,7 +396,7 @@ function subscription_plan_validate_reseller_payload(array $payload): array
         return [];
     }
 
-    return subscription_plan_row($planId, true)
+    return subscription_plan_row($planId, true, $admin)
         ? []
         : ['Выбранная подписка не найдена или отключена.'];
 }

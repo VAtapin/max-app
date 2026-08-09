@@ -6,7 +6,7 @@ require_once __DIR__ . '/../app/core/subscription_plans.php';
 require_once __DIR__ . '/../app/core/table_ui.php';
 
 $admin = require_auth();
-if ($admin['role'] !== 'superadmin') {
+if (!can_manage('subscriptions', $admin)) {
     http_response_code(403);
     exit('Access denied');
 }
@@ -21,6 +21,8 @@ function subscription_plan_defaults(): array
 {
     return [
         'id' => 0,
+        'owner_type' => subscription_plan_global_owner_type(),
+        'owner_id' => subscription_plan_global_owner_id(),
         'title' => '',
         'slug' => '',
         'description' => '',
@@ -40,10 +42,18 @@ function subscription_plan_defaults(): array
     ];
 }
 
-function subscription_plan_payload_from_post(array $source): array
+function subscription_plan_payload_from_post(array $source, array $admin, ?array $existing = null): array
 {
-    $payload = subscription_plan_defaults();
+    $payload = array_merge(subscription_plan_defaults(), $existing ?? []);
     $payload['id'] = max(0, (int)($source['id'] ?? 0));
+    if ($existing) {
+        $payload['owner_type'] = (string)($existing['owner_type'] ?? subscription_plan_global_owner_type());
+        $payload['owner_id'] = (int)($existing['owner_id'] ?? subscription_plan_global_owner_id());
+    } else {
+        $owner = subscription_plan_owner_for_admin($admin);
+        $payload['owner_type'] = $owner['owner_type'];
+        $payload['owner_id'] = $owner['owner_id'];
+    }
     $payload['title'] = trim((string)($source['title'] ?? ''));
     $payload['slug'] = trim((string)($source['slug'] ?? ''));
     $payload['description'] = trim((string)($source['description'] ?? ''));
@@ -63,7 +73,41 @@ function subscription_plan_payload_from_post(array $source): array
     return $payload;
 }
 
-function subscription_plan_validate(array &$payload): array
+function subscription_plan_limit_owner_errors(array $payload, array $admin): array
+{
+    if (($admin['role'] ?? '') !== 'reseller' || empty($admin['reseller_id'])) {
+        return [];
+    }
+
+    $reseller = team_reseller_row((int)$admin['reseller_id']);
+    if (!$reseller) {
+        return ['Не удалось определить лимиты вашей текущей подписки.'];
+    }
+
+    $checks = [
+        'direct_leader_limit' => ['Лимит лидеров 1-го уровня', 'direct_leader_limit'],
+        'branch_leader_limit' => ['Лимит всех лидеров в ветке', 'branch_leader_limit'],
+        'direct_consultant_limit' => ['Лимит консультантов 1-го уровня', 'direct_manager_limit'],
+        'branch_consultant_limit' => ['Лимит всех консультантов в ветке', 'branch_manager_limit'],
+        'per_child_consultant_limit' => ['Консультантов на дочернего лидера', 'per_child_manager_limit'],
+    ];
+
+    $errors = [];
+    foreach ($checks as $field => [$label, $parentField]) {
+        if ($payload[$field] === null || ($reseller[$parentField] ?? null) === null || $reseller[$parentField] === '') {
+            continue;
+        }
+
+        $max = (int)$reseller[$parentField];
+        if ((int)$payload[$field] > $max) {
+            $errors[] = $label . ' не может быть больше вашего лимита: ' . $max . '.';
+        }
+    }
+
+    return $errors;
+}
+
+function subscription_plan_validate(array &$payload, array $admin): array
 {
     $errors = [];
     if ($payload['title'] === '') {
@@ -108,8 +152,12 @@ function subscription_plan_validate(array &$payload): array
     }
 
     if ($payload['slug'] !== '') {
-        $sql = 'SELECT id FROM subscription_plans WHERE slug = :slug';
-        $params = ['slug' => $payload['slug']];
+        $sql = 'SELECT id FROM subscription_plans WHERE slug = :slug AND owner_type = :owner_type AND owner_id = :owner_id';
+        $params = [
+            'slug' => $payload['slug'],
+            'owner_type' => (string)($payload['owner_type'] ?? subscription_plan_global_owner_type()),
+            'owner_id' => (int)($payload['owner_id'] ?? subscription_plan_global_owner_id()),
+        ];
         if ((int)$payload['id'] > 0) {
             $sql .= ' AND id <> :id';
             $params['id'] = (int)$payload['id'];
@@ -121,12 +169,16 @@ function subscription_plan_validate(array &$payload): array
         }
     }
 
+    $errors = array_merge($errors, subscription_plan_limit_owner_errors($payload, $admin));
+
     return array_values(array_unique($errors));
 }
 
 function subscription_plan_save(array $payload, array $admin): int
 {
     $params = [
+        'owner_type' => (string)($payload['owner_type'] ?? subscription_plan_global_owner_type()),
+        'owner_id' => (int)($payload['owner_id'] ?? subscription_plan_global_owner_id()),
         'slug' => $payload['slug'],
         'title' => $payload['title'],
         'description' => $payload['description'] !== '' ? $payload['description'] : null,
@@ -149,7 +201,9 @@ function subscription_plan_save(array $payload, array $admin): int
         $params['id'] = (int)$payload['id'];
         $stmt = db()->prepare(
             'UPDATE subscription_plans
-             SET slug = :slug,
+             SET owner_type = :owner_type,
+                 owner_id = :owner_id,
+                 slug = :slug,
                  title = :title,
                  description = :description,
                  billing_mode = :billing_mode,
@@ -174,13 +228,13 @@ function subscription_plan_save(array $payload, array $admin): int
 
     $stmt = db()->prepare(
         'INSERT INTO subscription_plans (
-            slug, title, description, billing_mode, billing_basis,
+            owner_type, owner_id, slug, title, description, billing_mode, billing_basis,
             direct_leader_limit, branch_leader_limit,
             direct_consultant_limit, branch_consultant_limit, per_child_consultant_limit,
             price_per_leader, price_per_consultant, fixed_monthly_price,
             payment_terms, sort_order, is_active
          ) VALUES (
-            :slug, :title, :description, :billing_mode, :billing_basis,
+            :owner_type, :owner_id, :slug, :title, :description, :billing_mode, :billing_basis,
             :direct_leader_limit, :branch_leader_limit,
             :direct_consultant_limit, :branch_consultant_limit, :per_child_consultant_limit,
             :price_per_leader, :price_per_consultant, :fixed_monthly_price,
@@ -194,10 +248,22 @@ function subscription_plan_save(array $payload, array $admin): int
     return $newId;
 }
 
-function subscription_plan_assigned_count(int $planId): int
+function subscription_plan_assigned_count(int $planId, ?array $admin = null): int
 {
-    $stmt = db()->prepare('SELECT COUNT(*) FROM resellers WHERE subscription_plan_id = :id');
-    $stmt->execute(['id' => $planId]);
+    $sql = 'SELECT COUNT(*) FROM resellers WHERE subscription_plan_id = :id';
+    $params = ['id' => $planId];
+    if ($admin && ($admin['role'] ?? '') === 'reseller' && !empty($admin['reseller_id'])) {
+        [$branchSql, $branchParams] = team_sql_in_condition(
+            'id',
+            team_reseller_branch_ids((int)$admin['reseller_id'], true),
+            'assigned_reseller'
+        );
+        $sql .= ' AND ' . $branchSql;
+        $params += $branchParams;
+    }
+
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
 
     return (int)$stmt->fetchColumn();
 }
@@ -207,7 +273,7 @@ function subscription_plan_list_url(array $overrides = []): string
     return admin_table_url($overrides, 'subscriptions.php');
 }
 
-function subscription_plan_list_data(): array
+function subscription_plan_list_data(array $admin): array
 {
     $sortMap = [
         'id' => '`id`',
@@ -220,21 +286,67 @@ function subscription_plan_list_data(): array
         'leaders_count' => '`leaders_count`',
     ];
 
+    $assignedWhere = 'subscription_plan_id IS NOT NULL';
+    $params = [];
+    if (($admin['role'] ?? '') === 'reseller' && !empty($admin['reseller_id'])) {
+        [$branchSql, $branchParams] = team_sql_in_condition(
+            'id',
+            team_reseller_branch_ids((int)$admin['reseller_id'], true),
+            'assigned_reseller'
+        );
+        $assignedWhere .= ' AND ' . $branchSql;
+        $params += $branchParams;
+    }
+
+    [$scopeSql, $scopeParams] = subscription_plan_visibility_sql($admin, 'sp', false);
+    $params += $scopeParams;
+
     return admin_table_paginated_rows(
-        'SELECT sp.*, COALESCE(assigned.leaders_count, 0) AS leaders_count
+        'SELECT sp.*, COALESCE(assigned.leaders_count, 0) AS leaders_count, owner.name AS owner_name
          FROM subscription_plans sp
          LEFT JOIN (
             SELECT subscription_plan_id, COUNT(*) AS leaders_count
             FROM resellers
-            WHERE subscription_plan_id IS NOT NULL
+            WHERE ' . $assignedWhere . '
             GROUP BY subscription_plan_id
-         ) assigned ON assigned.subscription_plan_id = sp.id',
-        [],
+         ) assigned ON assigned.subscription_plan_id = sp.id
+         LEFT JOIN resellers owner ON owner.id = sp.owner_id AND sp.owner_type = "reseller"
+         WHERE 1 = 1' . $scopeSql,
+        $params,
         $sortMap,
-        ['title', 'slug', 'description', 'payment_terms', 'billing_mode', 'billing_basis'],
+        ['title', 'slug', 'description', 'payment_terms', 'billing_mode', 'billing_basis', 'owner_name'],
         'sort_order',
         'asc'
     );
+}
+
+function subscription_plan_active_count(array $admin): int
+{
+    [$scopeSql, $params] = subscription_plan_visibility_sql($admin, 'subscription_plans', false);
+    $stmt = db()->prepare('SELECT COUNT(*) FROM subscription_plans WHERE is_active = 1' . $scopeSql);
+    $stmt->execute($params);
+
+    return (int)$stmt->fetchColumn();
+}
+
+function subscription_plan_assigned_total(array $admin): int
+{
+    $sql = 'SELECT COUNT(*) FROM resellers WHERE subscription_plan_id IS NOT NULL';
+    $params = [];
+    if (($admin['role'] ?? '') === 'reseller' && !empty($admin['reseller_id'])) {
+        [$branchSql, $branchParams] = team_sql_in_condition(
+            'id',
+            team_reseller_branch_ids((int)$admin['reseller_id'], true),
+            'assigned_total_reseller'
+        );
+        $sql .= ' AND ' . $branchSql;
+        $params += $branchParams;
+    }
+
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+
+    return (int)$stmt->fetchColumn();
 }
 
 function subscription_plan_sort_link(string $key, string $label, array $meta): string
@@ -302,8 +414,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postAction = (string)($_POST['action'] ?? 'save_plan');
 
     if ($postAction === 'save_plan') {
-        $plan = subscription_plan_payload_from_post($_POST);
-        $errors = subscription_plan_validate($plan);
+        $postId = max(0, (int)($_POST['id'] ?? 0));
+        $existingPlan = null;
+        if ($postId > 0) {
+            $existingPlan = subscription_plan_row($postId, false, $admin, true);
+            if (!$existingPlan) {
+                $errors[] = 'Эту подписку нельзя редактировать.';
+            }
+        }
+
+        $plan = subscription_plan_payload_from_post($_POST, $admin, $existingPlan);
+        if (!$errors) {
+            $errors = subscription_plan_validate($plan, $admin);
+        }
         if (!$errors) {
             try {
                 $savedId = subscription_plan_save($plan, $admin);
@@ -317,15 +440,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $editPlan = $plan;
     } elseif ($postAction === 'toggle_plan') {
         $planId = (int)($_POST['id'] ?? 0);
-        $stmt = db()->prepare('UPDATE subscription_plans SET is_active = IF(is_active = 1, 0, 1) WHERE id = :id');
-        $stmt->execute(['id' => $planId]);
-        log_activity('admin', (int)$admin['id'], 'toggle_subscription_plan', 'subscription_plans', $planId);
-        redirect('subscriptions.php?success=toggled');
+        $plan = subscription_plan_row($planId, false, $admin, true);
+        if (!$plan) {
+            $errors[] = 'Эту подписку нельзя менять.';
+        } else {
+            $stmt = db()->prepare('UPDATE subscription_plans SET is_active = IF(is_active = 1, 0, 1) WHERE id = :id');
+            $stmt->execute(['id' => $planId]);
+            log_activity('admin', (int)$admin['id'], 'toggle_subscription_plan', 'subscription_plans', $planId);
+            redirect('subscriptions.php?success=toggled');
+        }
     } elseif ($postAction === 'delete_plan') {
         $planId = (int)($_POST['id'] ?? 0);
+        $plan = subscription_plan_row($planId, false, $admin, true);
         if ($planId <= 0) {
             $errors[] = 'Подписка не найдена.';
-        } elseif (subscription_plan_assigned_count($planId) > 0) {
+        } elseif (!$plan) {
+            $errors[] = 'Эту подписку нельзя удалить.';
+        } elseif (subscription_plan_assigned_count($planId, $admin) > 0) {
             $errors[] = 'Нельзя удалить подписку, которая назначена лидерам. Отключите её, чтобы больше не выбирать.';
         } else {
             $stmt = db()->prepare('DELETE FROM subscription_plans WHERE id = :id');
@@ -339,21 +470,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 if (!isset($editPlan)) {
     $editPlan = subscription_plan_defaults();
     if ($action === 'edit' && $id > 0) {
-        $row = subscription_plan_row($id, false);
+        $row = subscription_plan_row($id, false, $admin, true);
         if ($row) {
             $editPlan = array_merge($editPlan, $row);
         } else {
-            $errors[] = 'Подписка не найдена.';
+            $errors[] = 'Подписка не найдена или недоступна для редактирования.';
             $action = 'list';
         }
     }
 }
 
-$listData = subscription_plan_list_data();
+$listData = subscription_plan_list_data($admin);
 $rows = $listData['rows'];
 $meta = $listData['meta'];
-$assignedTotal = (int)db()->query('SELECT COUNT(*) FROM resellers WHERE subscription_plan_id IS NOT NULL')->fetchColumn();
-$activeTotal = (int)db()->query('SELECT COUNT(*) FROM subscription_plans WHERE is_active = 1')->fetchColumn();
+$assignedTotal = subscription_plan_assigned_total($admin);
+$activeTotal = subscription_plan_active_count($admin);
 
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
@@ -380,7 +511,13 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php if ($action === 'create' || $action === 'edit'): ?>
     <section class="panel form-panel">
         <h2><?= $action === 'edit' ? 'Редактировать подписку' : 'Добавить подписку' ?></h2>
-        <p class="cell-muted">Подписка хранит лимиты, цены и условия. В карточке лидера выбирается только один готовый вариант.</p>
+        <p class="cell-muted">
+            <?php if (($admin['role'] ?? '') === 'reseller'): ?>
+                Подписка будет доступна лидерам вашей ветки. Лимиты не могут быть выше вашей текущей подписки.
+            <?php else: ?>
+                Подписка хранит лимиты, цены и условия. В карточке лидера выбирается только один готовый вариант.
+            <?php endif; ?>
+        </p>
         <form method="post" class="crud-form">
             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
             <input type="hidden" name="action" value="save_plan">
@@ -469,6 +606,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <tr>
                     <th><?= subscription_plan_sort_link('id', 'ID', $meta) ?></th>
                     <th><?= subscription_plan_sort_link('title', 'Подписка', $meta) ?></th>
+                    <th>Владелец</th>
                     <th>Условия</th>
                     <th>Лимиты</th>
                     <th><?= subscription_plan_sort_link('fixed_monthly_price', 'Тариф', $meta) ?></th>
@@ -479,10 +617,14 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 </thead>
                 <tbody>
                 <?php foreach ($rows as $row): ?>
-                    <?php $isActive = (int)($row['is_active'] ?? 0) === 1; ?>
+                    <?php
+                    $isActive = (int)($row['is_active'] ?? 0) === 1;
+                    $canEditPlan = subscription_plan_can_edit($row, $admin);
+                    ?>
                     <tr>
                         <td data-label="ID" data-column="id"><?= (int)$row['id'] ?></td>
                         <td data-label="Подписка" data-column="title"><strong><?= h((string)$row['title']) ?></strong><br><span class="cell-muted"><?= h((string)$row['slug']) ?></span></td>
+                        <td data-label="Владелец" data-column="owner"><?= h(subscription_plan_owner_label($row)) ?></td>
                         <td data-label="Условия" data-column="description">
                             <?= h((string)($row['description'] ?: '—')) ?>
                             <?php if (!empty($row['payment_terms'])): ?><br><span class="cell-muted"><?= h((string)$row['payment_terms']) ?></span><?php endif; ?>
@@ -492,19 +634,23 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         <td data-label="Лидеры" data-column="leaders_count"><?= (int)$row['leaders_count'] ?></td>
                         <td data-label="Статус" data-column="is_active"><span class="<?= h(subscription_plan_status_class($isActive)) ?>"><?= $isActive ? 'Активна' : 'Отключена' ?></span></td>
                         <td data-label="Действия" data-column="actions" class="row-actions">
-                            <a class="link-button" href="subscriptions.php?action=edit&id=<?= (int)$row['id'] ?>">Редактировать</a>
-                            <form method="post" class="inline-form">
-                                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="toggle_plan">
-                                <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-                                <button type="submit" class="link-button"><?= $isActive ? 'Отключить' : 'Включить' ?></button>
-                            </form>
-                            <form method="post" class="inline-form" onsubmit="return confirm('Удалить подписку?');">
-                                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="delete_plan">
-                                <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-                                <button type="submit" class="link-button danger">Удалить</button>
-                            </form>
+                            <?php if ($canEditPlan): ?>
+                                <a class="link-button" href="subscriptions.php?action=edit&id=<?= (int)$row['id'] ?>">Редактировать</a>
+                                <form method="post" class="inline-form">
+                                    <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="toggle_plan">
+                                    <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+                                    <button type="submit" class="link-button"><?= $isActive ? 'Отключить' : 'Включить' ?></button>
+                                </form>
+                                <form method="post" class="inline-form" onsubmit="return confirm('Удалить подписку?');">
+                                    <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="delete_plan">
+                                    <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+                                    <button type="submit" class="link-button danger">Удалить</button>
+                                </form>
+                            <?php else: ?>
+                                <span class="cell-muted">Только просмотр</span>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>

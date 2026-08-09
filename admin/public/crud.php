@@ -893,7 +893,7 @@ function select_options(string $source, array $admin): array
         return $stmt->fetchAll();
     }
     if ($source === 'subscription_plans') {
-        return subscription_plan_options(true);
+        return subscription_plan_options(true, $admin);
     }
 
     $stmt = db()->prepare("SELECT id, {$item['label']} AS label FROM {$item['table']} $where ORDER BY id DESC LIMIT 500");
@@ -2375,9 +2375,9 @@ if ($action === 'limit_check') {
         $payload = apply_role_defaults($moduleKey, $payload, $admin, $recordId);
         $limitPayload = $payload;
         if ($moduleKey === 'resellers') {
-            $planErrors = subscription_plan_validate_reseller_payload($payload);
+            $planErrors = subscription_plan_validate_reseller_payload($payload, $admin);
             if (!$planErrors) {
-                $limitPayload = subscription_plan_apply_to_reseller_payload($payload);
+                $limitPayload = subscription_plan_apply_to_reseller_payload($payload, $admin);
             }
         }
         $limitErrors = array_merge(
@@ -2605,9 +2605,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = apply_role_defaults($moduleKey, $payload, $admin, $postId);
     $limitPayload = $payload;
     if ($moduleKey === 'resellers') {
-        $errors = array_merge($errors, subscription_plan_validate_reseller_payload($payload));
+        $errors = array_merge($errors, subscription_plan_validate_reseller_payload($payload, $admin));
         if (!$errors) {
-            $limitPayload = subscription_plan_apply_to_reseller_payload($payload);
+            $limitPayload = subscription_plan_apply_to_reseller_payload($payload, $admin);
         }
     }
     $errors = array_merge($errors, validate_unique_payload($moduleKey, $module, $payload, $postId));
