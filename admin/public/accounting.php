@@ -45,6 +45,7 @@ function accounting_plan_from_row(array $row): ?array
     return [
         'id' => (int)$row['subscription_plan_id'],
         'title' => (string)$row['plan_title'],
+        'billing_mode' => (string)($row['plan_billing_mode'] ?? 'prepaid'),
         'billing_basis' => (string)($row['plan_billing_basis'] ?? 'branch'),
         'direct_leader_limit' => $row['plan_direct_leader_limit'],
         'branch_leader_limit' => $row['plan_branch_leader_limit'],
@@ -92,9 +93,11 @@ function accounting_save_invoice(int $resellerId, array $admin): int
 
     [$startsAt, $endsAt, $periodCode] = accounting_period();
     $invoiceId = accounting_current_invoice_id($resellerId, $startsAt, $endsAt);
-    $note = 'Фактическое начисление: лидеры ' . (int)$billing['leaders']
+    $note = 'Начисление: ' . $billing['mode_label']
+        . ', ' . $billing['basis_label']
+        . ', лидеры ' . (int)$billing['leaders']
         . ', консультанты ' . (int)$billing['consultants']
-        . ', расчёт ' . $billing['basis_label'] . '.';
+        . '.';
 
     $params = [
         'reseller_id' => $resellerId,
@@ -105,6 +108,7 @@ function accounting_save_invoice(int $resellerId, array $admin): int
         'price_per_leader' => $billing['price_per_leader'] > 0 ? $billing['price_per_leader'] : null,
         'amount_due' => $billing['amount_due'],
         'leader_amount_due' => $billing['leader_amount'],
+        'billing_mode' => $billing['billing_mode'],
         'billing_basis' => $billing['basis'],
         'direct_leader_limit' => $plan['direct_leader_limit'],
         'branch_leader_limit' => $plan['branch_leader_limit'],
@@ -132,6 +136,7 @@ function accounting_save_invoice(int $resellerId, array $admin): int
                  price_per_leader = :price_per_leader,
                  amount_due = :amount_due,
                  leader_amount_due = :leader_amount_due,
+                 billing_mode = :billing_mode,
                  billing_basis = :billing_basis,
                  direct_leader_limit = :direct_leader_limit,
                  branch_leader_limit = :branch_leader_limit,
@@ -156,13 +161,13 @@ function accounting_save_invoice(int $resellerId, array $admin): int
         'INSERT INTO leader_subscriptions (
             reseller_id, subscription_plan_id, consultant_limit, leader_limit,
             price_per_consultant, price_per_leader, amount_due, leader_amount_due,
-            billing_basis, direct_leader_limit, branch_leader_limit,
+            billing_mode, billing_basis, direct_leader_limit, branch_leader_limit,
             direct_consultant_limit, branch_consultant_limit, per_child_consultant_limit,
             status, starts_at, ends_at, monthly_price, invoice_number, payment_note, activated_by
          ) VALUES (
             :reseller_id, :subscription_plan_id, :consultant_limit, :leader_limit,
             :price_per_consultant, :price_per_leader, :amount_due, :leader_amount_due,
-            :billing_basis, :direct_leader_limit, :branch_leader_limit,
+            :billing_mode, :billing_basis, :direct_leader_limit, :branch_leader_limit,
             :direct_consultant_limit, :branch_consultant_limit, :per_child_consultant_limit,
             :status, :starts_at, :ends_at, :monthly_price, :invoice_number, :payment_note, :activated_by
          )'
@@ -223,6 +228,7 @@ function accounting_rows(): array
                 r.subscription_plan_id,
                 sp.title AS plan_title,
                 sp.slug AS plan_slug,
+                sp.billing_mode AS plan_billing_mode,
                 sp.billing_basis AS plan_billing_basis,
                 sp.direct_leader_limit AS plan_direct_leader_limit,
                 sp.branch_leader_limit AS plan_branch_leader_limit,
@@ -309,7 +315,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 
 <section class="panel">
     <p class="cell-muted">
-        Сумма считается по фактическому количеству активных лидеров и консультантов, а лимиты в подписке только ограничивают рост команды.
+        Сумма считается по правилам выбранной подписки: за оплаченные места или по фактическому количеству активных людей.
     </p>
     <?= render_admin_table_tools($meta, [
         ['name' => 'plan_id', 'label' => 'Подписка', 'options' => $plans],
@@ -361,7 +367,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <td data-label="Подписка">
                         <?php if ($plan): ?>
                             <strong><?= h((string)$plan['title']) ?></strong>
-                            <div class="cell-muted"><?= h($billing['basis_label'] ?? '') ?></div>
+                            <div class="cell-muted"><?= h(trim((string)($billing['mode_label'] ?? '') . ', ' . (string)($billing['basis_label'] ?? ''), ' ,')) ?></div>
                         <?php else: ?>
                             <span class="badge badge-pending">Нет подписки</span>
                         <?php endif; ?>
@@ -376,10 +382,14 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     </td>
                     <td data-label="Расчёт">
                         <?php if ($billing): ?>
+                            <?php $unitLabel = ($billing['billing_mode'] ?? 'prepaid') === 'prepaid' ? 'мест' : 'активных'; ?>
                             <div class="compact-lines">
                                 <span><strong>База:</strong> <?= h(subscription_money_text($billing['base_amount'])) ?></span>
-                                <span><strong>Лидеры:</strong> <?= (int)$billing['leaders'] ?> x <?= h(subscription_money_text($billing['price_per_leader'])) ?></span>
-                                <span><strong>Консультанты:</strong> <?= (int)$billing['consultants'] ?> x <?= h(subscription_money_text($billing['price_per_consultant'])) ?></span>
+                                <span><strong>Лидеры:</strong> <?= (int)$billing['leaders'] ?> <?= h($unitLabel) ?> x <?= h(subscription_money_text($billing['price_per_leader'])) ?></span>
+                                <span><strong>Консультанты:</strong> <?= (int)$billing['consultants'] ?> <?= h($unitLabel) ?> x <?= h(subscription_money_text($billing['price_per_consultant'])) ?></span>
+                                <?php if (($billing['billing_mode'] ?? 'prepaid') === 'prepaid'): ?>
+                                    <span class="cell-muted">Сейчас активны: лидеры <?= (int)$billing['active_leaders'] ?>, консультанты <?= (int)$billing['active_consultants'] ?></span>
+                                <?php endif; ?>
                             </div>
                         <?php else: ?>
                             —

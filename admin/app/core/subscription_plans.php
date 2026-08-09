@@ -10,6 +10,21 @@ function subscription_billing_basis_labels(): array
     ];
 }
 
+function subscription_billing_mode_labels(): array
+{
+    return [
+        'prepaid' => 'Предоплата за места',
+        'actual' => 'По факту активных',
+    ];
+}
+
+function subscription_plan_billing_mode(array $plan): string
+{
+    $mode = (string)($plan['billing_mode'] ?? 'prepaid');
+
+    return isset(subscription_billing_mode_labels()[$mode]) ? $mode : 'prepaid';
+}
+
 function subscription_plan_limit_fields(): array
 {
     return [
@@ -87,6 +102,15 @@ function subscription_limit_text(?int $limit): string
     return $limit === null ? 'без лимита' : (string)$limit;
 }
 
+function subscription_charge_limit(array $plan, string $field): int
+{
+    if (!array_key_exists($field, $plan) || $plan[$field] === null || $plan[$field] === '') {
+        return 0;
+    }
+
+    return max(0, (int)$plan[$field]);
+}
+
 function subscription_plan_row(?int $planId, bool $activeOnly = false): ?array
 {
     if (!$planId) {
@@ -152,16 +176,30 @@ function subscription_plan_billing_usage(int $resellerId, array $plan): array
     if (!isset(subscription_billing_basis_labels()[$basis])) {
         $basis = 'branch';
     }
+    $mode = subscription_plan_billing_mode($plan);
+    $activeLeaders = $basis === 'direct'
+        ? (int)$summary['direct_leaders']
+        : (int)$summary['branch_leaders'];
+    $activeConsultants = $basis === 'direct'
+        ? (int)$summary['direct_consultants']
+        : (int)$summary['branch_consultants'];
+
+    $leaders = $activeLeaders;
+    $consultants = $activeConsultants;
+    if ($mode === 'prepaid') {
+        $leaders = subscription_charge_limit($plan, $basis === 'direct' ? 'direct_leader_limit' : 'branch_leader_limit');
+        $consultants = subscription_charge_limit($plan, $basis === 'direct' ? 'direct_consultant_limit' : 'branch_consultant_limit');
+    }
 
     return [
         'basis' => $basis,
         'basis_label' => subscription_billing_basis_labels()[$basis],
-        'leaders' => $basis === 'direct'
-            ? (int)$summary['direct_leaders']
-            : (int)$summary['branch_leaders'],
-        'consultants' => $basis === 'direct'
-            ? (int)$summary['direct_consultants']
-            : (int)$summary['branch_consultants'],
+        'billing_mode' => $mode,
+        'mode_label' => subscription_billing_mode_labels()[$mode],
+        'leaders' => $leaders,
+        'consultants' => $consultants,
+        'active_leaders' => $activeLeaders,
+        'active_consultants' => $activeConsultants,
         'summary' => $summary,
     ];
 }
@@ -184,8 +222,12 @@ function subscription_plan_usage_amount(int $resellerId, ?array $plan = null): ?
         'plan' => $plan,
         'basis' => $usage['basis'],
         'basis_label' => $usage['basis_label'],
+        'billing_mode' => $usage['billing_mode'],
+        'mode_label' => $usage['mode_label'],
         'leaders' => (int)$usage['leaders'],
         'consultants' => (int)$usage['consultants'],
+        'active_leaders' => (int)$usage['active_leaders'],
+        'active_consultants' => (int)$usage['active_consultants'],
         'summary' => $usage['summary'],
         'price_per_leader' => $leaderPrice,
         'price_per_consultant' => $consultantPrice,
@@ -202,15 +244,18 @@ function subscription_plan_formula_text(array $plan): string
     $base = subscription_money_value($plan['fixed_monthly_price'] ?? null);
     $leaderPrice = subscription_money_value($plan['price_per_leader'] ?? null);
     $consultantPrice = subscription_money_value($plan['price_per_consultant'] ?? null);
+    $mode = subscription_plan_billing_mode($plan);
+    $leaderLabel = $mode === 'prepaid' ? 'места лидеров' : 'активные лидеры';
+    $consultantLabel = $mode === 'prepaid' ? 'места консультантов' : 'активные консультанты';
 
     if ($base > 0) {
         $parts[] = 'база ' . subscription_money_text($base);
     }
     if ($leaderPrice > 0) {
-        $parts[] = 'активные лидеры x ' . subscription_money_text($leaderPrice);
+        $parts[] = $leaderLabel . ' x ' . subscription_money_text($leaderPrice);
     }
     if ($consultantPrice > 0) {
-        $parts[] = 'активные консультанты x ' . subscription_money_text($consultantPrice);
+        $parts[] = $consultantLabel . ' x ' . subscription_money_text($consultantPrice);
     }
 
     return $parts ? implode(' + ', $parts) : 'стоимость не задана';

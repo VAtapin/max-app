@@ -305,7 +305,7 @@ INSERT INTO help_faq_sections (title, body, items_json, is_featured, sort_order)
 ), 0, 120);
 
 INSERT INTO subscription_plans (
-  slug, title, description, billing_basis,
+  slug, title, description, billing_mode, billing_basis,
   direct_leader_limit, branch_leader_limit,
   direct_consultant_limit, branch_consultant_limit, per_child_consultant_limit,
   price_per_leader, price_per_consultant, fixed_monthly_price, payment_terms, sort_order, is_active
@@ -314,6 +314,7 @@ INSERT INTO subscription_plans (
     'starter',
     'Старт',
     'Для небольшого лидера: несколько дочерних лидеров и базовая команда консультантов.',
+    'prepaid',
     'branch',
     5, 20, 50, 150, 50,
     300.00, 300.00, NULL,
@@ -324,6 +325,7 @@ INSERT INTO subscription_plans (
     'team',
     'Команда',
     'Основной тариф для активной команды лидера.',
+    'prepaid',
     'branch',
     20, 100, 100, 1000, 200,
     300.00, 300.00, NULL,
@@ -334,6 +336,7 @@ INSERT INTO subscription_plans (
     'network',
     'Лидерская сеть',
     'Для большой многоуровневой структуры с несколькими лидерами внутри ветки.',
+    'prepaid',
     'branch',
     100, 500, 300, 5000, 500,
     300.00, 300.00, NULL,

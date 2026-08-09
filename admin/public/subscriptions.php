@@ -24,6 +24,7 @@ function subscription_plan_defaults(): array
         'title' => '',
         'slug' => '',
         'description' => '',
+        'billing_mode' => 'prepaid',
         'billing_basis' => 'branch',
         'direct_leader_limit' => null,
         'branch_leader_limit' => null,
@@ -46,6 +47,7 @@ function subscription_plan_payload_from_post(array $source): array
     $payload['title'] = trim((string)($source['title'] ?? ''));
     $payload['slug'] = trim((string)($source['slug'] ?? ''));
     $payload['description'] = trim((string)($source['description'] ?? ''));
+    $payload['billing_mode'] = (string)($source['billing_mode'] ?? 'prepaid');
     $payload['billing_basis'] = (string)($source['billing_basis'] ?? 'branch');
     $payload['payment_terms'] = trim((string)($source['payment_terms'] ?? ''));
     $payload['sort_order'] = (int)($source['sort_order'] ?? 100);
@@ -71,8 +73,11 @@ function subscription_plan_validate(array &$payload): array
         ? subscription_plan_slug($payload['title'])
         : subscription_plan_slug($payload['slug']);
 
+    if (!isset(subscription_billing_mode_labels()[$payload['billing_mode']])) {
+        $errors[] = 'Выберите корректный тип оплаты.';
+    }
     if (!isset(subscription_billing_basis_labels()[$payload['billing_basis']])) {
-        $errors[] = 'Выберите корректный способ расчёта.';
+        $errors[] = 'Выберите корректную базу расчёта.';
     }
 
     foreach (subscription_plan_limit_fields() as $field) {
@@ -125,6 +130,7 @@ function subscription_plan_save(array $payload, array $admin): int
         'slug' => $payload['slug'],
         'title' => $payload['title'],
         'description' => $payload['description'] !== '' ? $payload['description'] : null,
+        'billing_mode' => $payload['billing_mode'],
         'billing_basis' => $payload['billing_basis'],
         'direct_leader_limit' => $payload['direct_leader_limit'],
         'branch_leader_limit' => $payload['branch_leader_limit'],
@@ -146,6 +152,7 @@ function subscription_plan_save(array $payload, array $admin): int
              SET slug = :slug,
                  title = :title,
                  description = :description,
+                 billing_mode = :billing_mode,
                  billing_basis = :billing_basis,
                  direct_leader_limit = :direct_leader_limit,
                  branch_leader_limit = :branch_leader_limit,
@@ -167,13 +174,13 @@ function subscription_plan_save(array $payload, array $admin): int
 
     $stmt = db()->prepare(
         'INSERT INTO subscription_plans (
-            slug, title, description, billing_basis,
+            slug, title, description, billing_mode, billing_basis,
             direct_leader_limit, branch_leader_limit,
             direct_consultant_limit, branch_consultant_limit, per_child_consultant_limit,
             price_per_leader, price_per_consultant, fixed_monthly_price,
             payment_terms, sort_order, is_active
          ) VALUES (
-            :slug, :title, :description, :billing_basis,
+            :slug, :title, :description, :billing_mode, :billing_basis,
             :direct_leader_limit, :branch_leader_limit,
             :direct_consultant_limit, :branch_consultant_limit, :per_child_consultant_limit,
             :price_per_leader, :price_per_consultant, :fixed_monthly_price,
@@ -205,6 +212,7 @@ function subscription_plan_list_data(): array
     $sortMap = [
         'id' => '`id`',
         'title' => '`title`',
+        'billing_mode' => '`billing_mode`',
         'billing_basis' => '`billing_basis`',
         'fixed_monthly_price' => '`fixed_monthly_price`',
         'sort_order' => '`sort_order`',
@@ -223,7 +231,7 @@ function subscription_plan_list_data(): array
          ) assigned ON assigned.subscription_plan_id = sp.id',
         [],
         $sortMap,
-        ['title', 'slug', 'description', 'payment_terms', 'billing_basis'],
+        ['title', 'slug', 'description', 'payment_terms', 'billing_mode', 'billing_basis'],
         'sort_order',
         'asc'
     );
@@ -234,6 +242,7 @@ function subscription_plan_sort_link(string $key, string $label, array $meta): s
     return render_admin_sort_link($key, $label, $meta, [
         'id' => '`id`',
         'title' => '`title`',
+        'billing_mode' => '`billing_mode`',
         'billing_basis' => '`billing_basis`',
         'fixed_monthly_price' => '`fixed_monthly_price`',
         'sort_order' => '`sort_order`',
@@ -265,12 +274,15 @@ function subscription_plan_limits_html(array $plan): string
 
 function subscription_plan_prices_html(array $plan): string
 {
+    $mode = subscription_plan_billing_mode($plan);
+    $unitLabel = $mode === 'prepaid' ? 'место' : 'активный';
     ob_start();
     ?>
     <div class="compact-lines">
-        <span><strong>Расчёт:</strong> <?= h(subscription_billing_basis_labels()[$plan['billing_basis'] ?? 'branch'] ?? 'Вся ветка') ?></span>
-        <span><strong>Лидер:</strong> <?= h(subscription_money_text($plan['price_per_leader'] !== null ? (float)$plan['price_per_leader'] : null)) ?> / активный</span>
-        <span><strong>Консультант:</strong> <?= h(subscription_money_text($plan['price_per_consultant'] !== null ? (float)$plan['price_per_consultant'] : null)) ?> / активный</span>
+        <span><strong>Оплата:</strong> <?= h(subscription_billing_mode_labels()[$mode]) ?></span>
+        <span><strong>База:</strong> <?= h(subscription_billing_basis_labels()[$plan['billing_basis'] ?? 'branch'] ?? 'Вся ветка') ?></span>
+        <span><strong>Лидер:</strong> <?= h(subscription_money_text($plan['price_per_leader'] !== null ? (float)$plan['price_per_leader'] : null)) ?> / <?= h($unitLabel) ?></span>
+        <span><strong>Консультант:</strong> <?= h(subscription_money_text($plan['price_per_consultant'] !== null ? (float)$plan['price_per_consultant'] : null)) ?> / <?= h($unitLabel) ?></span>
         <?php if (subscription_money_value($plan['fixed_monthly_price'] ?? null) > 0): ?>
             <span><strong>База:</strong> <?= h(subscription_money_text((float)$plan['fixed_monthly_price'])) ?> / месяц</span>
         <?php endif; ?>
@@ -380,7 +392,16 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <small class="field-hint">Можно оставить пустым: код будет создан из названия.</small>
             </label>
             <label class="field">
-                <span>Расчёт суммы</span>
+                <span>Тип оплаты</span>
+                <select name="billing_mode">
+                    <?php foreach (subscription_billing_mode_labels() as $value => $label): ?>
+                        <option value="<?= h($value) ?>" <?= ($editPlan['billing_mode'] ?? 'prepaid') === $value ? 'selected' : '' ?>><?= h($label) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <small class="field-hint">Предоплата считает сумму по выбранным местам. По факту считает активных людей в команде.</small>
+            </label>
+            <label class="field">
+                <span>Кого считать</span>
                 <select name="billing_basis">
                     <?php foreach (subscription_billing_basis_labels() as $value => $label): ?>
                         <option value="<?= h($value) ?>" <?= ($editPlan['billing_basis'] ?? 'branch') === $value ? 'selected' : '' ?>><?= h($label) ?></option>
@@ -419,9 +440,12 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     const fixed = numberValue('fixed_monthly_price');
                     const leaderPrice = numberValue('price_per_leader');
                     const consultantPrice = numberValue('price_per_consultant');
+                    const mode = form.elements.billing_mode?.value || 'prepaid';
+                    const leaderLabel = mode === 'prepaid' ? 'места лидеров' : 'активные лидеры';
+                    const consultantLabel = mode === 'prepaid' ? 'места консультантов' : 'активные консультанты';
                     if (fixed > 0) parts.push(`база ${money(fixed)}`);
-                    if (leaderPrice > 0) parts.push(`активные лидеры × ${money(leaderPrice)}`);
-                    if (consultantPrice > 0) parts.push(`активные консультанты × ${money(consultantPrice)}`);
+                    if (leaderPrice > 0) parts.push(`${leaderLabel} × ${money(leaderPrice)}`);
+                    if (consultantPrice > 0) parts.push(`${consultantLabel} × ${money(consultantPrice)}`);
                     preview.textContent = parts.length ? parts.join(' + ') : 'стоимость не задана';
                 };
                 form.querySelectorAll('input, select').forEach((control) => {
