@@ -5,6 +5,8 @@ require_once __DIR__ . '/team_tree.php';
 
 function broadcast_recipients(array $broadcast): array
 {
+    $broadcast = broadcast_apply_owner_scope($broadcast);
+
     if (($broadcast['audience_type'] ?? 'clients') === 'consultants') {
         return broadcast_consultant_recipients($broadcast);
     }
@@ -80,6 +82,42 @@ function broadcast_recipients(array $broadcast): array
     }
 
     return array_values($unique);
+}
+
+function broadcast_apply_owner_scope(array $broadcast): array
+{
+    $ownerType = (string)($broadcast['owner_type'] ?? '');
+    $ownerId = (int)($broadcast['owner_id'] ?? 0);
+
+    if ($ownerType === 'manager' && $ownerId > 0) {
+        $broadcast['audience_type'] = 'clients';
+        $broadcast['target_type'] = 'manager';
+        $broadcast['target_manager_id'] = $ownerId;
+        $broadcast['target_reseller_id'] = team_manager_reseller_id($ownerId);
+        return $broadcast;
+    }
+
+    if ($ownerType === 'reseller' && $ownerId > 0) {
+        $allowedTargets = [
+            'own_clients',
+            'branch_clients',
+            'direct_consultants',
+            'branch_consultants',
+            'direct_leaders',
+            'branch_leaders',
+        ];
+        $targetType = (string)($broadcast['target_type'] ?? '');
+        $broadcast['target_type'] = in_array($targetType, $allowedTargets, true)
+            ? $targetType
+            : 'own_clients';
+        $broadcast['audience_type'] = in_array($broadcast['target_type'], ['own_clients', 'branch_clients'], true)
+            ? 'clients'
+            : 'consultants';
+        $broadcast['target_reseller_id'] = $ownerId;
+        $broadcast['target_manager_id'] = null;
+    }
+
+    return $broadcast;
 }
 
 function broadcast_target_reseller_id(array $broadcast): ?int

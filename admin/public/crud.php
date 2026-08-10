@@ -2641,12 +2641,23 @@ function apply_role_defaults(string $moduleKey, array $payload, array $admin, ?i
         } elseif ($admin['role'] === 'reseller') {
             $payload['owner_type'] = 'reseller';
             $payload['owner_id'] = $admin['reseller_id'];
-            if (in_array((string)($payload['target_type'] ?? ''), ['', 'all'], true)) {
-                $payload['target_type'] = 'reseller';
-            }
-            if (empty($payload['target_reseller_id'])) {
-                $payload['target_reseller_id'] = $admin['reseller_id'];
-            }
+            $allowedTargets = [
+                'own_clients',
+                'branch_clients',
+                'direct_consultants',
+                'branch_consultants',
+                'direct_leaders',
+                'branch_leaders',
+            ];
+            $targetType = (string)($payload['target_type'] ?? '');
+            $payload['target_type'] = in_array($targetType, $allowedTargets, true)
+                ? $targetType
+                : 'own_clients';
+            $payload['audience_type'] = in_array($payload['target_type'], ['own_clients', 'branch_clients'], true)
+                ? 'clients'
+                : 'consultants';
+            $payload['target_reseller_id'] = $admin['reseller_id'];
+            $payload['target_manager_id'] = null;
         }
     }
     if ($moduleKey === 'content') {
@@ -2654,6 +2665,39 @@ function apply_role_defaults(string $moduleKey, array $payload, array $admin, ?i
     }
 
     return $payload;
+}
+
+function broadcast_form_fields_for_admin(array $fields, array $admin): array
+{
+    if (($admin['role'] ?? '') === 'manager') {
+        unset(
+            $fields['audience_type'],
+            $fields['target_type'],
+            $fields['target_reseller_id'],
+            $fields['target_manager_id']
+        );
+        return $fields;
+    }
+
+    if (($admin['role'] ?? '') === 'reseller') {
+        $fields['target_type']['options'] = [
+            'own_clients',
+            'branch_clients',
+            'direct_consultants',
+            'branch_consultants',
+            'direct_leaders',
+            'branch_leaders',
+        ];
+        $fields['target_type']['default'] = 'own_clients';
+        $fields['target_type']['hint'] = 'Доступны только получатели из вашей ветки.';
+        unset(
+            $fields['audience_type'],
+            $fields['target_reseller_id'],
+            $fields['target_manager_id']
+        );
+    }
+
+    return $fields;
 }
 
 function nullable_int_value(mixed $value): ?int
@@ -3239,6 +3283,9 @@ $canCreate = crud_create_enabled($moduleKey) && !$createLimitErrors;
 $canEdit = crud_edit_enabled($moduleKey);
 $canDelete = crud_delete_enabled($moduleKey);
 $formFields = crud_form_fields($moduleKey, $module['fields']);
+if ($moduleKey === 'broadcasts') {
+    $formFields = broadcast_form_fields_for_admin($formFields, $admin);
+}
 if (in_array($moduleKey, owned_modules(), true) && $admin['role'] !== 'superadmin') {
     unset($formFields['owner_type'], $formFields['owner_id']);
 }
