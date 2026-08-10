@@ -1128,3 +1128,49 @@ CREATE TABLE schema_migrations (
   migration VARCHAR(255) NOT NULL PRIMARY KEY,
   applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+DELIMITER //
+
+CREATE TRIGGER trg_resellers_referral_code_unique_insert
+BEFORE INSERT ON resellers
+FOR EACH ROW
+BEGIN
+  IF EXISTS (SELECT 1 FROM managers WHERE referral_code = NEW.referral_code) THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Referral code is already used by a manager';
+  END IF;
+END//
+
+CREATE TRIGGER trg_resellers_referral_code_unique_update
+BEFORE UPDATE ON resellers
+FOR EACH ROW
+BEGIN
+  IF NOT (NEW.referral_code <=> OLD.referral_code)
+     AND EXISTS (SELECT 1 FROM managers WHERE referral_code = NEW.referral_code) THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Referral code is already used by a manager';
+  END IF;
+END//
+
+CREATE TRIGGER trg_managers_referral_code_unique_insert
+BEFORE INSERT ON managers
+FOR EACH ROW
+BEGIN
+  IF EXISTS (SELECT 1 FROM resellers WHERE referral_code = NEW.referral_code) THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Referral code is already used by a reseller';
+  END IF;
+END//
+
+CREATE TRIGGER trg_managers_referral_code_unique_update
+BEFORE UPDATE ON managers
+FOR EACH ROW
+BEGIN
+  IF NOT (NEW.referral_code <=> OLD.referral_code)
+     AND EXISTS (SELECT 1 FROM resellers WHERE referral_code = NEW.referral_code) THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Referral code is already used by a reseller';
+  END IF;
+END//
+
+DELIMITER ;

@@ -2049,6 +2049,15 @@ function validate_unique_payload(string $moduleKey, array $module, array $payloa
             continue;
         }
 
+        if ($field === 'referral_code' && in_array($moduleKey, ['resellers', 'managers'], true)) {
+            $conflict = staff_referral_code_conflict($value, $module['table'], $recordId);
+            if ($conflict) {
+                $errors[] = $label . ' "' . $value . '" уже используется: '
+                    . $conflict['label'] . ' #' . (int)$conflict['id'] . '. Укажите другой код.';
+            }
+            continue;
+        }
+
         $sql = "SELECT id FROM {$module['table']} WHERE `$field` = :value";
         $params = ['value' => $value];
         if ($recordId) {
@@ -2066,6 +2075,36 @@ function validate_unique_payload(string $moduleKey, array $module, array $payloa
     }
 
     return $errors;
+}
+
+function staff_referral_code_conflict(string $code, ?string $exceptTable = null, ?int $exceptId = null): ?array
+{
+    $code = trim($code);
+    if ($code === '') {
+        return null;
+    }
+
+    foreach ([
+        'resellers' => 'лидер',
+        'managers' => 'консультант',
+    ] as $table => $label) {
+        $sql = "SELECT id FROM {$table} WHERE referral_code = :code";
+        $params = ['code' => $code];
+        if ($table === $exceptTable && $exceptId !== null) {
+            $sql .= ' AND id <> :except_id';
+            $params['except_id'] = $exceptId;
+        }
+        $sql .= ' LIMIT 1';
+
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        $id = $stmt->fetchColumn();
+        if ($id !== false) {
+            return ['id' => (int)$id, 'label' => $label];
+        }
+    }
+
+    return null;
 }
 
 function friendly_save_error(Throwable $e, array $payload): string
