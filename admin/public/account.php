@@ -344,13 +344,24 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <?php if ($setupMode): ?>
         <div class="two-factor-connect">
             <h2>Подключить приложение-аутентификатор</h2>
-            <p>Откройте Яндекс ID, 2FAS, Aegis, Microsoft Authenticator или другое приложение с поддержкой TOTP и отсканируйте QR-код.</p>
+            <div class="notice warning two-factor-warning">
+                <strong>Важно: не сканируйте этот QR-код камерой телефона, Google Lens, Яндексом или поиском.</strong>
+                Такие сервисы могут показать код только один раз и не сохранят его для следующего входа.
+            </div>
+            <div class="two-factor-instructions">
+                <strong>Сначала установите и откройте приложение-аутентификатор:</strong>
+                <ol>
+                    <li>Установите 2FAS, Aegis, Microsoft Authenticator, Яндекс ID или другое приложение с поддержкой TOTP.</li>
+                    <li>В самом приложении нажмите «Добавить аккаунт» и выберите сканирование QR-кода.</li>
+                    <li>Только затем отсканируйте этот QR-код через приложение и введите показанный им код ниже.</li>
+                </ol>
+            </div>
             <?php if ($setupQr !== ''): ?>
                 <img class="two-factor-qr-image" src="<?= h($setupQr) ?>" alt="QR-код для настройки 2FA">
             <?php endif; ?>
             <details class="two-factor-manual">
                 <summary>Не получается отсканировать QR-код</summary>
-                <p>Введите этот секретный ключ вручную:</p>
+                <p>В приложении-аутентификаторе выберите ввод ключа вручную и укажите этот секретный ключ:</p>
                 <code><?= h($setupSecret) ?></code>
             </details>
             <form method="post" class="crud-form two-factor-confirm-form">

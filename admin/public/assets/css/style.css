@@ -275,6 +275,31 @@ a.stat:hover {
     margin: 0 0 14px;
 }
 
+.two-factor-warning {
+    line-height: 1.5;
+    margin: 0;
+}
+
+.two-factor-warning strong,
+.two-factor-instructions strong {
+    display: block;
+    margin-bottom: 6px;
+}
+
+.two-factor-instructions {
+    color: #475467;
+    line-height: 1.5;
+}
+
+.two-factor-instructions ol {
+    margin: 8px 0 0;
+    padding-left: 24px;
+}
+
+.two-factor-instructions li + li {
+    margin-top: 6px;
+}
+
 .two-factor-secret {
     background: #f8fafc;
     border: 1px solid var(--line);
