@@ -277,6 +277,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = 'Не удалось удалить учётную запись: ' . $e->getMessage();
             }
         }
+    } elseif ($postAction === 'disable_two_factor') {
+        $target = $postId > 0 ? admin_account_fetch($postId) : null;
+        if (!$target) {
+            $errors[] = 'Учётная запись не найдена.';
+        }
+
+        if (!$errors) {
+            try {
+                $stmt = db()->prepare(
+                    'UPDATE admin_users
+                     SET two_factor_required = 0, two_factor_enabled = 0,
+                         two_factor_secret = NULL, two_factor_confirmed_at = NULL
+                     WHERE id = :id'
+                );
+                $stmt->execute(['id' => $postId]);
+                log_activity('admin', (int)$admin['id'], 'disable_admin_user_2fa', 'admin_users', $postId);
+                admin_account_redirect(['success' => 'two_factor_disabled']);
+            } catch (Throwable $e) {
+                $errors[] = 'Не удалось отключить 2FA: ' . $e->getMessage();
+            }
+        }
     } elseif ($postAction === 'save') {
         $existing = $postId > 0 ? admin_account_fetch($postId) : null;
         if ($postId > 0 && !$existing) {
@@ -392,6 +413,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <div class="notice success">Учётная запись сохранена.</div>
 <?php elseif ($success === 'deleted'): ?>
     <div class="notice success">Учётная запись удалена.</div>
+<?php elseif ($success === 'two_factor_disabled'): ?>
+    <div class="notice success">Двухфакторная защита отключена.</div>
 <?php endif; ?>
 <?php foreach ($errors as $error): ?>
     <div class="alert"><?= h($error) ?></div>
@@ -600,6 +623,14 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <td data-label="Создан"><?= h((string)$account['created_at']) ?></td>
                     <td data-label="Действия" class="row-actions">
                         <a class="link-button" href="admin_accounts.php?action=edit&id=<?= (int)$account['id'] ?>">Редактировать</a>
+                        <?php if (admin_two_factor_required($account)): ?>
+                            <form method="post" class="inline-form" onsubmit="return confirm('Отключить двухфакторную защиту для этой учётной записи?');">
+                                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="disable_two_factor">
+                                <input type="hidden" name="id" value="<?= (int)$account['id'] ?>">
+                                <button type="submit" class="link-button danger">Отключить 2FA</button>
+                            </form>
+                        <?php endif; ?>
                         <form method="post" class="inline-form" onsubmit="return confirm('Удалить эту учётную запись?');">
                             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
                             <input type="hidden" name="action" value="delete">
