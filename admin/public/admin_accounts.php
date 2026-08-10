@@ -123,7 +123,10 @@ function admin_account_normalized_payload(array $post, ?array $existing, array $
     $vkId = trim((string)($post['vk_id'] ?? ''));
     $maxId = trim((string)($post['max_id'] ?? ''));
     $twoFactorRequired = isset($post['two_factor_required']) ? 1 : 0;
-    $resetTwoFactor = isset($post['reset_two_factor']) ? 1 : 0;
+    $disableTwoFactor = isset($post['disable_two_factor']) ? 1 : 0;
+    if ($disableTwoFactor === 1) {
+        $twoFactorRequired = 0;
+    }
     $resellerId = null;
     $managerId = null;
 
@@ -188,7 +191,7 @@ function admin_account_normalized_payload(array $post, ?array $existing, array $
         'vk_id' => $vkId !== '' ? $vkId : null,
         'max_id' => $maxId !== '' ? $maxId : null,
         'two_factor_required' => $twoFactorRequired,
-        'reset_two_factor' => $resetTwoFactor,
+        'disable_two_factor' => $disableTwoFactor,
         'password' => $password,
         'is_active' => $isActive,
     ];
@@ -217,7 +220,7 @@ function admin_account_save(array $payload, ?int $id, array $admin): int
             $params['password_hash'] = password_hash($payload['password'], PASSWORD_DEFAULT);
         }
         $twoFactorSql = '';
-        if ((int)($payload['reset_two_factor'] ?? 0) === 1) {
+        if ((int)($payload['disable_two_factor'] ?? 0) === 1) {
             $twoFactorSql = ', two_factor_enabled = 0, two_factor_secret = NULL, two_factor_confirmed_at = NULL';
         }
         $params['id'] = $id;
@@ -275,27 +278,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 admin_account_redirect(['success' => 'deleted']);
             } catch (Throwable $e) {
                 $errors[] = 'Не удалось удалить учётную запись: ' . $e->getMessage();
-            }
-        }
-    } elseif ($postAction === 'disable_two_factor') {
-        $target = $postId > 0 ? admin_account_fetch($postId) : null;
-        if (!$target) {
-            $errors[] = 'Учётная запись не найдена.';
-        }
-
-        if (!$errors) {
-            try {
-                $stmt = db()->prepare(
-                    'UPDATE admin_users
-                     SET two_factor_required = 0, two_factor_enabled = 0,
-                         two_factor_secret = NULL, two_factor_confirmed_at = NULL
-                     WHERE id = :id'
-                );
-                $stmt->execute(['id' => $postId]);
-                log_activity('admin', (int)$admin['id'], 'disable_admin_user_2fa', 'admin_users', $postId);
-                admin_account_redirect(['success' => 'two_factor_disabled']);
-            } catch (Throwable $e) {
-                $errors[] = 'Не удалось отключить 2FA: ' . $e->getMessage();
             }
         }
     } elseif ($postAction === 'save') {
@@ -413,8 +395,6 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <div class="notice success">Учётная запись сохранена.</div>
 <?php elseif ($success === 'deleted'): ?>
     <div class="notice success">Учётная запись удалена.</div>
-<?php elseif ($success === 'two_factor_disabled'): ?>
-    <div class="notice success">Двухфакторная защита отключена.</div>
 <?php endif; ?>
 <?php foreach ($errors as $error): ?>
     <div class="alert"><?= h($error) ?></div>
@@ -503,9 +483,10 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 </label>
                 <?php if ($action === 'edit'): ?>
                     <label class="field checkbox-line">
-                        <input type="checkbox" name="reset_two_factor" value="1">
-                        <span>Сбросить секрет 2FA</span>
+                        <input type="checkbox" name="disable_two_factor" value="1">
+                        <span>Отключить 2FA</span>
                     </label>
+                    <p class="cell-muted">При сохранении обязательность 2FA и привязанный секрет будут удалены.</p>
                 <?php endif; ?>
             </div>
             <div class="form-actions">
@@ -623,14 +604,6 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <td data-label="Создан"><?= h((string)$account['created_at']) ?></td>
                     <td data-label="Действия" class="row-actions">
                         <a class="link-button" href="admin_accounts.php?action=edit&id=<?= (int)$account['id'] ?>">Редактировать</a>
-                        <?php if (admin_two_factor_required($account)): ?>
-                            <form method="post" class="inline-form" onsubmit="return confirm('Отключить двухфакторную защиту для этой учётной записи?');">
-                                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="disable_two_factor">
-                                <input type="hidden" name="id" value="<?= (int)$account['id'] ?>">
-                                <button type="submit" class="link-button danger">Отключить 2FA</button>
-                            </form>
-                        <?php endif; ?>
                         <form method="post" class="inline-form" onsubmit="return confirm('Удалить эту учётную запись?');">
                             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
                             <input type="hidden" name="action" value="delete">
