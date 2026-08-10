@@ -56,15 +56,18 @@ function admin_table_strip_order_limit(string $sql): string
     return trim($sql);
 }
 
-function admin_table_search_where(array $columns, string $paramName): string
+function admin_table_search_where(array $columns, string $paramName, string $searchValue, array &$params): string
 {
     $clauses = [];
-    foreach (array_unique($columns) as $column) {
+    foreach (array_values(array_unique($columns)) as $index => $column) {
         $column = trim((string)$column, '` ');
         if ($column === '' || !preg_match('/^[a-zA-Z0-9_]+$/', $column)) {
             continue;
         }
-        $clauses[] = 'CAST(`' . $column . '` AS CHAR) LIKE :' . $paramName;
+
+        $placeholder = $paramName . '_' . $index;
+        $clauses[] = 'CAST(`' . $column . '` AS CHAR) LIKE :' . $placeholder;
+        $params[$placeholder] = $searchValue;
     }
 
     return $clauses ? ' WHERE ' . implode(' OR ', $clauses) : '';
@@ -85,13 +88,10 @@ function admin_table_paginated_rows(
     $where = '';
 
     if ($request['q'] !== '' && $searchColumns) {
-        while (array_key_exists($searchParam, $queryParams)) {
+        while (array_key_exists($searchParam, $queryParams) || array_key_exists($searchParam . '_0', $queryParams)) {
             $searchParam = '_' . $searchParam;
         }
-        $where = admin_table_search_where($searchColumns, $searchParam);
-        if ($where !== '') {
-            $queryParams[$searchParam] = '%' . $request['q'] . '%';
-        }
+        $where = admin_table_search_where($searchColumns, $searchParam, '%' . $request['q'] . '%', $queryParams);
     }
 
     $countStmt = db()->prepare('SELECT COUNT(*) FROM (' . $baseSql . ') admin_table_page' . $where);
