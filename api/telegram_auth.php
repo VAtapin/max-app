@@ -64,6 +64,7 @@ $user = create_or_get_user([
     'last_name' => $telegramUser['last_name'] ?? null,
     'referral_code' => $referralCode,
     'link_token' => $linkToken,
+    'platform_verified' => true,
 ]);
 
 json_response([

@@ -51,6 +51,13 @@ if (($_GET['action'] ?? '') === 'mark_read' && $_SERVER['REQUEST_METHOD'] === 'P
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = input_json() ?: $_POST;
+    $onboarding = client_onboarding_status($user);
+    if (!$onboarding['complete']) {
+        json_response(['error' => 'onboarding_required'], 403);
+    }
+    if (!empty($onboarding['web_merge_required'])) {
+        json_response(['error' => 'account_merge_required'], 403);
+    }
     $leadId = create_lead_for_user($user, $data);
     json_response(['lead_id' => $leadId, 'status' => 'new'], 201);
 }

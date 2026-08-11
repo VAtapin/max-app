@@ -12,7 +12,13 @@ if (!can_manage('results', $admin)) {
 }
 
 $title = 'Результаты чек-апов';
-$where = ['uts.completed_at IS NOT NULL', 'eu.merged_into_user_id IS NULL'];
+$where = [
+    'uts.completed_at IS NOT NULL',
+    'uts.is_preview = 0',
+    'eu.merged_into_user_id IS NULL',
+    'NOT EXISTS (SELECT 1 FROM resellers rs WHERE rs.source_end_user_id = eu.id)',
+    'NOT EXISTS (SELECT 1 FROM managers ms WHERE ms.source_end_user_id = eu.id)',
+];
 $params = [];
 if ($admin['role'] === 'reseller') {
     $where[] = 'eu.reseller_id = :reseller_id';

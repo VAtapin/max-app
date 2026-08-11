@@ -5,10 +5,21 @@ require_once __DIR__ . '/../admin/app/core/client_journey.php';
 
 function require_test_onboarding(array $user): void
 {
+    if (!empty($user['staff_preview'])) {
+        return;
+    }
     $status = client_onboarding_status($user);
     if (!$status['complete']) {
         json_response(['error' => 'onboarding_required', 'onboarding' => $status], 403);
     }
+    if (!empty($status['web_merge_required'])) {
+        json_response(['error' => 'account_merge_required', 'onboarding' => $status], 403);
+    }
+}
+
+function test_preview_flag(array $user): int
+{
+    return !empty($user['staff_preview']) ? 1 : 0;
 }
 
 function test_gender(array $user): ?string
@@ -331,13 +342,14 @@ function load_client_test(int $testId, array $user): ?array
     return $test ?: null;
 }
 
-function latest_draft_session(int $endUserId, int $testId): ?array
+function latest_draft_session(int $endUserId, int $testId, int $isPreview = 0): ?array
 {
     $stmt = db()->prepare(
         'SELECT *
          FROM user_test_sessions
          WHERE end_user_id = :end_user_id
            AND test_id = :test_id
+           AND is_preview = :is_preview
            AND completed_at IS NULL
          ORDER BY id DESC
          LIMIT 1'
@@ -345,18 +357,20 @@ function latest_draft_session(int $endUserId, int $testId): ?array
     $stmt->execute([
         'end_user_id' => $endUserId,
         'test_id' => $testId,
+        'is_preview' => $isPreview,
     ]);
     $session = $stmt->fetch();
     return $session ?: null;
 }
 
-function latest_completed_session(int $endUserId, int $testId): ?array
+function latest_completed_session(int $endUserId, int $testId, int $isPreview = 0): ?array
 {
     $stmt = db()->prepare(
         'SELECT *
          FROM user_test_sessions
          WHERE end_user_id = :end_user_id
            AND test_id = :test_id
+           AND is_preview = :is_preview
            AND completed_at IS NOT NULL
          ORDER BY completed_at DESC, id DESC
          LIMIT 1'
@@ -364,6 +378,7 @@ function latest_completed_session(int $endUserId, int $testId): ?array
     $stmt->execute([
         'end_user_id' => $endUserId,
         'test_id' => $testId,
+        'is_preview' => $isPreview,
     ]);
     $session = $stmt->fetch();
     return $session ?: null;
@@ -454,7 +469,7 @@ function completed_scale_results(int $sessionId): array
 
 function completed_result_response(array $user, int $testId, ?array $session = null): ?array
 {
-    $session ??= latest_completed_session((int)$user['id'], $testId);
+    $session ??= latest_completed_session((int)$user['id'], $testId, test_preview_flag($user));
     if (!$session) {
         return null;
     }
@@ -482,7 +497,7 @@ function completed_result_response(array $user, int $testId, ?array $session = n
 
 function test_status_payload(array $user, int $testId): array
 {
-    $draft = latest_draft_session((int)$user['id'], $testId);
+    $draft = latest_draft_session((int)$user['id'], $testId, test_preview_flag($user));
     if ($draft) {
         return [
             'status' => 'draft',
@@ -491,7 +506,7 @@ function test_status_payload(array $user, int $testId): array
         ];
     }
 
-    $completed = latest_completed_session((int)$user['id'], $testId);
+    $completed = latest_completed_session((int)$user['id'], $testId, test_preview_flag($user));
     if ($completed) {
         return [
             'status' => 'completed',
@@ -528,7 +543,10 @@ function complete_test_session(array $user, int $testId, int $sessionId): array
     $log->execute([
         'actor_id' => $user['id'],
         'entity_id' => $sessionId,
-        'details' => json_encode(['recommendations_count' => count($recommendations)], JSON_UNESCAPED_UNICODE),
+        'details' => json_encode([
+            'recommendations_count' => count($recommendations),
+            'is_preview' => test_preview_flag($user),
+        ], JSON_UNESCAPED_UNICODE),
     ]);
 
     return [
@@ -549,6 +567,9 @@ function complete_test_session(array $user, int $testId, int $sessionId): array
 
 function finalize_test_journey(array $user, int $testId, int $sessionId): void
 {
+    if (!empty($user['staff_preview'])) {
+        return;
+    }
     update_client_stage((int)$user['id'], 'test_completed');
     $titleStmt = db()->prepare('SELECT title FROM tests WHERE id = :id LIMIT 1');
     $titleStmt->execute(['id' => $testId]);
@@ -582,7 +603,7 @@ if (($_GET['action'] ?? '') === 'resume') {
         json_response(['error' => 'test not found'], 404);
     }
 
-    $session = latest_draft_session((int)$user['id'], $testId);
+    $session = latest_draft_session((int)$user['id'], $testId, test_preview_flag($user));
     json_response([
         'test' => public_test_payload($test),
         'session' => $session ? session_response($test, $session, $user)['session'] : null,
@@ -624,20 +645,23 @@ if (($_GET['action'] ?? '') === 'start' && $_SERVER['REQUEST_METHOD'] === 'POST'
             'DELETE FROM user_test_sessions
              WHERE end_user_id = :end_user_id
                AND test_id = :test_id
+               AND is_preview = :is_preview
                AND completed_at IS NULL'
         );
-        $delete->execute(['end_user_id' => $user['id'], 'test_id' => $testId]);
+        $delete->execute(['end_user_id' => $user['id'], 'test_id' => $testId, 'is_preview' => test_preview_flag($user)]);
     }
 
-    $session = latest_draft_session((int)$user['id'], $testId);
+    $session = latest_draft_session((int)$user['id'], $testId, test_preview_flag($user));
     if (!$session) {
-        $insert = db()->prepare('INSERT INTO user_test_sessions (end_user_id, test_id) VALUES (:end_user_id, :test_id)');
-        $insert->execute(['end_user_id' => $user['id'], 'test_id' => $testId]);
+        $insert = db()->prepare('INSERT INTO user_test_sessions (end_user_id, test_id, is_preview) VALUES (:end_user_id, :test_id, :is_preview)');
+        $insert->execute(['end_user_id' => $user['id'], 'test_id' => $testId, 'is_preview' => test_preview_flag($user)]);
         $session = [
             'id' => (int)db()->lastInsertId(),
             'started_at' => date('Y-m-d H:i:s'),
         ];
-        update_client_stage((int)$user['id'], 'test_started');
+        if (empty($user['staff_preview'])) {
+            update_client_stage((int)$user['id'], 'test_started');
+        }
     }
 
     json_response(session_response($test, $session, $user));
@@ -652,9 +676,10 @@ if (($_GET['action'] ?? '') === 'reset' && $_SERVER['REQUEST_METHOD'] === 'POST'
         'DELETE FROM user_test_sessions
          WHERE end_user_id = :end_user_id
            AND test_id = :test_id
+           AND is_preview = :is_preview
            AND completed_at IS NULL'
     );
-    $delete->execute(['end_user_id' => $user['id'], 'test_id' => $testId]);
+    $delete->execute(['end_user_id' => $user['id'], 'test_id' => $testId, 'is_preview' => test_preview_flag($user)]);
     json_response(['reset' => true]);
 }
 
@@ -677,9 +702,10 @@ if (($_GET['action'] ?? '') === 'answer' && $_SERVER['REQUEST_METHOD'] === 'POST
         'SELECT *
          FROM user_test_sessions
          WHERE id = :id AND end_user_id = :end_user_id AND completed_at IS NULL
+           AND is_preview = :is_preview
          LIMIT 1'
     );
-    $sessionStmt->execute(['id' => $sessionId, 'end_user_id' => $user['id']]);
+    $sessionStmt->execute(['id' => $sessionId, 'end_user_id' => $user['id'], 'is_preview' => test_preview_flag($user)]);
     $session = $sessionStmt->fetch();
     if (!$session) {
         json_response(['error' => 'session not found'], 404);
@@ -864,8 +890,8 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
 
     try {
         db()->beginTransaction();
-        $sessionStmt = db()->prepare('INSERT INTO user_test_sessions (end_user_id, test_id) VALUES (:end_user_id, :test_id)');
-        $sessionStmt->execute(['end_user_id' => $user['id'], 'test_id' => $testId]);
+        $sessionStmt = db()->prepare('INSERT INTO user_test_sessions (end_user_id, test_id, is_preview) VALUES (:end_user_id, :test_id, :is_preview)');
+        $sessionStmt->execute(['end_user_id' => $user['id'], 'test_id' => $testId, 'is_preview' => test_preview_flag($user)]);
         $sessionId = (int)db()->lastInsertId();
 
         $total = 0;
@@ -922,7 +948,10 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
     $log->execute([
         'actor_id' => $user['id'],
         'entity_id' => $sessionId,
-        'details' => json_encode(['recommendations_count' => count($recommendations)], JSON_UNESCAPED_UNICODE),
+        'details' => json_encode([
+            'recommendations_count' => count($recommendations),
+            'is_preview' => test_preview_flag($user),
+        ], JSON_UNESCAPED_UNICODE),
     ]);
 
     json_response([
@@ -977,7 +1006,7 @@ if (isset($_GET['id'])) {
         $question['answers'] = $answers->fetchAll();
     }
 
-    $draft = $user ? latest_draft_session((int)$user['id'], (int)$test['id']) : null;
+    $draft = $user ? latest_draft_session((int)$user['id'], (int)$test['id'], test_preview_flag($user)) : null;
     $completed = $user ? completed_result_response($user, (int)$test['id']) : null;
     $payload = [
         'test' => public_test_payload($test),

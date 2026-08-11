@@ -21,12 +21,14 @@ const state = {
     onboarding: null,
     notifications: [],
     accountSuggestions: null,
+    webMergeLink: null,
     answerPending: false,
 };
 
 const page = document.querySelector('#page');
 const tabs = document.querySelectorAll('.tabs button');
 const homeLink = document.querySelector('#home-link');
+const staffPreviewBanner = document.querySelector('#staff-preview-banner');
 
 function decodeRouteValue(value) {
     let decoded = String(value || '').trim();
@@ -613,6 +615,16 @@ function hasTeamAccess() {
     return Boolean(state.user && (state.user.reseller_id || state.user.manager_id));
 }
 
+function isStaffPreview() {
+    return Boolean(state.user?.staff_preview);
+}
+
+function updateStaffPreviewBanner() {
+    if (!staffPreviewBanner) return;
+    staffPreviewBanner.hidden = !isStaffPreview();
+    document.body.classList.toggle('staff-preview', isStaffPreview());
+}
+
 function profileBlockEnabled(blockType) {
     const blocks = state.consultantProfile?.blocks || [];
     const block = blocks.find((item) => item.block_type === blockType);
@@ -842,10 +854,61 @@ function setPage(nextPage) {
 }
 
 async function loadOnboarding() {
+    if (isStaffPreview()) {
+        state.onboarding = {
+            complete: true,
+            profile_complete: true,
+            missing_consents: [],
+            marketing_consent: false,
+            web_merge_required: false,
+        };
+        return state.onboarding;
+    }
     const result = await api(`onboarding.php?${userQuery()}`);
     state.user = result.user;
     state.onboarding = result.onboarding;
     return result.onboarding;
+}
+
+async function loadWebMergeLink() {
+    if (!state.onboarding?.web_merge_required || isStaffPreview()) {
+        state.webMergeLink = null;
+        return null;
+    }
+    const result = await api('account_link.php', {
+        method: 'POST',
+        body: JSON.stringify(userPayload()),
+    });
+    state.webMergeLink = result;
+    return result;
+}
+
+function renderWebMergeGate() {
+    document.body.classList.add('auth-required');
+    tabs.forEach((tab) => {
+        tab.disabled = true;
+        tab.classList.remove('active');
+    });
+    const links = state.webMergeLink?.links || {};
+    const deadline = state.onboarding?.web_cleanup_deadline_at
+        ? new Date(String(state.onboarding.web_cleanup_deadline_at).replace(' ', 'T')).toLocaleString('ru-RU')
+        : 'через 5 дней';
+    page.innerHTML = `
+        <section class="panel web-merge-panel">
+            <span class="eyebrow">Обязательное подтверждение</span>
+            <h2>Объедините Web-профиль с личным аккаунтом</h2>
+            <p>Анкета сохранена. Теперь подтвердите себя через VK или Telegram, чтобы профиль не потерялся при смене браузера или устройства.</p>
+            <div class="web-merge-warning">
+                Если аккаунт не будет подключён до <strong>${escapeHtml(deadline)}</strong>, временный Web-профиль и его данные будут удалены.
+            </div>
+            <div class="detail-actions">
+                ${links.telegram ? `<a class="primary button-link" href="${escapeHtml(links.telegram)}" target="_blank" rel="noopener">Подключить Telegram</a>` : ''}
+                ${links.vk ? `<a class="secondary button-link" href="${escapeHtml(links.vk)}" target="_blank" rel="noopener">Подключить VK</a>` : ''}
+                <button class="secondary" data-action="check-web-merge">Я подключил аккаунт — проверить</button>
+            </div>
+            <p class="muted">Подключайте только свой личный аккаунт. После входа данные автоматически объединятся.</p>
+        </section>
+    `;
 }
 
 async function loadNotifications() {
@@ -980,7 +1043,7 @@ function accountSuggestionDismissed() {
 }
 
 async function loadAccountSuggestions() {
-    if (!state.onboarding?.complete || accountSuggestionDismissed()) {
+    if (!state.onboarding?.complete || accountSuggestionDismissed() || isStaffPreview()) {
         state.accountSuggestions = {suggestions: []};
         return state.accountSuggestions;
     }
@@ -1049,6 +1112,11 @@ function renderOnboardingGate() {
             ${profile.welcome_video_url ? renderVideoBlock(profile.welcome_video_url, 'Приветствие консультанта') : ''}
             <h2>Расскажите немного о себе</h2>
             <p class="muted">Данные увидит только закреплённый консультант и руководство его команды.</p>
+            ${state.platform === 'web' ? `
+                <div class="web-merge-warning">
+                    Пока соглашение и анкета не подтверждены, профиль является временным и удаляется через 3 дня. Если до завершения анкеты открыть ссылку другого лидера, будет выбран новый лидер.
+                </div>
+            ` : ''}
 
             <form id="onboarding-form" class="onboarding-form">
                 <div class="legal-consents">
@@ -2302,6 +2370,7 @@ function renderTestResult(result) {
 }
 
 async function render() {
+    updateStaffPreviewBanner();
     if (state.authBlocked === 'staff') {
         renderStaffGate();
         return;
@@ -2312,6 +2381,17 @@ async function render() {
     }
     if (!state.onboarding?.complete) {
         renderOnboardingGate();
+        return;
+    }
+    if (state.onboarding?.web_merge_required && !isStaffPreview()) {
+        if (!state.webMergeLink) {
+            try {
+                await loadWebMergeLink();
+            } catch (_) {
+                state.webMergeLink = {links: {}};
+            }
+        }
+        renderWebMergeGate();
         return;
     }
     document.body.classList.remove('auth-required', 'referral-required');
@@ -2481,6 +2561,21 @@ page.addEventListener('click', async (event) => {
     }
     if (target.dataset.action === 'close-modal') closeModal();
     if (target.dataset.action === 'create-link-token') await renderAccountLinkPanel();
+    if (target.dataset.action === 'check-web-merge') {
+        target.disabled = true;
+        try {
+            await loadOnboarding();
+            state.webMergeLink = null;
+            if (state.onboarding?.web_merge_required) {
+                await loadWebMergeLink();
+            } else {
+                await Promise.all([loadConsultantProfile(), loadNotifications(), loadAccountSuggestions()]);
+            }
+            await render();
+        } finally {
+            target.disabled = false;
+        }
+    }
     if (target.dataset.pageTarget) setPage(target.dataset.pageTarget);
     if (target.dataset.openTestId) await renderTest(Number(target.dataset.openTestId));
     if (target.dataset.openProductId) await renderProductDetail(Number(target.dataset.openProductId));
@@ -2554,7 +2649,11 @@ page.addEventListener('submit', async (event) => {
             state.user = result.user;
             state.onboarding = result.onboarding;
             state.page = 'home';
-            await Promise.all([loadConsultantProfile(), loadNotifications(), loadAccountSuggestions()]);
+            if (state.onboarding?.web_merge_required) {
+                await loadWebMergeLink();
+            } else {
+                await Promise.all([loadConsultantProfile(), loadNotifications(), loadAccountSuggestions()]);
+            }
             await render();
         } catch (exception) {
             if (error) error.textContent = exception instanceof Error ? exception.message : 'Не удалось сохранить анкету.';

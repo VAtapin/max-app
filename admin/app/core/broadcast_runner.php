@@ -12,6 +12,10 @@ function broadcast_recipients(array $broadcast): array
     }
 
     $where = ['eu.merged_into_user_id IS NULL', 'eu.status = "active"'];
+    $where[] = 'eu.onboarding_completed_at IS NOT NULL';
+    $where[] = '(eu.platform <> "web" OR EXISTS (SELECT 1 FROM platform_accounts pav WHERE pav.end_user_id = eu.id AND pav.platform <> "web"))';
+    $where[] = 'NOT EXISTS (SELECT 1 FROM resellers rs WHERE rs.source_end_user_id = eu.id)';
+    $where[] = 'NOT EXISTS (SELECT 1 FROM managers ms WHERE ms.source_end_user_id = eu.id)';
     $where[] = 'eu.notifications_enabled = 1';
     $where[] = 'EXISTS (
         SELECT 1
@@ -198,12 +202,13 @@ function broadcast_add_segment_filters(array &$where, array &$params, array $bro
 
     $checkup = trim((string)($broadcast['segment_checkup'] ?? ''));
     if ($checkup === 'not_started') {
-        $where[] = 'NOT EXISTS (SELECT 1 FROM user_test_sessions uts WHERE uts.end_user_id = eu.id)';
+        $where[] = 'NOT EXISTS (SELECT 1 FROM user_test_sessions uts WHERE uts.end_user_id = eu.id AND uts.is_preview = 0)';
     } elseif ($checkup === 'started') {
         $where[] = 'EXISTS (
             SELECT 1
             FROM user_test_sessions uts
             WHERE uts.end_user_id = eu.id
+              AND uts.is_preview = 0
               AND uts.completed_at IS NULL
         )';
     } elseif ($checkup === 'completed') {
@@ -211,6 +216,7 @@ function broadcast_add_segment_filters(array &$where, array &$params, array $bro
             SELECT 1
             FROM user_test_sessions uts
             WHERE uts.end_user_id = eu.id
+              AND uts.is_preview = 0
               AND uts.completed_at IS NOT NULL
         )';
     }

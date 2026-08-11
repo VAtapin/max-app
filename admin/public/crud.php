@@ -1247,6 +1247,8 @@ function link_end_user_to_work_account(int $endUserId, array $post, array $admin
                  WHERE id = :id'
             );
             $update->execute(['id' => $endUserId, 'reseller_id' => $newResellerId, 'manager_id' => $newManagerId]);
+            $sourceUpdate = $pdo->prepare('UPDATE managers SET source_end_user_id = :end_user_id WHERE id = :id');
+            $sourceUpdate->execute(['end_user_id' => $endUserId, 'id' => $staffId]);
         } else {
             $newResellerId = $staffId;
             $newManagerId = null;
@@ -1257,6 +1259,8 @@ function link_end_user_to_work_account(int $endUserId, array $post, array $admin
                  WHERE id = :id'
             );
             $update->execute(['id' => $endUserId, 'reseller_id' => $newResellerId]);
+            $sourceUpdate = $pdo->prepare('UPDATE resellers SET source_end_user_id = :end_user_id WHERE id = :id');
+            $sourceUpdate->execute(['end_user_id' => $endUserId, 'id' => $staffId]);
         }
 
         sync_active_leads_assignment($endUserId, $newResellerId, $newManagerId);
@@ -1463,6 +1467,8 @@ function promote_end_user_to_work_account(int $endUserId, array $post, array $ad
             );
             $insert->execute($payload);
             $managerId = (int)$pdo->lastInsertId();
+            $sourceUpdate = $pdo->prepare('UPDATE managers SET source_end_user_id = :end_user_id WHERE id = :id');
+            $sourceUpdate->execute(['end_user_id' => $endUserId, 'id' => $managerId]);
             save_manager_admin_access($managerId, $payload, $adminPost, $accessErrors);
             if ($accessErrors) {
                 throw new RuntimeException(implode(' ', $accessErrors));
@@ -1502,6 +1508,8 @@ function promote_end_user_to_work_account(int $endUserId, array $post, array $ad
             );
             $insert->execute($payload);
             $resellerId = (int)$pdo->lastInsertId();
+            $sourceUpdate = $pdo->prepare('UPDATE resellers SET source_end_user_id = :end_user_id WHERE id = :id');
+            $sourceUpdate->execute(['end_user_id' => $endUserId, 'id' => $resellerId]);
             save_reseller_admin_access($resellerId, $payload, $adminPost, $accessErrors);
             if ($accessErrors) {
                 throw new RuntimeException(implode(' ', $accessErrors));
@@ -1596,6 +1604,7 @@ function merge_end_users(int $targetUserId, int $sourceUserId, array $admin): vo
             'email',
             'referral_code_used',
             'onboarding_completed_at',
+            'referral_registered_at',
         ];
         $assignments = [];
         $mergeParams = ['target_id' => $targetUserId];
@@ -1618,6 +1627,11 @@ function merge_end_users(int $targetUserId, int $sourceUserId, array $admin): vo
             $mergeData = $pdo->prepare('UPDATE end_users SET ' . implode(', ', $assignments) . ' WHERE id = :target_id');
             $mergeData->execute($mergeParams);
         }
+
+        $moveResellerSource = $pdo->prepare('UPDATE resellers SET source_end_user_id = :target_id WHERE source_end_user_id = :source_id');
+        $moveResellerSource->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
+        $moveManagerSource = $pdo->prepare('UPDATE managers SET source_end_user_id = :target_id WHERE source_end_user_id = :source_id');
+        $moveManagerSource->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
 
         $dedupeAutomation = $pdo->prepare(
             'DELETE source_log
@@ -2926,6 +2940,16 @@ function delete_crud_record(string $moduleKey, array $module, int $id, array $ad
 
     try {
         if ($moduleKey === 'users') {
+            $staffSource = $pdo->prepare(
+                'SELECT (
+                    EXISTS(SELECT 1 FROM resellers WHERE source_end_user_id = :reseller_user_id)
+                    OR EXISTS(SELECT 1 FROM managers WHERE source_end_user_id = :manager_user_id)
+                )'
+            );
+            $staffSource->execute(['reseller_user_id' => $id, 'manager_user_id' => $id]);
+            if ((int)$staffSource->fetchColumn() === 1) {
+                throw new RuntimeException('Эта запись связана с рабочим аккаунтом. Сначала отключите или перенесите рабочую связь.');
+            }
             $stmt = $pdo->prepare('DELETE FROM end_users WHERE id = :id');
             $stmt->execute(['id' => $id]);
             log_activity('admin', (int)$admin['id'], 'delete_end_users', 'end_users', $id);

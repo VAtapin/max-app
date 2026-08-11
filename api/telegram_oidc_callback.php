@@ -52,6 +52,7 @@ try {
         'last_name' => $lastName !== '' ? $lastName : null,
         'referral_code' => $flow['referral_code'] ?: null,
         'link_token' => $flow['link_token'] ?: null,
+        'platform_verified' => true,
     ]);
     session_regenerate_id(true);
     $_SESSION['telegram_oidc_result'] = [

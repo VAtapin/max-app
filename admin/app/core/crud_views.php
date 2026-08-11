@@ -313,6 +313,11 @@ function user_is_unassigned(array $row): bool
 
 function user_client_stage_label(array $row): string
 {
+    if (!empty($row['is_web_visitor'])) {
+        return empty($row['onboarding_completed_at'])
+            ? 'Временный Web-посетитель'
+            : 'Ожидает объединения';
+    }
     if (user_is_unassigned($row)) {
         return 'Ожидает реферальный код';
     }
@@ -331,9 +336,15 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
 
         $userScope = users_scope_filter();
         if ($userScope === 'clients') {
-            $where .= ' AND (eu.reseller_id IS NOT NULL OR eu.manager_id IS NOT NULL)';
+            $where .= ' AND eu.onboarding_completed_at IS NOT NULL
+                AND (eu.platform <> "web" OR EXISTS (SELECT 1 FROM platform_accounts pac WHERE pac.end_user_id = eu.id AND pac.platform <> "web"))
+                AND NOT EXISTS (SELECT 1 FROM resellers rs WHERE rs.source_end_user_id = eu.id)
+                AND NOT EXISTS (SELECT 1 FROM managers ms WHERE ms.source_end_user_id = eu.id)';
         } elseif ($userScope === 'visitors') {
-            $where .= ' AND eu.reseller_id IS NULL AND eu.manager_id IS NULL';
+            $where .= ' AND eu.platform = "web"
+                AND NOT EXISTS (SELECT 1 FROM platform_accounts pav WHERE pav.end_user_id = eu.id AND pav.platform <> "web")
+                AND NOT EXISTS (SELECT 1 FROM resellers rs WHERE rs.source_end_user_id = eu.id)
+                AND NOT EXISTS (SELECT 1 FROM managers ms WHERE ms.source_end_user_id = eu.id)';
         }
 
         $stage = (string)($_GET['client_stage'] ?? '');
@@ -349,11 +360,11 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
         }
         $checkup = (string)($_GET['checkup'] ?? '');
         if ($checkup === 'started') {
-            $where .= ' AND EXISTS (SELECT 1 FROM user_test_sessions utsf WHERE utsf.end_user_id = eu.id AND utsf.completed_at IS NULL)';
+            $where .= ' AND EXISTS (SELECT 1 FROM user_test_sessions utsf WHERE utsf.end_user_id = eu.id AND utsf.is_preview = 0 AND utsf.completed_at IS NULL)';
         } elseif ($checkup === 'completed') {
-            $where .= ' AND EXISTS (SELECT 1 FROM user_test_sessions utsf WHERE utsf.end_user_id = eu.id AND utsf.completed_at IS NOT NULL)';
+            $where .= ' AND EXISTS (SELECT 1 FROM user_test_sessions utsf WHERE utsf.end_user_id = eu.id AND utsf.is_preview = 0 AND utsf.completed_at IS NOT NULL)';
         } elseif ($checkup === 'not_started') {
-            $where .= ' AND NOT EXISTS (SELECT 1 FROM user_test_sessions utsf WHERE utsf.end_user_id = eu.id)';
+            $where .= ' AND NOT EXISTS (SELECT 1 FROM user_test_sessions utsf WHERE utsf.end_user_id = eu.id AND utsf.is_preview = 0)';
         }
 
         return [
@@ -362,9 +373,12 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
                     eu.reseller_id, eu.manager_id,
                     eu.gender, eu.birth_date, eu.age_years, eu.city, eu.client_stage,
                     eu.onboarding_completed_at, eu.last_activity_at,
+                    CASE WHEN eu.platform = 'web' AND NOT EXISTS (
+                        SELECT 1 FROM platform_accounts pac WHERE pac.end_user_id = eu.id AND pac.platform <> 'web'
+                    ) THEN 1 ELSE 0 END AS is_web_visitor,
                     r.name AS reseller_name, m.name AS manager_name,
-                    (SELECT COUNT(*) FROM user_test_sessions uts WHERE uts.end_user_id = eu.id AND uts.completed_at IS NULL) AS draft_tests_count,
-                    (SELECT COUNT(*) FROM user_test_sessions uts WHERE uts.end_user_id = eu.id AND uts.completed_at IS NOT NULL) AS completed_tests_count,
+                    (SELECT COUNT(*) FROM user_test_sessions uts WHERE uts.end_user_id = eu.id AND uts.is_preview = 0 AND uts.completed_at IS NULL) AS draft_tests_count,
+                    (SELECT COUNT(*) FROM user_test_sessions uts WHERE uts.end_user_id = eu.id AND uts.is_preview = 0 AND uts.completed_at IS NOT NULL) AS completed_tests_count,
                     GROUP_CONCAT(CONCAT(pa.platform, ':', pa.platform_user_id) ORDER BY FIELD(pa.platform, 'telegram', 'VK', 'OK', 'MAX', 'web'), pa.id SEPARATOR '\n') AS platform_accounts_summary
              FROM end_users eu
              LEFT JOIN resellers r ON r.id = eu.reseller_id
@@ -458,7 +472,13 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
                     ls.price_per_leader,
                     ls.amount_due,
                     ls.leader_amount_due,
-                    (SELECT COUNT(*) FROM end_users eu WHERE eu.reseller_id = r.id) AS users_count
+                    (SELECT COUNT(*) FROM end_users eu WHERE eu.reseller_id = r.id
+                        AND eu.merged_into_user_id IS NULL
+                        AND eu.onboarding_completed_at IS NOT NULL
+                        AND (eu.platform <> 'web' OR EXISTS (SELECT 1 FROM platform_accounts pac WHERE pac.end_user_id = eu.id AND pac.platform <> 'web'))
+                        AND NOT EXISTS (SELECT 1 FROM resellers rs WHERE rs.source_end_user_id = eu.id)
+                        AND NOT EXISTS (SELECT 1 FROM managers ms WHERE ms.source_end_user_id = eu.id)
+                    ) AS users_count
              FROM resellers r
              LEFT JOIN resellers parent ON parent.id = r.parent_reseller_id
              LEFT JOIN subscription_plans sp ON sp.id = r.subscription_plan_id
@@ -488,6 +508,11 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
              FROM managers m
              LEFT JOIN resellers r ON r.id = m.reseller_id
              LEFT JOIN end_users eu ON eu.manager_id = m.id
+                AND eu.merged_into_user_id IS NULL
+                AND eu.onboarding_completed_at IS NOT NULL
+                AND (eu.platform <> 'web' OR EXISTS (SELECT 1 FROM platform_accounts pac WHERE pac.end_user_id = eu.id AND pac.platform <> 'web'))
+                AND NOT EXISTS (SELECT 1 FROM resellers rs WHERE rs.source_end_user_id = eu.id)
+                AND NOT EXISTS (SELECT 1 FROM managers ms WHERE ms.source_end_user_id = eu.id)
              $where
              GROUP BY m.id
              ORDER BY m.id DESC
@@ -746,6 +771,9 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
     }
 
     if ($column === 'display_name' || $column === 'user_name') {
+        if ($moduleKey === 'users' && !empty($row['is_web_visitor'])) {
+            return 'Анонимный Web-посетитель #' . (int)($row['id'] ?? 0);
+        }
         $fullName = trim((string)($row['full_name'] ?? ''));
         if (is_technical_client_name($fullName)) {
             $fullName = '';
@@ -1189,7 +1217,7 @@ function render_crud_table_tools(string $moduleKey, array $meta): string
                 'label' => 'Записи',
                 'options' => [
                     'clients' => 'Клиенты',
-                    'visitors' => 'Без консультанта',
+                    'visitors' => 'Web-посетители',
                     'all' => 'Все записи',
                 ],
                 'value' => users_scope_filter(),

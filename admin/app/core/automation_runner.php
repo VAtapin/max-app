@@ -155,9 +155,13 @@ function test_reminder_users(): array
          INNER JOIN end_users eu ON eu.id = uts.end_user_id
          INNER JOIN tests t ON t.id = uts.test_id
          WHERE uts.completed_at IS NULL
+           AND uts.is_preview = 0
            AND eu.status = "active"
            AND eu.notifications_enabled = 1
            AND eu.onboarding_completed_at IS NOT NULL
+           AND (eu.platform <> "web" OR EXISTS (SELECT 1 FROM platform_accounts pav WHERE pav.end_user_id = eu.id AND pav.platform <> "web"))
+           AND NOT EXISTS (SELECT 1 FROM resellers rs WHERE rs.source_end_user_id = eu.id)
+           AND NOT EXISTS (SELECT 1 FROM managers ms WHERE ms.source_end_user_id = eu.id)
            AND TIMESTAMPDIFF(HOUR, COALESCE(uts.last_answered_at, uts.started_at), NOW()) >= 24
            AND EXISTS (
                SELECT 1 FROM user_consents uc
@@ -220,6 +224,9 @@ function inactivity_users(): array
          WHERE eu.status = "active"
            AND eu.notifications_enabled = 1
            AND eu.onboarding_completed_at IS NOT NULL
+           AND (eu.platform <> "web" OR EXISTS (SELECT 1 FROM platform_accounts pav WHERE pav.end_user_id = eu.id AND pav.platform <> "web"))
+           AND NOT EXISTS (SELECT 1 FROM resellers rs WHERE rs.source_end_user_id = eu.id)
+           AND NOT EXISTS (SELECT 1 FROM managers ms WHERE ms.source_end_user_id = eu.id)
            AND eu.last_activity_at IS NOT NULL
            AND eu.last_activity_at < DATE_SUB(NOW(), INTERVAL 14 DAY)
            AND EXISTS (

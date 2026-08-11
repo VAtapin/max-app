@@ -292,7 +292,12 @@ function team_branch_user_count(int $resellerId): int
 {
     $branchIds = team_reseller_branch_ids($resellerId, true);
     [$where, $params] = team_sql_in_condition('eu.reseller_id', $branchIds, 'team_branch_user');
-    $stmt = db()->prepare('SELECT COUNT(*) FROM end_users eu WHERE ' . $where . ' AND eu.merged_into_user_id IS NULL');
+    $stmt = db()->prepare('SELECT COUNT(*) FROM end_users eu WHERE ' . $where . '
+        AND eu.merged_into_user_id IS NULL
+        AND eu.onboarding_completed_at IS NOT NULL
+        AND (eu.platform <> "web" OR EXISTS (SELECT 1 FROM platform_accounts pac WHERE pac.end_user_id = eu.id AND pac.platform <> "web"))
+        AND NOT EXISTS (SELECT 1 FROM resellers rs WHERE rs.source_end_user_id = eu.id)
+        AND NOT EXISTS (SELECT 1 FROM managers ms WHERE ms.source_end_user_id = eu.id)');
     $stmt->execute($params);
     return (int)$stmt->fetchColumn();
 }

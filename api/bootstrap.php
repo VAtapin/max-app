@@ -113,9 +113,14 @@ function require_platform_user(?array $data = null): array
         json_response(['error' => 'platform and platform_user_id are required'], 422);
     }
 
-    reject_staff_client_registration((string)$platform, (string)$platformUserId);
-
     verify_platform_auth((string)$platform, (string)$platformUserId, $authToken ? (string)$authToken : null);
+
+    $staffPreview = staff_preview_user((string)$platform, (string)$platformUserId);
+    if ($staffPreview) {
+        return $staffPreview;
+    }
+
+    reject_staff_client_registration((string)$platform, (string)$platformUserId);
 
     $stmt = db()->prepare(
         'SELECT u.*
@@ -227,12 +232,12 @@ function normalize_external_platform_id(?string $value): string
     return $value;
 }
 
-function staff_platform_account_exists(string $platform, string $platformUserId): bool
+function staff_identity_for_platform(string $platform, string $platformUserId): ?array
 {
     $platform = normalize_platform($platform);
     $platformUserId = normalize_external_platform_id($platformUserId);
     if ($platformUserId === '') {
-        return false;
+        return null;
     }
 
     $field = match ($platform) {
@@ -242,19 +247,132 @@ function staff_platform_account_exists(string $platform, string $platformUserId)
         default => null,
     };
 
+    if ($platform === 'web') {
+        $stmt = db()->prepare(
+            'SELECT au.*
+             FROM admin_web_accounts awa
+             INNER JOIN admin_users au ON au.id = awa.admin_user_id
+             WHERE awa.web_user_id = :web_user_id
+               AND awa.revoked_at IS NULL
+               AND au.is_active = 1
+             LIMIT 1'
+        );
+        $stmt->execute(['web_user_id' => $platformUserId]);
+        $admin = $stmt->fetch();
+        if ($admin) {
+            $touch = db()->prepare('UPDATE admin_web_accounts SET last_seen_at = NOW() WHERE web_user_id = :web_user_id');
+            $touch->execute(['web_user_id' => $platformUserId]);
+            return $admin;
+        }
+        return null;
+    }
+
     if ($field === null) {
+        return null;
+    }
+
+    $adminStmt = db()->prepare("SELECT * FROM admin_users WHERE role IN ('reseller', 'manager') AND is_active = 1 AND $field IS NOT NULL AND $field <> '' AND REPLACE(LOWER($field), 'id', '') = :platform_user_id LIMIT 1");
+    $adminStmt->execute(['platform_user_id' => strtolower($platformUserId)]);
+    $admin = $adminStmt->fetch();
+    return $admin ?: null;
+}
+
+function staff_platform_account_exists(string $platform, string $platformUserId): bool
+{
+    if (staff_identity_for_platform($platform, $platformUserId) !== null) {
+        return true;
+    }
+
+    $platform = normalize_platform($platform);
+    $platformUserId = strtolower(normalize_external_platform_id($platformUserId));
+    $field = match ($platform) {
+        'telegram' => 'telegram_id',
+        'VK' => 'vk_id',
+        'MAX' => 'max_id',
+        default => null,
+    };
+    if ($field === null || $platformUserId === '') {
         return false;
     }
 
     $managerStmt = db()->prepare("SELECT COUNT(*) FROM managers WHERE $field IS NOT NULL AND $field <> '' AND REPLACE(LOWER($field), 'id', '') = :platform_user_id");
-    $managerStmt->execute(['platform_user_id' => strtolower($platformUserId)]);
+    $managerStmt->execute(['platform_user_id' => $platformUserId]);
     if ((int)$managerStmt->fetchColumn() > 0) {
         return true;
     }
 
-    $adminStmt = db()->prepare("SELECT COUNT(*) FROM admin_users WHERE role IN ('superadmin', 'reseller', 'manager') AND $field IS NOT NULL AND $field <> '' AND REPLACE(LOWER($field), 'id', '') = :platform_user_id");
-    $adminStmt->execute(['platform_user_id' => strtolower($platformUserId)]);
+    $adminStmt = db()->prepare("SELECT COUNT(*) FROM admin_users WHERE role = 'superadmin' AND $field IS NOT NULL AND $field <> '' AND REPLACE(LOWER($field), 'id', '') = :platform_user_id");
+    $adminStmt->execute(['platform_user_id' => $platformUserId]);
     return (int)$adminStmt->fetchColumn() > 0;
+}
+
+function staff_preview_user(string $platform, string $platformUserId): ?array
+{
+    $admin = staff_identity_for_platform($platform, $platformUserId);
+    if (!$admin) {
+        return null;
+    }
+
+    $role = (string)($admin['role'] ?? '');
+    $ownerTable = $role === 'manager' ? 'managers' : 'resellers';
+    $ownerId = $role === 'manager' ? (int)($admin['manager_id'] ?? 0) : (int)($admin['reseller_id'] ?? 0);
+    if ($ownerId <= 0) {
+        return null;
+    }
+
+    $ownerStmt = db()->prepare("SELECT id, source_end_user_id, is_active FROM $ownerTable WHERE id = :id LIMIT 1");
+    $ownerStmt->execute(['id' => $ownerId]);
+    $owner = $ownerStmt->fetch();
+    if (!$owner || (int)$owner['is_active'] !== 1) {
+        return null;
+    }
+
+    $sourceEndUserId = (int)($owner['source_end_user_id'] ?? 0);
+    if ($sourceEndUserId <= 0 && $platform !== 'web') {
+        $sourceStmt = db()->prepare(
+            'SELECT u.id
+             FROM platform_accounts pa
+             INNER JOIN end_users u ON u.id = pa.end_user_id
+             WHERE pa.platform = :platform AND REPLACE(LOWER(pa.platform_user_id), "id", "") = :platform_user_id
+               AND u.merged_into_user_id IS NULL
+             LIMIT 1'
+        );
+        $sourceStmt->execute([
+            'platform' => normalize_platform($platform),
+            'platform_user_id' => strtolower(normalize_external_platform_id($platformUserId)),
+        ]);
+        $sourceEndUserId = (int)$sourceStmt->fetchColumn();
+        if ($sourceEndUserId > 0) {
+            $setSource = db()->prepare("UPDATE $ownerTable SET source_end_user_id = :end_user_id WHERE id = :id AND source_end_user_id IS NULL");
+            $setSource->execute(['end_user_id' => $sourceEndUserId, 'id' => $ownerId]);
+        }
+    }
+
+    if ($sourceEndUserId <= 0) {
+        return null;
+    }
+
+    $userStmt = db()->prepare('SELECT * FROM end_users WHERE id = :id AND merged_into_user_id IS NULL LIMIT 1');
+    $userStmt->execute(['id' => $sourceEndUserId]);
+    $user = $userStmt->fetch();
+    if (!$user) {
+        return null;
+    }
+
+    if ($role === 'manager') {
+        $managerStmt = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id AND is_active = 1 LIMIT 1');
+        $managerStmt->execute(['id' => $ownerId]);
+        $user['manager_id'] = $ownerId;
+        $user['reseller_id'] = (int)$managerStmt->fetchColumn() ?: null;
+    } else {
+        $user['manager_id'] = null;
+        $user['reseller_id'] = $ownerId;
+    }
+    $user['current_platform'] = normalize_platform($platform);
+    $user['staff_preview'] = true;
+    $user['staff_role'] = $role;
+    $user['staff_admin_user_id'] = (int)$admin['id'];
+    return $user;
 }
 
 function reject_staff_client_registration(string $platform, string $platformUserId): void
@@ -267,7 +385,7 @@ function reject_staff_client_registration(string $platform, string $platformUser
 function attach_referral_if_missing(array $user, ?string $referralCode): array
 {
     $referralCode = normalize_referral_code($referralCode);
-    if (!empty($user['reseller_id']) || !empty($user['manager_id']) || !$referralCode) {
+    if (!empty($user['staff_preview']) || !empty($user['onboarding_completed_at']) || !$referralCode) {
         return $user;
     }
 
@@ -279,7 +397,7 @@ function attach_referral_if_missing(array $user, ?string $referralCode): array
     $stmt = db()->prepare(
         'UPDATE end_users
          SET reseller_id = :reseller_id, manager_id = :manager_id, referral_code_used = :referral_code
-         WHERE id = :id AND reseller_id IS NULL AND manager_id IS NULL'
+         WHERE id = :id AND onboarding_completed_at IS NULL AND merged_into_user_id IS NULL'
     );
     $stmt->execute([
         'reseller_id' => $binding['reseller_id'],
@@ -575,6 +693,7 @@ function link_existing_user_to_target(int $targetUserId, int $sourceUserId): ?ar
             'email',
             'referral_code_used',
             'onboarding_completed_at',
+            'referral_registered_at',
         ];
         $assignments = [];
         $params = ['target_id' => $targetUserId, 'source_id' => $sourceUserId];
@@ -597,6 +716,11 @@ function link_existing_user_to_target(int $targetUserId, int $sourceUserId): ?ar
             $update = $pdo->prepare('UPDATE end_users SET ' . implode(', ', $assignments) . ' WHERE id = :target_id');
             $update->execute($params);
         }
+
+        $moveResellerSource = $pdo->prepare('UPDATE resellers SET source_end_user_id = :target_id WHERE source_end_user_id = :source_id');
+        $moveResellerSource->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
+        $moveManagerSource = $pdo->prepare('UPDATE managers SET source_end_user_id = :target_id WHERE source_end_user_id = :source_id');
+        $moveManagerSource->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
 
         $mark = $pdo->prepare('UPDATE end_users SET merged_into_user_id = :target_id, status = "unsubscribed" WHERE id = :source_id');
         $mark->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
@@ -637,6 +761,15 @@ function create_or_get_user(array $data): array
     $platformUserId = (string)($data['platform_user_id'] ?? '');
     if ($platformUserId === '') {
         json_response(['error' => 'platform_user_id is required'], 422);
+    }
+
+    if ($platform === 'telegram' && empty($data['platform_verified'])) {
+        verify_platform_auth($platform, $platformUserId, isset($data['auth_token']) ? (string)$data['auth_token'] : null);
+    }
+
+    $staffPreview = staff_preview_user($platform, $platformUserId);
+    if ($staffPreview) {
+        return $staffPreview;
     }
 
     reject_staff_client_registration($platform, $platformUserId);
@@ -743,15 +876,6 @@ function create_or_get_user(array $data): array
         'entity_id' => $userId,
         'details' => json_encode(['platform' => $platform, 'referral_code' => $referralCode], JSON_UNESCAPED_UNICODE),
     ]);
-
-    if ($referralCode) {
-        $registration = db()->prepare(
-            'UPDATE referral_links
-             SET registrations_count = registrations_count + 1
-             WHERE referral_code = :referral_code AND platform = :platform'
-        );
-        $registration->execute(['referral_code' => $referralCode, 'platform' => $platform]);
-    }
 
     $created = db()->prepare('SELECT * FROM end_users WHERE id = :id LIMIT 1');
     $created->execute(['id' => $userId]);

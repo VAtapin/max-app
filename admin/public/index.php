@@ -135,9 +135,21 @@ function alias_user_where(string $where): string
 
 [$userWhere, $userParams] = scope_where_for_users($admin);
 [$leadWhere, $leadParams] = scope_where_for_leads($admin);
-$assignedUserWhere = append_where_condition($userWhere, '(reseller_id IS NOT NULL OR manager_id IS NOT NULL)');
-$visitorUserWhere = append_where_condition($userWhere, 'reseller_id IS NULL AND manager_id IS NULL');
-$assignedUserAliasWhere = append_where_condition(alias_user_where($userWhere), '(eu.reseller_id IS NOT NULL OR eu.manager_id IS NOT NULL)');
+$realClientCondition = 'onboarding_completed_at IS NOT NULL AND (platform <> "web" OR EXISTS (
+    SELECT 1 FROM platform_accounts pac WHERE pac.end_user_id = end_users.id AND pac.platform <> "web"
+)) AND NOT EXISTS (SELECT 1 FROM resellers rs WHERE rs.source_end_user_id = end_users.id)
+   AND NOT EXISTS (SELECT 1 FROM managers ms WHERE ms.source_end_user_id = end_users.id)';
+$webVisitorCondition = 'platform = "web" AND NOT EXISTS (
+    SELECT 1 FROM platform_accounts pav WHERE pav.end_user_id = end_users.id AND pav.platform <> "web"
+) AND NOT EXISTS (SELECT 1 FROM resellers rs WHERE rs.source_end_user_id = end_users.id)
+   AND NOT EXISTS (SELECT 1 FROM managers ms WHERE ms.source_end_user_id = end_users.id)';
+$realClientAliasCondition = 'eu.onboarding_completed_at IS NOT NULL AND (eu.platform <> "web" OR EXISTS (
+    SELECT 1 FROM platform_accounts pac WHERE pac.end_user_id = eu.id AND pac.platform <> "web"
+)) AND NOT EXISTS (SELECT 1 FROM resellers rs WHERE rs.source_end_user_id = eu.id)
+   AND NOT EXISTS (SELECT 1 FROM managers ms WHERE ms.source_end_user_id = eu.id)';
+$assignedUserWhere = append_where_condition($userWhere, $realClientCondition);
+$visitorUserWhere = append_where_condition($userWhere, $webVisitorCondition);
+$assignedUserAliasWhere = append_where_condition(alias_user_where($userWhere), $realClientAliasCondition);
 
 $stats = [
     'users' => count_table("SELECT COUNT(*) FROM end_users $assignedUserWhere", $userParams),
@@ -151,7 +163,7 @@ $stats = [
     'resellers' => $admin['role'] === 'superadmin' ? count_table('SELECT COUNT(*) FROM resellers') : 0,
     'tests' => count_table(
         "SELECT COUNT(*) FROM user_test_sessions uts INNER JOIN end_users eu ON eu.id = uts.end_user_id $assignedUserAliasWhere
-         AND uts.completed_at IS NOT NULL",
+         AND uts.completed_at IS NOT NULL AND uts.is_preview = 0",
         $userParams
     ),
     'leads' => count_table("SELECT COUNT(*) FROM leads $leadWhere", $leadParams),
@@ -217,6 +229,10 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <input id="referral-link" readonly value="<?= h((string)reset($referralLinks)['url']) ?>">
             </label>
             <button type="button" id="copy-referral-link"><?= h(app_text('referrals.copy')) ?></button>
+            <?php if (isset($referralLinks['web_app'])): ?>
+                <button type="button" class="secondary-button" id="open-owner-mini-site">Открыть мой мини-сайт</button>
+                <span class="cell-muted" id="owner-mini-site-status"></span>
+            <?php endif; ?>
         </div>
     </section>
     <script>
@@ -224,6 +240,10 @@ require __DIR__ . '/../app/views/layouts/header.php';
         window.swproReferralTexts = <?= json_encode([
             'copy' => app_text('referrals.copy'),
             'copied' => app_text('referrals.copied'),
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+        window.swproOwnerMiniSite = <?= json_encode([
+            'url' => $referralLinks['web_app']['url'] ?? '',
+            'csrf' => csrf_token(),
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
         document.addEventListener('DOMContentLoaded', () => {
             const select = document.querySelector('#referral-platform');
@@ -241,6 +261,38 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     setTimeout(() => button.textContent = window.swproReferralTexts.copy, 1600);
                 } catch (_) {
                     document.execCommand('copy');
+                }
+            });
+
+            const ownerButton = document.querySelector('#open-owner-mini-site');
+            const ownerStatus = document.querySelector('#owner-mini-site-status');
+            ownerButton?.addEventListener('click', async () => {
+                ownerButton.disabled = true;
+                if (ownerStatus) ownerStatus.textContent = 'Подключаем этот браузер…';
+                try {
+                    let webUserId = localStorage.getItem('swpro_web_user_id');
+                    if (!webUserId) {
+                        webUserId = `web-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
+                        localStorage.setItem('swpro_web_user_id', webUserId);
+                    }
+                    const body = new URLSearchParams({
+                        csrf_token: window.swproOwnerMiniSite.csrf,
+                        web_user_id: webUserId,
+                    });
+                    const response = await fetch('bind_web_preview.php', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+                        body,
+                        credentials: 'same-origin',
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || 'Не удалось открыть мини-сайт.');
+                    if (ownerStatus) ownerStatus.textContent = '';
+                    window.open(window.swproOwnerMiniSite.url, '_blank', 'noopener');
+                } catch (error) {
+                    if (ownerStatus) ownerStatus.textContent = error instanceof Error ? error.message : 'Не удалось открыть мини-сайт.';
+                } finally {
+                    ownerButton.disabled = false;
                 }
             });
         });

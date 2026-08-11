@@ -107,6 +107,33 @@ function client_onboarding_status(array $user): array
         && (!empty($user['birth_date']) || !empty($user['age_years']))
         && trim((string)($user['city'] ?? '')) !== '';
 
+    $hasConfirmedPlatform = false;
+    if (!empty($user['id'])) {
+        $platformStmt = db()->prepare(
+            'SELECT COUNT(*)
+             FROM platform_accounts
+             WHERE end_user_id = :end_user_id AND platform <> "web"'
+        );
+        $platformStmt->execute(['end_user_id' => (int)$user['id']]);
+        $hasConfirmedPlatform = (int)$platformStmt->fetchColumn() > 0
+            || !in_array((string)($user['platform'] ?? 'web'), ['web', ''], true);
+    }
+    $currentPlatform = (string)($user['current_platform'] ?? $user['platform'] ?? 'web');
+    $isWebOnly = $currentPlatform === 'web' && !$hasConfirmedPlatform;
+    $agreementGrantedAt = (string)($consents['user_agreement']['granted_at'] ?? '');
+    $deadlineBase = $agreementGrantedAt !== ''
+        ? $agreementGrantedAt
+        : (string)($user['created_at'] ?? '');
+    $deadlineDays = $agreementGrantedAt !== '' ? 5 : 3;
+    $webDeadlineAt = null;
+    if ($isWebOnly && $deadlineBase !== '') {
+        try {
+            $webDeadlineAt = (new DateTimeImmutable($deadlineBase))->modify('+' . $deadlineDays . ' days')->format('Y-m-d H:i:s');
+        } catch (Throwable) {
+            $webDeadlineAt = null;
+        }
+    }
+
     return [
         'complete' => !$missing && $profileComplete && !empty($user['onboarding_completed_at']),
         'profile_complete' => $profileComplete,
@@ -117,6 +144,9 @@ function client_onboarding_status(array $user): array
             isset($documents['marketing_consent']) ? (string)$documents['marketing_consent']['version'] : null
         ),
         'notifications_enabled' => (int)($user['notifications_enabled'] ?? 1) === 1,
+        'has_confirmed_platform' => $hasConfirmedPlatform,
+        'web_merge_required' => $isWebOnly && !empty($user['onboarding_completed_at']),
+        'web_cleanup_deadline_at' => $webDeadlineAt,
         'documents' => array_map(
             static fn(array $document): array => [
                 'type' => (string)$document['document_type'],
@@ -128,6 +158,41 @@ function client_onboarding_status(array $user): array
             $documents
         ),
     ];
+}
+
+function register_completed_referral(int $endUserId): void
+{
+    $userStmt = db()->prepare(
+        'SELECT referral_code_used, platform
+         FROM end_users
+         WHERE id = :id AND referral_registered_at IS NULL
+         LIMIT 1'
+    );
+    $userStmt->execute(['id' => $endUserId]);
+    $user = $userStmt->fetch();
+    if (!$user) {
+        return;
+    }
+
+    $mark = db()->prepare(
+        'UPDATE end_users
+         SET referral_registered_at = NOW()
+         WHERE id = :id AND referral_registered_at IS NULL'
+    );
+    $mark->execute(['id' => $endUserId]);
+    if ($mark->rowCount() !== 1 || empty($user['referral_code_used'])) {
+        return;
+    }
+
+    $registration = db()->prepare(
+        'UPDATE referral_links
+         SET registrations_count = registrations_count + 1
+         WHERE referral_code = :referral_code AND platform = :platform'
+    );
+    $registration->execute([
+        'referral_code' => (string)$user['referral_code_used'],
+        'platform' => (string)$user['platform'],
+    ]);
 }
 
 function grant_user_consent(
@@ -338,6 +403,7 @@ function complete_client_onboarding(int $endUserId, array $profile): array
         'timezone' => $timezone,
         'id' => $endUserId,
     ]);
+    register_completed_referral($endUserId);
     update_client_stage($endUserId, 'profile_completed', 'client');
 
     $userStmt = db()->prepare('SELECT * FROM end_users WHERE id = :id LIMIT 1');
@@ -569,7 +635,7 @@ function notify_consultant_about_test(array $user, int $sessionId, string $testT
     $eventKey = 'test_completed:' . $sessionId;
     $title = 'Клиент завершил чек-ап';
     $sourcePlatform = normalize_platform((string)($user['current_platform'] ?? $user['platform'] ?? 'web'));
-    $sessionStmt = db()->prepare('SELECT result_summary FROM user_test_sessions WHERE id = :id LIMIT 1');
+    $sessionStmt = db()->prepare('SELECT result_summary FROM user_test_sessions WHERE id = :id AND is_preview = 0 LIMIT 1');
     $sessionStmt->execute(['id' => $sessionId]);
     $summary = trim((string)($sessionStmt->fetchColumn() ?: ''));
     $scaleStmt = db()->prepare(

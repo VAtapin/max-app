@@ -35,6 +35,7 @@ DROP TABLE IF EXISTS tags;
 DROP TABLE IF EXISTS profile_products;
 DROP TABLE IF EXISTS products;
 DROP TABLE IF EXISTS product_categories;
+DROP TABLE IF EXISTS admin_web_accounts;
 DROP TABLE IF EXISTS platform_accounts;
 DROP TABLE IF EXISTS referral_links;
 DROP TABLE IF EXISTS end_users;
@@ -81,6 +82,7 @@ CREATE TABLE subscription_plans (
 
 CREATE TABLE resellers (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  source_end_user_id BIGINT UNSIGNED NULL,
   parent_reseller_id BIGINT UNSIGNED NULL,
   subscription_plan_id BIGINT UNSIGNED NULL,
   name VARCHAR(190) NOT NULL,
@@ -105,6 +107,7 @@ CREATE TABLE resellers (
   INDEX idx_resellers_referral_code (referral_code),
   INDEX idx_resellers_parent_reseller_id (parent_reseller_id),
   INDEX idx_resellers_subscription_plan_id (subscription_plan_id),
+  INDEX idx_resellers_source_end_user_id (source_end_user_id),
   CONSTRAINT fk_resellers_parent
     FOREIGN KEY (parent_reseller_id) REFERENCES resellers(id)
     ON DELETE SET NULL ON UPDATE CASCADE
@@ -112,6 +115,7 @@ CREATE TABLE resellers (
 
 CREATE TABLE managers (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  source_end_user_id BIGINT UNSIGNED NULL,
   reseller_id BIGINT UNSIGNED NULL,
   name VARCHAR(190) NOT NULL,
   email VARCHAR(190) NULL,
@@ -125,6 +129,7 @@ CREATE TABLE managers (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_managers_reseller_id (reseller_id),
   INDEX idx_managers_referral_code (referral_code),
+  INDEX idx_managers_source_end_user_id (source_end_user_id),
   CONSTRAINT fk_managers_reseller
     FOREIGN KEY (reseller_id) REFERENCES resellers(id)
     ON DELETE SET NULL ON UPDATE CASCADE
@@ -182,6 +187,7 @@ CREATE TABLE end_users (
   client_stage ENUM('new', 'profile_completed', 'test_started', 'test_completed', 'consultation_requested', 'in_progress', 'client', 'partner', 'inactive', 'unsubscribed') NOT NULL DEFAULT 'new',
   stage_updated_at DATETIME NULL,
   onboarding_completed_at DATETIME NULL,
+  referral_registered_at DATETIME NULL,
   notifications_enabled TINYINT(1) NOT NULL DEFAULT 1,
   status ENUM('active', 'blocked', 'unsubscribed') NOT NULL DEFAULT 'active',
   merged_into_user_id BIGINT UNSIGNED NULL,
@@ -196,6 +202,7 @@ CREATE TABLE end_users (
   INDEX idx_end_users_platform (platform),
   INDEX idx_end_users_stage (client_stage),
   INDEX idx_end_users_activity (last_activity_at),
+  INDEX idx_end_users_referral_registered_at (referral_registered_at),
   CONSTRAINT fk_end_users_reseller
     FOREIGN KEY (reseller_id) REFERENCES resellers(id)
     ON DELETE SET NULL ON UPDATE CASCADE,
@@ -368,6 +375,22 @@ CREATE TABLE product_categories (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_product_categories_source_category_id (source_category_id),
   UNIQUE KEY uq_product_categories_owner_source_clone (owner_type, owner_id, source_category_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE admin_web_accounts (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  admin_user_id BIGINT UNSIGNED NOT NULL,
+  web_user_id VARCHAR(100) NOT NULL,
+  last_seen_at DATETIME NULL,
+  revoked_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_admin_web_accounts_web_user_id (web_user_id),
+  INDEX idx_admin_web_accounts_admin_user_id (admin_user_id),
+  INDEX idx_admin_web_accounts_active (revoked_at, last_seen_at),
+  CONSTRAINT fk_admin_web_accounts_admin_user
+    FOREIGN KEY (admin_user_id) REFERENCES admin_users(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE products (
@@ -616,9 +639,11 @@ CREATE TABLE user_test_sessions (
   completed_at DATETIME NULL,
   total_score INT NOT NULL DEFAULT 0,
   result_summary TEXT NULL,
+  is_preview TINYINT(1) NOT NULL DEFAULT 0,
   INDEX idx_user_test_sessions_end_user_id (end_user_id),
   INDEX idx_user_test_sessions_test_id (test_id),
   INDEX idx_user_test_sessions_reminders (completed_at, last_answered_at),
+  INDEX idx_user_test_sessions_preview (is_preview, completed_at),
   CONSTRAINT fk_user_test_sessions_user
     FOREIGN KEY (end_user_id) REFERENCES end_users(id)
     ON DELETE CASCADE ON UPDATE CASCADE,
