@@ -1521,19 +1521,32 @@ function renderLegacyHome() {
 
 function renderCashback() {
     const profile = state.consultantProfile?.profile || {};
-    const title = profile.cashback_title || 'Кэшбэк и подарки';
-    const text = profile.cashback_text || 'Оформите карту клиента, чтобы пользоваться доступными преимуществами. Консультант поможет с регистрацией и ответит на вопросы.';
+    const cards = (profile.cashback_cards || []).filter((card) =>
+        card.title || card.description || card.image_path || card.card_url
+    );
+    if (!cards.length) {
+        cards.push({
+            title: profile.cashback_title || 'Кэшбэк и подарки',
+            description: profile.cashback_text || 'Оформите карту клиента, чтобы пользоваться доступными преимуществами. Консультант поможет с регистрацией и ответит на вопросы.',
+            image_path: profile.cashback_image_path || '',
+            card_url: profile.cashback_url || '',
+        });
+    }
     page.innerHTML = `
-        <section class="panel feature-page">
-            ${profile.cashback_image_path ? `<img class="feature-image" src="${escapeHtml(profile.cashback_image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
-            <span class="eyebrow">Карта клиента</span>
-            <h2>${escapeHtml(title)}</h2>
-            <div class="rich-text">${renderTextBlocks(text)}</div>
-            <div class="detail-actions">
-                ${profile.cashback_url ? `<a class="primary button-link" href="${escapeHtml(profile.cashback_url)}" target="_blank" rel="noopener">Оформить карту клиента</a>` : ''}
-                <button class="secondary" data-action="contact-cashback">Задать вопрос консультанту</button>
-            </div>
-        </section>
+        <div class="cashback-card-stack">
+            ${cards.map((card) => `
+                <section class="panel feature-page">
+                    ${card.image_path ? `<img class="feature-image" src="${escapeHtml(card.image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
+                    <span class="eyebrow">Карта клиента</span>
+                    ${card.title ? `<h2>${escapeHtml(card.title)}</h2>` : ''}
+                    ${card.description ? `<div class="rich-text">${renderTextBlocks(card.description)}</div>` : ''}
+                    <div class="detail-actions">
+                        ${card.card_url ? `<a class="primary button-link" href="${escapeHtml(card.card_url)}" target="_blank" rel="noopener">Оформить карту клиента</a>` : ''}
+                        <button class="secondary" data-action="contact-cashback">Задать вопрос консультанту</button>
+                    </div>
+                </section>
+            `).join('')}
+        </div>
     `;
 }
 

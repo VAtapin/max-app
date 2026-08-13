@@ -41,6 +41,7 @@ DROP TABLE IF EXISTS referral_links;
 DROP TABLE IF EXISTS end_users;
 DROP TABLE IF EXISTS admin_users;
 DROP TABLE IF EXISTS profile_reviews;
+DROP TABLE IF EXISTS profile_cashback_cards;
 DROP TABLE IF EXISTS profile_blocks;
 DROP TABLE IF EXISTS consultant_profiles;
 DROP TABLE IF EXISTS site_templates;
@@ -318,6 +319,22 @@ CREATE TABLE profile_reviews (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_profile_reviews_profile_id (profile_id),
   CONSTRAINT fk_profile_reviews_profile
+    FOREIGN KEY (profile_id) REFERENCES consultant_profiles(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE profile_cashback_cards (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  profile_id BIGINT UNSIGNED NOT NULL,
+  title VARCHAR(190) NULL,
+  description MEDIUMTEXT NULL,
+  image_path VARCHAR(255) NULL,
+  card_url VARCHAR(500) NULL,
+  sort_order INT NOT NULL DEFAULT 100,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_profile_cashback_cards_profile (profile_id, sort_order, id),
+  CONSTRAINT fk_profile_cashback_cards_profile
     FOREIGN KEY (profile_id) REFERENCES consultant_profiles(id)
     ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

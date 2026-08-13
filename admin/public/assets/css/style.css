@@ -1735,6 +1735,34 @@ button:disabled {
     grid-column: 1 / -1;
 }
 
+.cashback-card-list {
+    display: grid;
+    gap: 16px;
+    margin: 18px 0;
+}
+
+.cashback-card-editor {
+    background: #fbfdff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 18px;
+}
+
+.cashback-card-editor-head {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.cashback-card-editor-head strong {
+    font-size: 17px;
+}
+
+.cashback-card-add {
+    width: fit-content;
+}
+
 .profile-slug-control {
     align-items: stretch;
     display: grid;

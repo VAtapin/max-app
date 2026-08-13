@@ -166,6 +166,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             if (!$templateId || !site_template_row($templateId, $ownerAdmin) || !site_template_apply_to_profile($profileId, $owner['owner_type'], (int)$owner['owner_id'], $templateId, true)) {
                 $errors[] = 'Выберите активный шаблон оформления.';
+            } else {
+                $templateProfile = ensure_consultant_profile($owner['owner_type'], (int)$owner['owner_id']);
+                replace_consultant_cashback_cards($profileId, [[
+                    'title' => $templateProfile['cashback_title'] ?? '',
+                    'description' => $templateProfile['cashback_text'] ?? '',
+                    'image_path' => $templateProfile['cashback_image_path'] ?? null,
+                    'card_url' => $templateProfile['cashback_url'] ?? '',
+                ]]);
             }
         } catch (Throwable $e) {
             $errors[] = 'Не удалось применить шаблон: ' . $e->getMessage();
@@ -204,13 +212,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $currentPhotoPath = isset($_POST['remove_photo_path']) ? null : ($_POST['photo_path_current'] ?? ($profile['photo_path'] ?? null));
     $currentBannerPath = isset($_POST['remove_banner_path']) ? null : ($_POST['banner_path_current'] ?? ($profile['banner_path'] ?? null));
     $currentWelcomePath = isset($_POST['remove_welcome_image_path']) ? null : ($_POST['welcome_image_path_current'] ?? ($profile['welcome_image_path'] ?? null));
-    $currentCashbackPath = isset($_POST['remove_cashback_image_path']) ? null : ($_POST['cashback_image_path_current'] ?? ($profile['cashback_image_path'] ?? null));
     $currentCooperationPath = isset($_POST['remove_cooperation_image_path']) ? null : ($_POST['cooperation_image_path_current'] ?? ($profile['cooperation_image_path'] ?? null));
     $photoPath = consultant_profile_upload('photo_path', $currentPhotoPath, $errors);
     $bannerPath = consultant_profile_upload('banner_path', $currentBannerPath, $errors);
     $welcomeImagePath = consultant_profile_upload('welcome_image_path', $currentWelcomePath, $errors);
-    $cashbackImagePath = consultant_profile_upload('cashback_image_path', $currentCashbackPath, $errors);
     $cooperationImagePath = consultant_profile_upload('cooperation_image_path', $currentCooperationPath, $errors);
+    $cashbackCards = [];
+    foreach ((array)($_POST['cashback_cards'] ?? []) as $cardIndex => $card) {
+        if (!is_array($card)) {
+            continue;
+        }
+        $currentImagePath = !empty($card['remove_image']) ? null : ($card['image_path_current'] ?? null);
+        $cashbackCards[] = [
+            'title' => trim((string)($card['title'] ?? '')),
+            'description' => trim((string)($card['description'] ?? '')),
+            'image_path' => consultant_profile_indexed_upload('cashback_card_images', $cardIndex, $currentImagePath, $errors),
+            'card_url' => trim((string)($card['card_url'] ?? '')),
+        ];
+    }
+    if (!$cashbackCards) {
+        $cashbackCards[] = ['title' => '', 'description' => '', 'image_path' => null, 'card_url' => ''];
+    }
+    $primaryCashbackCard = $cashbackCards[0];
     $publicAddress = (string)($_POST['page_url'] ?? $_POST['slug'] ?? '');
     $slug = consultant_unique_slug(
         consultant_slug(
@@ -273,10 +296,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'welcome_text' => trim((string)($_POST['welcome_text'] ?? '')),
             'welcome_image_path' => $welcomeImagePath,
             'welcome_video_url' => trim((string)($_POST['welcome_video_url'] ?? '')),
-            'cashback_title' => trim((string)($_POST['cashback_title'] ?? '')),
-            'cashback_text' => trim((string)($_POST['cashback_text'] ?? '')),
-            'cashback_image_path' => $cashbackImagePath,
-            'cashback_url' => trim((string)($_POST['cashback_url'] ?? '')),
+            'cashback_title' => $primaryCashbackCard['title'],
+            'cashback_text' => $primaryCashbackCard['description'],
+            'cashback_image_path' => $primaryCashbackCard['image_path'],
+            'cashback_url' => $primaryCashbackCard['card_url'],
             'cooperation_title' => trim((string)($_POST['cooperation_title'] ?? '')),
             'cooperation_text' => trim((string)($_POST['cooperation_text'] ?? '')),
             'cooperation_image_path' => $cooperationImagePath,
@@ -331,6 +354,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         replace_consultant_items($profileId, 'profile_products', 'product_id', $_POST['products'] ?? []);
         ensure_consultant_primary_test($profileId);
         replace_consultant_items($profileId, 'profile_materials', 'content_post_id', $_POST['materials'] ?? []);
+        replace_consultant_cashback_cards($profileId, $cashbackCards);
 
         log_activity('admin', (int)$admin['id'], 'update_consultant_profile', 'consultant_profiles', $profileId);
         redirect('my_page.php?' . profile_owner_query($owner) . '&success=saved');
@@ -343,6 +367,7 @@ $effectiveProfileId = consultant_effective_profile_id($storedProfile);
 $profile = consultant_effective_profile($storedProfile);
 $blocks = consultant_blocks($effectiveProfileId);
 $aboutTitles = about_section_titles($blocks);
+$cashbackCards = consultant_cashback_cards($effectiveProfileId, $profile);
 $selectedProducts = consultant_selected_ids($effectiveProfileId, 'profile_products', 'product_id');
 $selectedMaterials = consultant_selected_ids($effectiveProfileId, 'profile_materials', 'content_post_id');
 $ownerOptions = consultant_options_for_admin($admin);
@@ -574,31 +599,45 @@ require __DIR__ . '/../app/views/layouts/header.php';
         </div>
     </section>
 
-    <section class="panel">
+    <section class="panel cashback-cards-editor" data-cashback-cards-editor>
         <h2>Кэшбэк и подарки</h2>
-        <div class="profile-form-grid">
-            <label class="field">
-                <span>Заголовок</span>
-                <input name="cashback_title" value="<?= h((string)$profile['cashback_title']) ?>">
-            </label>
-            <label class="field">
-                <span>Персональная ссылка оформления карты</span>
-                <input type="url" name="cashback_url" value="<?= h((string)$profile['cashback_url']) ?>" placeholder="https://...">
-            </label>
-            <label class="field wide">
-                <span>Описание преимуществ</span>
-                <textarea name="cashback_text" rows="6"><?= h((string)$profile['cashback_text']) ?></textarea>
-            </label>
-            <label class="field">
-                <span>Изображение</span>
-                <input type="hidden" name="cashback_image_path_current" value="<?= h((string)$profile['cashback_image_path']) ?>">
-                <input type="file" name="cashback_image_path" accept="image/*">
-                <?php if (!empty($profile['cashback_image_path'])): ?>
-                    <a href="<?= h((string)$profile['cashback_image_path']) ?>" target="_blank" rel="noopener">Открыть изображение</a>
-                    <label class="checkbox-line"><input type="checkbox" name="remove_cashback_image_path" value="1"> Удалить изображение</label>
-                <?php endif; ?>
-            </label>
+        <p class="cell-muted">Добавьте отдельную карту для каждой страны. На странице они будут показаны одна под другой.</p>
+        <div class="cashback-card-list" data-cashback-card-list>
+            <?php foreach ($cashbackCards as $cardIndex => $card): ?>
+                <section class="cashback-card-editor" data-cashback-card>
+                    <div class="cashback-card-editor-head">
+                        <strong>Карта <?= $cardIndex + 1 ?></strong>
+                        <?php if ($cardIndex > 0): ?>
+                            <button type="button" class="link-button danger" data-remove-cashback-card>Удалить карту</button>
+                        <?php endif; ?>
+                    </div>
+                    <div class="profile-form-grid">
+                        <label class="field">
+                            <span>Заголовок</span>
+                            <input name="cashback_cards[<?= $cardIndex ?>][title]" value="<?= h((string)($card['title'] ?? '')) ?>">
+                        </label>
+                        <label class="field">
+                            <span>Персональная ссылка оформления карты</span>
+                            <input type="url" name="cashback_cards[<?= $cardIndex ?>][card_url]" value="<?= h((string)($card['card_url'] ?? '')) ?>" placeholder="https://...">
+                        </label>
+                        <label class="field wide">
+                            <span>Описание преимуществ</span>
+                            <textarea name="cashback_cards[<?= $cardIndex ?>][description]" rows="6"><?= h((string)($card['description'] ?? '')) ?></textarea>
+                        </label>
+                        <div class="field">
+                            <span>Изображение</span>
+                            <input type="hidden" name="cashback_cards[<?= $cardIndex ?>][image_path_current]" value="<?= h((string)($card['image_path'] ?? '')) ?>">
+                            <input type="file" name="cashback_card_images[<?= $cardIndex ?>]" accept="image/*">
+                            <?php if (!empty($card['image_path'])): ?>
+                                <a href="<?= h((string)$card['image_path']) ?>" target="_blank" rel="noopener">Открыть изображение</a>
+                                <label class="checkbox-line"><input type="checkbox" name="cashback_cards[<?= $cardIndex ?>][remove_image]" value="1"> Удалить изображение</label>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </section>
+            <?php endforeach; ?>
         </div>
+        <button type="button" class="secondary-button cashback-card-add" data-add-cashback-card>+ Добавить карту</button>
     </section>
 
     <section class="panel">
@@ -696,6 +735,62 @@ require __DIR__ . '/../app/views/layouts/header.php';
 </form>
 
 <script>
+    (() => {
+        const editor = document.querySelector('[data-cashback-cards-editor]');
+        const list = editor?.querySelector('[data-cashback-card-list]');
+        const addButton = editor?.querySelector('[data-add-cashback-card]');
+        if (!editor || !list || !addButton) return;
+
+        let nextIndex = <?= count($cashbackCards) ?>;
+        const renumberCards = () => {
+            list.querySelectorAll('[data-cashback-card]').forEach((card, index) => {
+                const label = card.querySelector('.cashback-card-editor-head strong');
+                if (label) label.textContent = `Карта ${index + 1}`;
+            });
+        };
+
+        addButton.addEventListener('click', () => {
+            const index = nextIndex++;
+            const card = document.createElement('section');
+            card.className = 'cashback-card-editor';
+            card.dataset.cashbackCard = '';
+            card.innerHTML = `
+                <div class="cashback-card-editor-head">
+                    <strong>Карта</strong>
+                    <button type="button" class="link-button danger" data-remove-cashback-card>Удалить карту</button>
+                </div>
+                <div class="profile-form-grid">
+                    <label class="field">
+                        <span>Заголовок</span>
+                        <input name="cashback_cards[${index}][title]">
+                    </label>
+                    <label class="field">
+                        <span>Персональная ссылка оформления карты</span>
+                        <input type="url" name="cashback_cards[${index}][card_url]" placeholder="https://...">
+                    </label>
+                    <label class="field wide">
+                        <span>Описание преимуществ</span>
+                        <textarea name="cashback_cards[${index}][description]" rows="6"></textarea>
+                    </label>
+                    <div class="field">
+                        <span>Изображение</span>
+                        <input type="hidden" name="cashback_cards[${index}][image_path_current]" value="">
+                        <input type="file" name="cashback_card_images[${index}]" accept="image/*">
+                    </div>
+                </div>`;
+            list.appendChild(card);
+            renumberCards();
+            card.querySelector('input')?.focus();
+        });
+
+        list.addEventListener('click', (event) => {
+            const removeButton = event.target.closest('[data-remove-cashback-card]');
+            if (!removeButton) return;
+            removeButton.closest('[data-cashback-card]')?.remove();
+            renumberCards();
+        });
+    })();
+
     document.querySelector('.profile-owner-panel select[name="owner_selector"]')?.addEventListener('change', (event) => {
         const [ownerType, ownerId] = event.target.value.split(':');
         const form = event.target.closest('form');

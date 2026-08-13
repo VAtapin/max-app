@@ -280,7 +280,7 @@ function consultant_profile_reset_to_parent(int $profileId, int $sourceProfileId
             'source_profile_id' => $sourceProfileId,
         ]);
 
-        foreach (['profile_blocks', 'profile_products', 'profile_tests', 'profile_materials'] as $table) {
+        foreach (['profile_blocks', 'profile_products', 'profile_tests', 'profile_materials', 'profile_cashback_cards'] as $table) {
             $delete = db()->prepare("DELETE FROM {$table} WHERE profile_id = :profile_id");
             $delete->execute(['profile_id' => $profileId]);
         }
@@ -406,6 +406,69 @@ function replace_consultant_items(int $profileId, string $table, string $column,
     }
 }
 
+function consultant_cashback_cards(int $profileId, ?array $legacyProfile = null): array
+{
+    $stmt = db()->prepare(
+        'SELECT id, title, description, image_path, card_url, sort_order
+         FROM profile_cashback_cards
+         WHERE profile_id = :profile_id
+         ORDER BY sort_order, id'
+    );
+    $stmt->execute(['profile_id' => $profileId]);
+    $cards = $stmt->fetchAll();
+    if ($cards) {
+        return $cards;
+    }
+
+    return [[
+        'id' => 0,
+        'title' => (string)($legacyProfile['cashback_title'] ?? ''),
+        'description' => (string)($legacyProfile['cashback_text'] ?? ''),
+        'image_path' => (string)($legacyProfile['cashback_image_path'] ?? ''),
+        'card_url' => (string)($legacyProfile['cashback_url'] ?? ''),
+        'sort_order' => 10,
+    ]];
+}
+
+function replace_consultant_cashback_cards(int $profileId, array $cards): void
+{
+    if (!$cards) {
+        $cards = [[
+            'title' => '',
+            'description' => '',
+            'image_path' => null,
+            'card_url' => '',
+        ]];
+    }
+
+    db()->beginTransaction();
+    try {
+        $delete = db()->prepare('DELETE FROM profile_cashback_cards WHERE profile_id = :profile_id');
+        $delete->execute(['profile_id' => $profileId]);
+
+        $insert = db()->prepare(
+            'INSERT INTO profile_cashback_cards
+                (profile_id, title, description, image_path, card_url, sort_order)
+             VALUES
+                (:profile_id, :title, :description, :image_path, :card_url, :sort_order)'
+        );
+        foreach (array_values($cards) as $index => $card) {
+            $insert->execute([
+                'profile_id' => $profileId,
+                'title' => trim((string)($card['title'] ?? '')) ?: null,
+                'description' => trim((string)($card['description'] ?? '')) ?: null,
+                'image_path' => trim((string)($card['image_path'] ?? '')) ?: null,
+                'card_url' => trim((string)($card['card_url'] ?? '')) ?: null,
+                'sort_order' => ($index + 1) * 10,
+            ]);
+        }
+        db()->commit();
+    } catch (Throwable $e) {
+        db()->rollBack();
+        throw $e;
+    }
+}
+
 function consultant_profile_upload_dir(): string
 {
     return dirname(__DIR__, 2) . '/uploads/profiles';
@@ -416,13 +479,12 @@ function consultant_profile_public_path(string $filename): string
     return '/admin/uploads/profiles/' . $filename;
 }
 
-function consultant_profile_upload(string $field, ?string $currentPath, array &$errors): ?string
+function consultant_profile_store_upload(array $file, ?string $currentPath, array &$errors): ?string
 {
-    if (empty($_FILES[$field]) || ($_FILES[$field]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+    if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         return $currentPath;
     }
 
-    $file = $_FILES[$field];
     if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
         $errors[] = app_text('consultant_profile.upload_failed');
         return $currentPath;
@@ -453,6 +515,24 @@ function consultant_profile_upload(string $field, ?string $currentPath, array &$
     }
 
     return consultant_profile_public_path($filename);
+}
+
+function consultant_profile_upload(string $field, ?string $currentPath, array &$errors): ?string
+{
+    return consultant_profile_store_upload($_FILES[$field] ?? [], $currentPath, $errors);
+}
+
+function consultant_profile_indexed_upload(string $field, string|int $index, ?string $currentPath, array &$errors): ?string
+{
+    $source = $_FILES[$field] ?? [];
+    $file = [];
+    foreach (['name', 'type', 'tmp_name', 'error', 'size'] as $key) {
+        if (isset($source[$key]) && is_array($source[$key]) && array_key_exists($index, $source[$key])) {
+            $file[$key] = $source[$key][$index];
+        }
+    }
+
+    return consultant_profile_store_upload($file, $currentPath, $errors);
 }
 
 function consultant_options_for_admin(array $admin): array
@@ -557,8 +637,12 @@ function consultant_profile_payload(array $profile): array
     );
     $reviews->execute(['profile_id' => $profileId]);
 
+    $cashbackCards = consultant_cashback_cards($profileId, $profile);
+    $profile['cashback_cards'] = $cashbackCards;
+
     return [
         'profile' => $profile,
+        'cashback_cards' => $cashbackCards,
         'blocks' => $blocks,
         'products' => $products->fetchAll(),
         'tests' => $tests->fetchAll(),

@@ -1849,6 +1849,11 @@ button.secondary,
     gap: 16px;
 }
 
+.cashback-card-stack {
+    display: grid;
+    gap: 16px;
+}
+
 .contact-page {
     justify-self: center;
     max-width: 560px;

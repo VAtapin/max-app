@@ -272,6 +272,12 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
     </main>
 <?php else: ?>
     <?php $profileData = $payload['profile']; ?>
+    <?php $cashbackCards = array_values(array_filter($payload['cashback_cards'] ?? [], static fn(array $card): bool =>
+        trim((string)($card['title'] ?? '')) !== ''
+        || trim((string)($card['description'] ?? '')) !== ''
+        || trim((string)($card['image_path'] ?? '')) !== ''
+        || trim((string)($card['card_url'] ?? '')) !== ''
+    )); ?>
     <?php $profileReferralCode = public_profile_referral_code($profileData); ?>
     <?php $miniAppUrl = public_mini_app_url($profileReferralCode); ?>
     <main class="consultant-page" data-theme="<?= h((string)($profileData['theme_key'] ?? 'classic')) ?>">
@@ -279,7 +285,7 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
             <a class="brand-link" href="/">SWPro</a>
             <nav>
                 <?php if (public_block_enabled($blocks, 'about') && public_about_sections($profileData, $blocks)): ?><a href="#about">О консультанте</a><?php endif; ?>
-                <?php if (public_block_enabled($blocks, 'cashback') && !empty($profileData['cashback_text'])): ?><a href="#cashback">Кэшбэк</a><?php endif; ?>
+                <?php if (public_block_enabled($blocks, 'cashback') && $cashbackCards): ?><a href="#cashback">Кэшбэк</a><?php endif; ?>
                 <?php if (public_block_enabled($blocks, 'cooperation') && !empty($profileData['cooperation_text'])): ?><a href="#cooperation">Сотрудничество</a><?php endif; ?>
                 <?php if (public_block_enabled($blocks, 'tests') && !empty($payload['tests'])): ?><a href="#tests">Тесты</a><?php endif; ?>
                 <?php if (public_block_enabled($blocks, 'materials') && !empty($payload['materials'])): ?><a href="#materials">Материалы</a><?php endif; ?>
@@ -351,17 +357,22 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
             </section>
         <?php endif; ?>
 
-        <?php if (public_block_enabled($blocks, 'cashback') && (!empty($profileData['cashback_text']) || !empty($profileData['cashback_url']))): ?>
+        <?php if (public_block_enabled($blocks, 'cashback') && $cashbackCards): ?>
             <section class="section" id="cashback">
                 <div class="section-head">
                     <span class="eyebrow">Карта клиента</span>
-                    <h2><?= h((string)($profileData['cashback_title'] ?: 'Кэшбэк и подарки')) ?></h2>
+                    <h2><?= h(public_block_title($blocks, 'cashback', 'Кэшбэк и подарки')) ?></h2>
                 </div>
-                <article class="public-card about-card about-card-main">
-                    <?php if (!empty($profileData['cashback_image_path'])): ?><img src="<?= h((string)$profileData['cashback_image_path']) ?>" alt=""><?php endif; ?>
-                    <p><?= nl2br(h((string)$profileData['cashback_text'])) ?></p>
-                    <?php if (!empty($profileData['cashback_url'])): ?><a class="card-action-link" href="<?= h((string)$profileData['cashback_url']) ?>" target="_blank" rel="noopener">Оформить карту клиента</a><?php endif; ?>
-                </article>
+                <div class="cashback-card-grid">
+                    <?php foreach ($cashbackCards as $card): ?>
+                        <article class="public-card about-card about-card-main cashback-public-card">
+                            <?php if (!empty($card['image_path'])): ?><img src="<?= h((string)$card['image_path']) ?>" alt=""><?php endif; ?>
+                            <?php if (!empty($card['title'])): ?><h3><?= h((string)$card['title']) ?></h3><?php endif; ?>
+                            <?php if (!empty($card['description'])): ?><p><?= nl2br(h((string)$card['description'])) ?></p><?php endif; ?>
+                            <?php if (!empty($card['card_url'])): ?><a class="card-action-link" href="<?= h((string)$card['card_url']) ?>" target="_blank" rel="noopener">Оформить карту клиента</a><?php endif; ?>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
             </section>
         <?php endif; ?>
 
