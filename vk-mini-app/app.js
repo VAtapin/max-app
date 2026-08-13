@@ -1143,6 +1143,14 @@ function renderOnboardingGate() {
                     <input name="last_name" required maxlength="190" value="${escapeHtml(lastName)}">
                 </label>
                 <label>
+                    <span>Номер телефона <small class="muted">(необязательно)</small></span>
+                    <input type="tel" name="phone" maxlength="50" autocomplete="tel" value="${escapeHtml(user.phone || '')}" placeholder="+7 999 123-45-67">
+                </label>
+                <label>
+                    <span>Email <small class="muted">(необязательно)</small></span>
+                    <input type="email" name="email" maxlength="190" autocomplete="email" value="${escapeHtml(user.email || '')}" placeholder="name@example.com">
+                </label>
+                <label>
                     <span>Пол *</span>
                     <select name="gender" required>
                         <option value="">Выберите</option>
@@ -2652,6 +2660,8 @@ page.addEventListener('submit', async (event) => {
                     action: 'profile',
                     first_name: String(formData.get('first_name') || '').trim(),
                     last_name: String(formData.get('last_name') || '').trim(),
+                    phone: String(formData.get('phone') || '').trim(),
+                    email: String(formData.get('email') || '').trim(),
                     gender: String(formData.get('gender') || ''),
                     age_years: ageYears || null,
                     birth_date: birthDate || null,

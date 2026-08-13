@@ -348,6 +348,8 @@ function complete_client_onboarding(int $endUserId, array $profile): array
 
     $firstName = trim((string)($profile['first_name'] ?? ''));
     $lastName = trim((string)($profile['last_name'] ?? ''));
+    $phone = trim((string)($profile['phone'] ?? ''));
+    $email = trim((string)($profile['email'] ?? ''));
     $city = trim((string)($profile['city'] ?? ''));
     $birthDate = trim((string)($profile['birth_date'] ?? ''));
     $ageYears = isset($profile['age_years']) ? (int)$profile['age_years'] : 0;
@@ -355,6 +357,12 @@ function complete_client_onboarding(int $endUserId, array $profile): array
 
     if ($firstName === '' || $lastName === '' || $city === '') {
         throw new InvalidArgumentException('first_name, last_name and city are required');
+    }
+    if (mb_strlen($phone) > 50) {
+        throw new InvalidArgumentException('phone is too long');
+    }
+    if ($email !== '' && (mb_strlen($email) > 190 || !filter_var($email, FILTER_VALIDATE_EMAIL))) {
+        throw new InvalidArgumentException('email is invalid');
     }
     if ($ageYears > 0 && ($ageYears < 14 || $ageYears > 100)) {
         throw new InvalidArgumentException('age is invalid');
@@ -382,6 +390,8 @@ function complete_client_onboarding(int $endUserId, array $profile): array
         'UPDATE end_users
          SET first_name = :first_name,
              last_name = :last_name,
+             phone = :phone,
+             email = :email,
              gender = :gender,
              birth_date = :birth_date,
              age_years = :age_years,
@@ -396,6 +406,8 @@ function complete_client_onboarding(int $endUserId, array $profile): array
     $stmt->execute([
         'first_name' => $firstName,
         'last_name' => $lastName,
+        'phone' => $phone !== '' ? $phone : null,
+        'email' => $email !== '' ? $email : null,
         'gender' => $gender,
         'birth_date' => $birthDate !== '' ? $birthDate : null,
         'age_years' => $ageYears > 0 ? $ageYears : null,
