@@ -330,6 +330,7 @@ CREATE TABLE profile_cashback_cards (
   description MEDIUMTEXT NULL,
   image_path VARCHAR(255) NULL,
   card_url VARCHAR(500) NULL,
+  button_text VARCHAR(190) NOT NULL DEFAULT 'Оформить карту клиента',
   sort_order INT NOT NULL DEFAULT 100,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

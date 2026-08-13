@@ -173,6 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'description' => $templateProfile['cashback_text'] ?? '',
                     'image_path' => $templateProfile['cashback_image_path'] ?? null,
                     'card_url' => $templateProfile['cashback_url'] ?? '',
+                    'button_text' => 'Оформить карту клиента',
                 ]]);
             }
         } catch (Throwable $e) {
@@ -228,10 +229,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'description' => trim((string)($card['description'] ?? '')),
             'image_path' => consultant_profile_indexed_upload('cashback_card_images', $cardIndex, $currentImagePath, $errors),
             'card_url' => trim((string)($card['card_url'] ?? '')),
+            'button_text' => trim((string)($card['button_text'] ?? '')) ?: 'Оформить карту клиента',
         ];
     }
     if (!$cashbackCards) {
-        $cashbackCards[] = ['title' => '', 'description' => '', 'image_path' => null, 'card_url' => ''];
+        $cashbackCards[] = ['title' => '', 'description' => '', 'image_path' => null, 'card_url' => '', 'button_text' => 'Оформить карту клиента'];
     }
     $primaryCashbackCard = $cashbackCards[0];
     $publicAddress = (string)($_POST['page_url'] ?? $_POST['slug'] ?? '');
@@ -612,16 +614,20 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         <?php endif; ?>
                     </div>
                     <div class="profile-form-grid">
-                        <label class="field">
+                        <label class="field wide">
                             <span>Заголовок</span>
                             <input name="cashback_cards[<?= $cardIndex ?>][title]" value="<?= h((string)($card['title'] ?? '')) ?>">
                         </label>
                         <label class="field">
-                            <span>Персональная ссылка оформления карты</span>
+                            <span>Текст кнопки</span>
+                            <input name="cashback_cards[<?= $cardIndex ?>][button_text]" maxlength="190" value="<?= h((string)($card['button_text'] ?? 'Оформить карту клиента')) ?>" placeholder="Оформить карту клиента">
+                        </label>
+                        <label class="field">
+                            <span>Ссылка кнопки</span>
                             <input type="url" name="cashback_cards[<?= $cardIndex ?>][card_url]" value="<?= h((string)($card['card_url'] ?? '')) ?>" placeholder="https://...">
                         </label>
                         <label class="field wide">
-                            <span>Описание преимуществ</span>
+                            <span>Описание</span>
                             <textarea name="cashback_cards[<?= $cardIndex ?>][description]" rows="6"><?= h((string)($card['description'] ?? '')) ?></textarea>
                         </label>
                         <div class="field">
@@ -760,16 +766,20 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <button type="button" class="link-button danger" data-remove-cashback-card>Удалить карту</button>
                 </div>
                 <div class="profile-form-grid">
-                    <label class="field">
+                    <label class="field wide">
                         <span>Заголовок</span>
                         <input name="cashback_cards[${index}][title]">
                     </label>
                     <label class="field">
-                        <span>Персональная ссылка оформления карты</span>
+                        <span>Текст кнопки</span>
+                        <input name="cashback_cards[${index}][button_text]" maxlength="190" value="Оформить карту клиента" placeholder="Оформить карту клиента">
+                    </label>
+                    <label class="field">
+                        <span>Ссылка кнопки</span>
                         <input type="url" name="cashback_cards[${index}][card_url]" placeholder="https://...">
                     </label>
                     <label class="field wide">
-                        <span>Описание преимуществ</span>
+                        <span>Описание</span>
                         <textarea name="cashback_cards[${index}][description]" rows="6"></textarea>
                     </label>
                     <div class="field">

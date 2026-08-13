@@ -360,7 +360,6 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
         <?php if (public_block_enabled($blocks, 'cashback') && $cashbackCards): ?>
             <section class="section" id="cashback">
                 <div class="section-head">
-                    <span class="eyebrow">Карта клиента</span>
                     <h2><?= h(public_block_title($blocks, 'cashback', 'Кэшбэк и подарки')) ?></h2>
                 </div>
                 <div class="cashback-card-grid">
@@ -369,7 +368,7 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
                             <?php if (!empty($card['image_path'])): ?><img src="<?= h((string)$card['image_path']) ?>" alt=""><?php endif; ?>
                             <?php if (!empty($card['title'])): ?><h3><?= h((string)$card['title']) ?></h3><?php endif; ?>
                             <?php if (!empty($card['description'])): ?><p><?= nl2br(h((string)$card['description'])) ?></p><?php endif; ?>
-                            <?php if (!empty($card['card_url'])): ?><a class="card-action-link" href="<?= h((string)$card['card_url']) ?>" target="_blank" rel="noopener">Оформить карту клиента</a><?php endif; ?>
+                            <?php if (!empty($card['card_url'])): ?><a class="card-action-link" href="<?= h((string)$card['card_url']) ?>" target="_blank" rel="noopener"><?= h((string)($card['button_text'] ?: 'Оформить карту клиента')) ?></a><?php endif; ?>
                         </article>
                     <?php endforeach; ?>
                 </div>

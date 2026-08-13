@@ -1538,6 +1538,7 @@ function renderCashback() {
             description: profile.cashback_text || 'Оформите карту клиента, чтобы пользоваться доступными преимуществами. Консультант поможет с регистрацией и ответит на вопросы.',
             image_path: profile.cashback_image_path || '',
             card_url: profile.cashback_url || '',
+            button_text: 'Оформить карту клиента',
         });
     }
     page.innerHTML = `
@@ -1545,11 +1546,10 @@ function renderCashback() {
             ${cards.map((card) => `
                 <section class="panel feature-page">
                     ${card.image_path ? `<img class="feature-image" src="${escapeHtml(card.image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
-                    <span class="eyebrow">Карта клиента</span>
                     ${card.title ? `<h2>${escapeHtml(card.title)}</h2>` : ''}
                     ${card.description ? `<div class="rich-text">${renderTextBlocks(card.description)}</div>` : ''}
                     <div class="detail-actions">
-                        ${card.card_url ? `<a class="primary button-link" href="${escapeHtml(card.card_url)}" target="_blank" rel="noopener">Оформить карту клиента</a>` : ''}
+                        ${card.card_url ? `<a class="primary button-link" href="${escapeHtml(card.card_url)}" target="_blank" rel="noopener">${escapeHtml(card.button_text || 'Оформить карту клиента')}</a>` : ''}
                         <button class="secondary" data-action="contact-cashback">Задать вопрос консультанту</button>
                     </div>
                 </section>

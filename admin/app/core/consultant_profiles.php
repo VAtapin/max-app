@@ -409,7 +409,7 @@ function replace_consultant_items(int $profileId, string $table, string $column,
 function consultant_cashback_cards(int $profileId, ?array $legacyProfile = null): array
 {
     $stmt = db()->prepare(
-        'SELECT id, title, description, image_path, card_url, sort_order
+        'SELECT id, title, description, image_path, card_url, button_text, sort_order
          FROM profile_cashback_cards
          WHERE profile_id = :profile_id
          ORDER BY sort_order, id'
@@ -426,6 +426,7 @@ function consultant_cashback_cards(int $profileId, ?array $legacyProfile = null)
         'description' => (string)($legacyProfile['cashback_text'] ?? ''),
         'image_path' => (string)($legacyProfile['cashback_image_path'] ?? ''),
         'card_url' => (string)($legacyProfile['cashback_url'] ?? ''),
+        'button_text' => 'Оформить карту клиента',
         'sort_order' => 10,
     ]];
 }
@@ -438,6 +439,7 @@ function replace_consultant_cashback_cards(int $profileId, array $cards): void
             'description' => '',
             'image_path' => null,
             'card_url' => '',
+            'button_text' => 'Оформить карту клиента',
         ]];
     }
 
@@ -448,9 +450,9 @@ function replace_consultant_cashback_cards(int $profileId, array $cards): void
 
         $insert = db()->prepare(
             'INSERT INTO profile_cashback_cards
-                (profile_id, title, description, image_path, card_url, sort_order)
+                (profile_id, title, description, image_path, card_url, button_text, sort_order)
              VALUES
-                (:profile_id, :title, :description, :image_path, :card_url, :sort_order)'
+                (:profile_id, :title, :description, :image_path, :card_url, :button_text, :sort_order)'
         );
         foreach (array_values($cards) as $index => $card) {
             $insert->execute([
@@ -459,6 +461,7 @@ function replace_consultant_cashback_cards(int $profileId, array $cards): void
                 'description' => trim((string)($card['description'] ?? '')) ?: null,
                 'image_path' => trim((string)($card['image_path'] ?? '')) ?: null,
                 'card_url' => trim((string)($card['card_url'] ?? '')) ?: null,
+                'button_text' => trim((string)($card['button_text'] ?? '')) ?: 'Оформить карту клиента',
                 'sort_order' => ($index + 1) * 10,
             ]);
         }
