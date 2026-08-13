@@ -1143,12 +1143,12 @@ function renderOnboardingGate() {
                     <input name="last_name" required maxlength="190" value="${escapeHtml(lastName)}">
                 </label>
                 <label>
-                    <span>Номер телефона <small class="muted">(необязательно)</small></span>
-                    <input type="tel" name="phone" maxlength="50" autocomplete="tel" value="${escapeHtml(user.phone || '')}" placeholder="+7 999 123-45-67">
+                    <span>Номер телефона</span>
+                    <input type="tel" name="phone" maxlength="50" autocomplete="tel" value="${escapeHtml(user.phone || '')}">
                 </label>
                 <label>
-                    <span>Email <small class="muted">(необязательно)</small></span>
-                    <input type="email" name="email" maxlength="190" autocomplete="email" value="${escapeHtml(user.email || '')}" placeholder="name@example.com">
+                    <span>Email</span>
+                    <input type="email" name="email" maxlength="190" autocomplete="email" value="${escapeHtml(user.email || '')}">
                 </label>
                 <label>
                     <span>Пол *</span>
