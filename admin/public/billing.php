@@ -5,6 +5,9 @@ require_once __DIR__ . '/../app/core/permissions.php';
 require_once __DIR__ . '/../app/core/workspace_billing.php';
 
 $admin = require_auth();
+if (($admin['role'] ?? '') === 'superadmin') {
+    redirect('accounting.php');
+}
 if (!can_manage('billing_self', $admin)) {
     http_response_code(403);
     exit('Access denied');

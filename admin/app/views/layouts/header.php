@@ -75,7 +75,8 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                 <?php
                 $visibleItems = array_filter(
                     $navItems,
-                    static fn($item, $module) => $module === 'help' || can_manage((string)$module, $admin),
+                    static fn($item, $module) => ($module !== 'billing_self' || ($admin['role'] ?? '') !== 'superadmin')
+                        && ($module === 'help' || can_manage((string)$module, $admin)),
                     ARRAY_FILTER_USE_BOTH
                 );
                 ?>
