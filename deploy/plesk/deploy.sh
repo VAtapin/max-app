@@ -32,10 +32,11 @@ git pull --ff-only
 echo "Using the single application configuration: $ENV_FILE"
 rm -f admin/app/config/local.php bot/.env
 
-mkdir -p admin/uploads/products admin/uploads/content admin/uploads/tests admin/uploads/profiles admin/uploads/broadcasts admin/uploads/files admin/uploads/responses
+mkdir -p admin/uploads/products admin/uploads/content admin/uploads/tests admin/uploads/profiles admin/uploads/broadcasts admin/uploads/files admin/uploads/responses admin/uploads/payments storage/logs
 
 echo "Applying database migrations..."
 bash deploy/plesk/migrate-db.sh "$ENV_FILE"
+SWPRO_ENV_FILE="$ENV_FILE" "$PHP_BIN" admin/cron/run-billing.php
 echo "Checking the configured PHP database..."
 SWPRO_ENV_FILE="$ENV_FILE" "$PHP_BIN" -r \
   'require "admin/app/core/db.php"; echo "Database: ", db()->query("SELECT DATABASE()")->fetchColumn(), PHP_EOL;'

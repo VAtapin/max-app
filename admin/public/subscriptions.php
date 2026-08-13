@@ -37,6 +37,9 @@ function subscription_plan_defaults(): array
         'price_per_consultant' => null,
         'fixed_monthly_price' => null,
         'payment_terms' => 'Оплата подтверждается администратором вручную. Онлайн-касса на первом этапе не подключена.',
+        'payment_grace_days' => 5,
+        'discount_6' => 2,
+        'discount_12' => 5,
         'sort_order' => 100,
         'is_active' => 1,
     ];
@@ -60,6 +63,9 @@ function subscription_plan_payload_from_post(array $source, array $admin, ?array
     $payload['billing_mode'] = (string)($source['billing_mode'] ?? 'prepaid');
     $payload['billing_basis'] = (string)($source['billing_basis'] ?? 'branch');
     $payload['payment_terms'] = trim((string)($source['payment_terms'] ?? ''));
+    $payload['payment_grace_days'] = max(0, min(60, (int)($source['payment_grace_days'] ?? 5)));
+    $payload['discount_6'] = max(0, min(100, (float)str_replace(',', '.', (string)($source['discount_6'] ?? 2))));
+    $payload['discount_12'] = max(0, min(100, (float)str_replace(',', '.', (string)($source['discount_12'] ?? 5))));
     $payload['sort_order'] = (int)($source['sort_order'] ?? 100);
     $payload['is_active'] = isset($source['is_active']) ? 1 : 0;
 
@@ -193,6 +199,7 @@ function subscription_plan_save(array $payload, array $admin): int
         'price_per_consultant' => $payload['price_per_consultant'],
         'fixed_monthly_price' => $payload['fixed_monthly_price'],
         'payment_terms' => $payload['payment_terms'] !== '' ? $payload['payment_terms'] : null,
+        'payment_grace_days' => (int)$payload['payment_grace_days'],
         'sort_order' => (int)$payload['sort_order'],
         'is_active' => (int)$payload['is_active'],
     ];
@@ -217,11 +224,13 @@ function subscription_plan_save(array $payload, array $admin): int
                  price_per_consultant = :price_per_consultant,
                  fixed_monthly_price = :fixed_monthly_price,
                  payment_terms = :payment_terms,
+                 payment_grace_days = :payment_grace_days,
                  sort_order = :sort_order,
                  is_active = :is_active
              WHERE id = :id'
         );
         $stmt->execute($params);
+        subscription_plan_save_discounts((int)$payload['id'], $payload);
         log_activity('admin', (int)$admin['id'], 'update_subscription_plan', 'subscription_plans', (int)$payload['id']);
         return (int)$payload['id'];
     }
@@ -232,20 +241,38 @@ function subscription_plan_save(array $payload, array $admin): int
             direct_leader_limit, branch_leader_limit,
             direct_consultant_limit, branch_consultant_limit, per_child_consultant_limit,
             price_per_leader, price_per_consultant, fixed_monthly_price,
-            payment_terms, sort_order, is_active
+            payment_terms, payment_grace_days, sort_order, is_active
          ) VALUES (
             :owner_type, :owner_id, :slug, :title, :description, :billing_mode, :billing_basis,
             :direct_leader_limit, :branch_leader_limit,
             :direct_consultant_limit, :branch_consultant_limit, :per_child_consultant_limit,
             :price_per_leader, :price_per_consultant, :fixed_monthly_price,
-            :payment_terms, :sort_order, :is_active
+            :payment_terms, :payment_grace_days, :sort_order, :is_active
          )'
     );
     $stmt->execute($params);
     $newId = (int)db()->lastInsertId();
+    subscription_plan_save_discounts($newId, $payload);
     log_activity('admin', (int)$admin['id'], 'create_subscription_plan', 'subscription_plans', $newId);
 
     return $newId;
+}
+
+function subscription_plan_save_discounts(int $planId, array $payload): void
+{
+    $stmt = db()->prepare(
+        'INSERT INTO subscription_period_discounts
+            (subscription_plan_id, months, discount_percent, badge_text, is_active, sort_order)
+         VALUES (:plan_id, :months, :discount, :badge, 1, :sort_order)
+         ON DUPLICATE KEY UPDATE discount_percent = VALUES(discount_percent), badge_text = VALUES(badge_text), is_active = 1'
+    );
+    foreach ([
+        [1, 0, null, 10],
+        [6, (float)($payload['discount_6'] ?? 2), 'Выгодно', 20],
+        [12, (float)($payload['discount_12'] ?? 5), 'Максимальная выгода', 30],
+    ] as [$months, $discount, $badge, $sortOrder]) {
+        $stmt->execute(['plan_id' => $planId, 'months' => $months, 'discount' => $discount, 'badge' => $badge, 'sort_order' => $sortOrder]);
+    }
 }
 
 function subscription_plan_assigned_count(int $planId, ?array $admin = null): int
@@ -473,6 +500,12 @@ if (!isset($editPlan)) {
         $row = subscription_plan_row($id, false, $admin, true);
         if ($row) {
             $editPlan = array_merge($editPlan, $row);
+            $discountStmt = db()->prepare('SELECT months, discount_percent FROM subscription_period_discounts WHERE subscription_plan_id = :id');
+            $discountStmt->execute(['id' => $id]);
+            foreach ($discountStmt->fetchAll() as $discountRow) {
+                if ((int)$discountRow['months'] === 6) $editPlan['discount_6'] = (float)$discountRow['discount_percent'];
+                if ((int)$discountRow['months'] === 12) $editPlan['discount_12'] = (float)$discountRow['discount_percent'];
+            }
         } else {
             $errors[] = 'Подписка не найдена или недоступна для редактирования.';
             $action = 'list';
@@ -557,6 +590,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <label class="field"><span>Цена за лидера в месяц</span><input type="number" step="0.01" min="0" name="price_per_leader" value="<?= h((string)($editPlan['price_per_leader'] ?? '')) ?>" placeholder="0,00"></label>
             <label class="field"><span>Цена за консультанта в месяц</span><input type="number" step="0.01" min="0" name="price_per_consultant" value="<?= h((string)($editPlan['price_per_consultant'] ?? '')) ?>" placeholder="0,00"></label>
             <label class="field"><span>Базовая часть в месяц</span><input type="number" step="0.01" min="0" name="fixed_monthly_price" value="<?= h((string)($editPlan['fixed_monthly_price'] ?? '')) ?>" placeholder="если нужен минимум"></label>
+            <label class="field"><span>Дней на оплату счёта по факту</span><input type="number" min="0" max="60" name="payment_grace_days" value="<?= (int)($editPlan['payment_grace_days'] ?? 5) ?>"><small class="field-hint">Счёт формируется 1-го числа за прошедший календарный месяц. После этого срока ограничиваются только клиентские приложения должника.</small></label>
+            <label class="field"><span>Скидка при оплате за 6 месяцев, %</span><input type="number" step="0.01" min="0" max="100" name="discount_6" value="<?= h((string)($editPlan['discount_6'] ?? 2)) ?>"></label>
+            <label class="field"><span>Скидка при оплате за 12 месяцев, %</span><input type="number" step="0.01" min="0" max="100" name="discount_12" value="<?= h((string)($editPlan['discount_12'] ?? 5)) ?>"></label>
             <div class="field"><span>Формула начисления</span><strong id="subscription-plan-preview">—</strong></div>
             <label class="field wide"><span>Условия</span><textarea name="payment_terms" rows="4"><?= h((string)($editPlan['payment_terms'] ?? '')) ?></textarea></label>
             <label class="check-row"><input type="checkbox" name="is_active" value="1" <?= (int)($editPlan['is_active'] ?? 1) === 1 ? 'checked' : '' ?>><span>Подписка активна и доступна для выбора</span></label>

@@ -182,14 +182,15 @@ The deploy script pulls code, applies migrations, checks syntax, updates bot dep
 
 ## 10. Scheduled Tasks
 
-Create two Plesk scheduled tasks under the site system user:
+Create three Plesk scheduled tasks under the site system user:
 
 ```cron
 */5 * * * * cd /var/www/vhosts/swpro.ru/httpdocs && php admin/cron/run-broadcasts.php
 */15 * * * * cd /var/www/vhosts/swpro.ru/httpdocs && php admin/cron/run-automations.php
+15 0 * * * cd /var/www/vhosts/swpro.ru/httpdocs && php admin/cron/run-billing.php >> storage/logs/billing-cron.log 2>&1
 ```
 
-The second task sends unfinished check-up reminders after 24 hours, 3 days and 7 days, and inactivity messages after 14 and 30 days. Delivery is limited to daytime in the client's timezone.
+The second task sends unfinished check-up reminders after 24 hours, 3 days and 7 days, and inactivity messages after 14 and 30 days. Delivery is limited to daytime in the client's timezone. The third task creates invoices for the previous calendar month and updates individual workplace access after the payment deadline.
 
 ## 11. Smoke Test URLs
 

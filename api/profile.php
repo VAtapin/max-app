@@ -37,4 +37,8 @@ if (!$profile) {
     json_response(['error' => 'profile not found'], 404);
 }
 
+if (billing_profile_is_blocked($profile)) {
+    json_response(['error' => 'workspace_payment_required', 'message' => 'Страница временно недоступна.'], 402);
+}
+
 json_response(consultant_profile_payload($profile));

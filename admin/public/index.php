@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
 require_once __DIR__ . '/../app/core/client_journey.php';
+require_once __DIR__ . '/../app/core/workspace_billing.php';
 
 $admin = require_auth();
 $title = app_text('auto.dashboard');
@@ -206,9 +207,23 @@ $dashboardReseller = dashboard_reseller($admin);
 $referralOwner = $dashboardManager ?: $dashboardReseller;
 $referralTitle = $dashboardManager ? app_text('referrals.dashboard_title') : 'Реферальная ссылка лидера';
 $referralLinks = $referralOwner ? manager_referral_links($referralOwner) : [];
+$billingWorkspace = in_array($admin['role'] ?? '', ['reseller', 'manager'], true)
+    ? billing_workspace_for_admin($admin) : null;
+if ($billingWorkspace) {
+    billing_refresh_statuses();
+    $billingWorkspace = billing_workspace_for_admin($admin);
+}
 
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
+<?php if ($billingWorkspace): ?>
+    <section class="panel dashboard-billing-card <?= in_array($billingWorkspace['status'], ['overdue','suspended'], true) ? 'billing-overdue' : '' ?>">
+        <div><span class="eyebrow">Подписка рабочего места</span><h2><?= h(subscription_money_text((float)$billingWorkspace['monthly_price'])) ?> в месяц</h2>
+        <?php if ($billingWorkspace['billing_mode'] === 'prepaid'): ?><p>Оплачено до: <strong><?= h((string)($billingWorkspace['paid_until'] ?: 'нет оплаты')) ?></strong></p>
+        <?php else: ?><p>Расчёт по факту за календарный месяц. Просрочка учитывается только за завершённый месяц.</p><?php endif; ?></div>
+        <div><strong><?= $billingWorkspace['status'] === 'overdue' ? 'Есть задолженность' : ($billingWorkspace['status'] === 'due' ? 'Ожидается оплата' : 'Доступ активен') ?></strong><br><a class="button" href="billing.php">Открыть и оплатить</a></div>
+    </section>
+<?php endif; ?>
 <?php if ($referralOwner && $referralLinks): ?>
     <section class="panel referral-panel">
         <div>

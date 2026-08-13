@@ -47,8 +47,12 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                     'users' => ['Клиенты', 'crud.php?module=users'],
                     'results' => ['Результаты чек-апов', 'results.php'],
                     'leads' => ['Обращения', 'crud.php?module=leads'],
-                    'subscriptions' => ['Подписка', 'subscriptions.php'],
+                ],
+                'Подписка' => [
+                    'billing_self' => ['Моя подписка', 'billing.php'],
+                    'subscriptions' => ['Тарифы', 'subscriptions.php'],
                     'accounting' => ['Бухгалтерия', 'accounting.php'],
+                    'payment_methods' => ['Методы оплаты', 'payment_methods.php'],
                 ],
                 'Контент' => [
                     'categories' => ['Категории продуктов', 'crud.php?module=categories'],

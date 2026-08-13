@@ -344,6 +344,16 @@ INSERT INTO subscription_plans (
     30, 1
   );
 
+INSERT INTO subscription_period_discounts
+  (subscription_plan_id, months, discount_percent, badge_text, is_active, sort_order)
+SELECT id, 1, 0, NULL, 1, 10 FROM subscription_plans;
+INSERT INTO subscription_period_discounts
+  (subscription_plan_id, months, discount_percent, badge_text, is_active, sort_order)
+SELECT id, 6, 2, 'Выгодно', 1, 20 FROM subscription_plans;
+INSERT INTO subscription_period_discounts
+  (subscription_plan_id, months, discount_percent, badge_text, is_active, sort_order)
+SELECT id, 12, 5, 'Максимальная выгода', 1, 30 FROM subscription_plans;
+
 INSERT INTO settings (setting_key, setting_value, description) VALUES
 ('medical_disclaimer', 'Информация носит ознакомительный характер и не является медицинской рекомендацией. При вопросах о здоровье проконсультируйтесь со специалистом.', 'Дисклеймер для интерфейса и результатов чек-апа.'),
 ('project_name', 'SWPro Assistant', 'Название проекта.');

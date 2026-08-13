@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../admin/app/core/db.php';
 require_once __DIR__ . '/../admin/app/core/helpers.php';
 require_once __DIR__ . '/../admin/app/core/content_ownership.php';
+require_once __DIR__ . '/../admin/app/core/workspace_billing.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -117,6 +118,7 @@ function require_platform_user(?array $data = null): array
 
     $staffPreview = staff_preview_user((string)$platform, (string)$platformUserId);
     if ($staffPreview) {
+        enforce_workspace_access($staffPreview);
         return $staffPreview;
     }
 
@@ -168,7 +170,19 @@ function require_platform_user(?array $data = null): array
     }
 
     $user['current_platform'] = $platform;
+    enforce_workspace_access($user);
     return $user;
+}
+
+function enforce_workspace_access(array $user): void
+{
+    if (!empty($user['manager_id']) && billing_workspace_is_blocked('manager', (int)$user['manager_id'])) {
+        json_response(['error' => 'workspace_payment_required', 'message' => 'Страница временно недоступна.'], 402);
+    }
+    if (empty($user['manager_id']) && !empty($user['reseller_id'])
+        && billing_workspace_is_blocked('reseller', (int)$user['reseller_id'])) {
+        json_response(['error' => 'workspace_payment_required', 'message' => 'Страница временно недоступна.'], 402);
+    }
 }
 
 function referral_binding(?string $referralCode): ?array

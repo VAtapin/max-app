@@ -3,6 +3,7 @@
 require_once __DIR__ . '/admin/app/core/db.php';
 require_once __DIR__ . '/admin/app/core/helpers.php';
 require_once __DIR__ . '/admin/app/core/consultant_profiles.php';
+require_once __DIR__ . '/admin/app/core/workspace_billing.php';
 
 $slug = trim((string)($_GET['m'] ?? ''));
 $referralCode = consultant_referral_code($_GET['ref'] ?? $_POST['ref'] ?? null);
@@ -22,6 +23,7 @@ if (!$profile && $referralCode) {
 }
 
 $invalidReferralCode = $referralCode !== null && !$profile;
+$billingBlocked = $profile ? billing_profile_is_blocked($profile) : false;
 $payload = $profile ? consultant_profile_payload($profile) : null;
 $blocks = $payload['blocks'] ?? [];
 
@@ -199,7 +201,7 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= h($profile ? $profile['display_name'] . ' - SWPro' : 'SWPro') ?></title>
+<title><?= h($profile && !$billingBlocked ? $profile['display_name'] . ' - SWPro' : 'SWPro') ?></title>
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -208,7 +210,13 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
     <link rel="stylesheet" href="/public.css">
 </head>
 <body>
-<?php if (!$profile): ?>
+<?php if ($billingBlocked): ?>
+    <main class="landing-page"><section class="landing-hero"><div class="landing-copy">
+        <span class="eyebrow">SWPro Assistant</span>
+        <h1>Страница временно недоступна</h1>
+        <p>Пожалуйста, попробуйте открыть её позже или свяжитесь со своим консультантом другим способом.</p>
+    </div></section></main>
+<?php elseif (!$profile): ?>
     <main class="landing-page">
         <header class="landing-topnav">
             <a class="brand-link" href="/">SWPro</a>

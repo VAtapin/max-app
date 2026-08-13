@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
 require_once __DIR__ . '/../app/core/subscription_plans.php';
+require_once __DIR__ . '/../app/core/workspace_billing.php';
 require_once __DIR__ . '/../app/core/table_ui.php';
 
 $admin = require_auth();
@@ -288,6 +289,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             log_activity('admin', (int)$admin['id'], 'mark_leader_invoice_unpaid', 'leader_subscriptions', $id);
             redirect('accounting.php?success=unpaid');
         }
+        if ($postAction === 'confirm_manual_payment') {
+            if (($admin['role'] ?? '') !== 'superadmin') throw new RuntimeException('Недостаточно прав.');
+            $transactionId = (int)($_POST['transaction_id'] ?? 0);
+            $stmt = db()->prepare(
+                'SELECT pt.billing_invoice_id
+                 FROM payment_transactions pt
+                 JOIN payment_methods pm ON pm.id = pt.payment_method_id AND pm.method_type = "manual"
+                 JOIN billing_invoices bi ON bi.id = pt.billing_invoice_id AND bi.status IN ("awaiting_confirmation","overdue")
+                 WHERE pt.id = :id AND pt.status = "pending" LIMIT 1'
+            );
+            $stmt->execute(['id' => $transactionId]);
+            $invoiceId = (int)$stmt->fetchColumn();
+            if (!$invoiceId) throw new RuntimeException('Ручной платёж не найден или уже обработан.');
+            billing_complete_invoice($invoiceId, $transactionId, (int)$admin['id']);
+            log_activity('admin', (int)$admin['id'], 'confirm_manual_payment', 'payment_transactions', $transactionId);
+            redirect('accounting.php?success=manual_paid');
+        }
     } catch (Throwable $e) {
         $errors[] = 'Не удалось выполнить действие: ' . $e->getMessage();
     }
@@ -311,6 +329,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php if ($success === 'invoice_saved'): ?><div class="notice success">Начисление сохранено.</div><?php endif; ?>
 <?php if ($success === 'paid'): ?><div class="notice success">Оплата отмечена.</div><?php endif; ?>
 <?php if ($success === 'unpaid'): ?><div class="notice success">Отметка оплаты снята.</div><?php endif; ?>
+<?php if ($success === 'manual_paid'): ?><div class="notice success">Ручной платёж подтверждён, срок рабочего места обновлён.</div><?php endif; ?>
 <?php foreach ($errors as $error): ?><div class="alert"><?= h($error) ?></div><?php endforeach; ?>
 
 <section class="panel">
@@ -346,6 +365,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <th>Фактическое использование</th>
                 <th>Расчёт</th>
                 <th>К оплате</th>
+                <th>Рабочие места</th>
                 <th><?= render_admin_sort_link('paid_at', 'Оплата', $meta, ['paid_at' => '`paid_at`'], 'accounting.php') ?></th>
                 <th>Действия</th>
             </tr>
@@ -356,6 +376,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 $plan = accounting_plan_from_row($row);
                 $billing = $plan ? subscription_plan_usage_amount((int)$row['id'], $plan) : null;
                 $summary = $billing['summary'] ?? team_branch_summary((int)$row['id']);
+                $rootId = billing_root_reseller_id((int)$row['id']);
+                $workspaceSummary = $rootId === (int)$row['id'] ? billing_root_summary($rootId) : null;
                 ?>
                 <tr>
                     <td data-label="ID"><?= (int)$row['id'] ?></td>
@@ -400,6 +422,17 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         <?php if ($row['stored_amount_due'] !== null): ?>
                             <div class="cell-muted">Последнее начисление: <?= h(subscription_money_text((float)$row['stored_amount_due'])) ?></div>
                         <?php endif; ?>
+                    </td>
+                    <td data-label="Рабочие места">
+                        <?php if ($workspaceSummary): ?>
+                            <div class="compact-lines">
+                                <span>Мест: <strong><?= $workspaceSummary['workspaces'] ?></strong></span>
+                                <span>Оплачено: <strong><?= h(subscription_money_text($workspaceSummary['paid'])) ?></strong></span>
+                                <span>Задолженность: <strong><?= h(subscription_money_text($workspaceSummary['debt'])) ?></strong></span>
+                                <span>Должников: <strong><?= $workspaceSummary['debtors'] ?></strong></span>
+                                <a href="accounting_detail.php?root_id=<?= $rootId ?>">Открыть детализацию</a>
+                            </div>
+                        <?php else: ?><span class="cell-muted">В составе главной ветки</span><?php endif; ?>
                     </td>
                     <td data-label="Оплата">
                         <?= accounting_status_badge($row['invoice_status'] ?? null, $row['paid_at'] ?? null) ?>

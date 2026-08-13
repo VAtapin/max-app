@@ -43,6 +43,16 @@ The 47-question health check-up is a multiscale matrix. Each positive answer can
 - `api/`: authentication, onboarding, tests, notifications and leads.
 - `admin/`: leader and consultant cabinet.
 - `database/`: fresh schema, seed and tracked migrations.
+
+### Billing cron
+
+Run workspace billing daily. It safely synchronizes workplaces, creates the previous
+calendar month's invoices once, and applies overdue statuses after the configured
+payment term:
+
+```cron
+15 0 * * * cd /path/to/swpro && php admin/cron/run-billing.php >> storage/logs/billing-cron.log 2>&1
+```
 - `index.php`: consultant public mini-site.
 - `legal.php`: published legal documents.
 - `deploy/plesk/`: Plesk installation and deployment scripts.
