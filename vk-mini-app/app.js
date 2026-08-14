@@ -23,6 +23,8 @@ const state = {
     today: null,
     accountSuggestions: null,
     webMergeLink: null,
+    webMergeCheckMessage: '',
+    webMergeCheckState: '',
     answerPending: false,
 };
 
@@ -926,8 +928,13 @@ function renderWebMergeGate() {
             <div class="detail-actions">
                 ${links.telegram ? `<a class="primary button-link" href="${escapeHtml(links.telegram)}" target="_blank" rel="noopener">Подключить Telegram</a>` : ''}
                 ${links.vk ? `<a class="secondary button-link" href="${escapeHtml(links.vk)}" target="_blank" rel="noopener">Подключить VK</a>` : ''}
-                <button class="secondary" data-action="check-web-merge">Я подключил аккаунт — проверить</button>
+                <button class="secondary" data-action="check-web-merge">Проверить подключение</button>
             </div>
+            ${state.webMergeCheckMessage ? `
+                <div class="web-merge-check-status ${escapeHtml(state.webMergeCheckState)}" role="status" aria-live="polite">
+                    ${escapeHtml(state.webMergeCheckMessage)}
+                </div>
+            ` : ''}
             <p class="muted">Подключайте только свой личный аккаунт. После входа данные автоматически объединятся.</p>
         </section>
     `;
@@ -2862,17 +2869,32 @@ page.addEventListener('click', async (event) => {
     if (target.dataset.action === 'create-link-token') await renderAccountLinkPanel();
     if (target.dataset.action === 'check-web-merge') {
         target.disabled = true;
+        const originalLabel = target.textContent;
+        target.textContent = 'Проверяем…';
+        state.webMergeCheckMessage = '';
+        state.webMergeCheckState = '';
         try {
             await loadOnboarding();
             state.webMergeLink = null;
             if (state.onboarding?.web_merge_required) {
                 await loadWebMergeLink();
+                state.webMergeCheckState = 'warning';
+                state.webMergeCheckMessage = 'Подключённый аккаунт пока не найден. Завершите вход через VK или Telegram, затем вернитесь сюда и повторите проверку.';
             } else {
+                state.webMergeCheckState = 'success';
+                state.webMergeCheckMessage = 'Аккаунт подключён. Открываем ваш профиль…';
                 await Promise.all([loadConsultantProfile(), loadNotifications(), loadAccountSuggestions()]);
             }
             await render();
+        } catch (error) {
+            state.webMergeCheckState = 'error';
+            state.webMergeCheckMessage = friendlyError(error) || 'Не удалось проверить подключение. Попробуйте ещё раз.';
+            renderWebMergeGate();
         } finally {
-            target.disabled = false;
+            if (target.isConnected) {
+                target.disabled = false;
+                target.textContent = originalLabel;
+            }
         }
     }
     if (target.dataset.pageTarget) setPage(target.dataset.pageTarget);

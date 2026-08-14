@@ -57,6 +57,28 @@ body {
     background: #fef3c7;
 }
 
+.web-merge-check-status {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border: 1px solid #d6a94c;
+    border-radius: 12px;
+    background: #fff8dc;
+    color: #7c4a03;
+    line-height: 1.45;
+}
+
+.web-merge-check-status.success {
+    border-color: #86c9a5;
+    background: #ecfdf3;
+    color: #166534;
+}
+
+.web-merge-check-status.error {
+    border-color: #e6a4a4;
+    background: #fff1f2;
+    color: #9f1239;
+}
+
 .app {
     max-width: 520px;
     margin: 0 auto;
