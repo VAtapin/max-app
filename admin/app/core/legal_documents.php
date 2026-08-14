@@ -176,12 +176,12 @@ function legal_leader_party(?int $resellerId): ?array
     $publicUrl = rtrim((string)($config['app']['public_url'] ?? 'https://swpro.ru'), '/');
     return [
         'id' => (int)$row['id'],
-        'name' => trim((string)($row['legal_name'] ?: $row['billing_name'] ?: $row['name'])),
+        'name' => trim((string)$row['name']),
         'status' => trim((string)($row['legal_status'] ?? '')),
         'inn' => trim((string)($row['legal_inn'] ?: $row['billing_inn'])),
         'address' => trim((string)($row['legal_address'] ?? '')),
-        'email' => trim((string)($row['legal_email'] ?: $row['billing_email'] ?: $row['email'])),
-        'phone' => trim((string)($row['legal_phone'] ?: $row['phone'])),
+        'email' => trim((string)$row['email']),
+        'phone' => trim((string)$row['phone']),
         'site' => $publicUrl . '/?ref=' . rawurlencode((string)$row['referral_code']),
     ];
 }

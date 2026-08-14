@@ -769,7 +769,6 @@ function promote_end_user_to_work_account(int $endUserId, array $post, array $ad
                 'name' => $name,
                 'email' => $email,
                 'phone' => $phone !== '' ? $phone : null,
-                'billing_email' => $email,
                 'referral_code' => $referralCode,
                 'is_active' => 1,
             ];
@@ -779,8 +778,8 @@ function promote_end_user_to_work_account(int $endUserId, array $post, array $ad
             }
 
             $insert = $pdo->prepare(
-                'INSERT INTO resellers (parent_reseller_id, name, email, phone, billing_email, referral_code, is_active)
-                 VALUES (:parent_reseller_id, :name, :email, :phone, :billing_email, :referral_code, :is_active)'
+                'INSERT INTO resellers (parent_reseller_id, name, email, phone, referral_code, is_active)
+                 VALUES (:parent_reseller_id, :name, :email, :phone, :referral_code, :is_active)'
             );
             $insert->execute($payload);
             $resellerId = (int)$pdo->lastInsertId();

@@ -4,7 +4,7 @@ return [
     'resellers' => [
         'title' => app_text('auto.k_32cea47742bf'),
         'table' => 'resellers',
-        'columns' => ['id', 'parent_reseller_id', 'subscription_plan_id', 'name', 'email', 'phone', 'legal_name', 'legal_status', 'legal_inn', 'legal_address', 'legal_email', 'legal_phone', 'billing_name', 'billing_inn', 'billing_email', 'billing_comment', 'referral_code', 'manager_limit', 'direct_leader_limit', 'branch_leader_limit', 'direct_manager_limit', 'branch_manager_limit', 'per_child_manager_limit', 'price_per_leader', 'price_per_consultant', 'is_active'],
+        'columns' => ['id', 'parent_reseller_id', 'subscription_plan_id', 'name', 'email', 'phone', 'legal_status', 'legal_inn', 'legal_address', 'referral_code', 'manager_limit', 'direct_leader_limit', 'branch_leader_limit', 'direct_manager_limit', 'branch_manager_limit', 'per_child_manager_limit', 'price_per_leader', 'price_per_consultant', 'is_active'],
         'fields' => [
             'parent_reseller_id' => ['label' => 'Вышестоящий лидер', 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
             'template_id' => [
@@ -16,19 +16,12 @@ return [
                 'virtual' => true,
                 'hint' => 'Этот пункт применяет мини-сайт вышестоящего лидера. Выберите шаблон только если нужна отдельная стартовая страница.',
             ],
-            'name' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
-            'email' => ['label' => 'Email', 'type' => 'email'],
+            'name' => ['label' => 'ФИО / наименование', 'required' => true, 'hint' => 'Используется в кабинете, юридических документах и счетах.'],
+            'email' => ['label' => 'Email', 'type' => 'email', 'hint' => 'Используется для связи, обращений по персональным данным и счетов.'],
             'phone' => ['label' => app_text('auto.k_87ec4b495b56')],
-            'legal_name' => ['label' => 'ФИО / наименование оператора данных', 'hint' => 'Указывается в юридических документах мини-сайта.'],
             'legal_status' => ['label' => 'Правовой статус', 'hint' => 'Например: плательщик налога на профессиональный доход или индивидуальный предприниматель.'],
-            'legal_inn' => ['label' => 'ИНН оператора данных'],
-            'legal_address' => ['label' => 'Адрес оператора данных'],
-            'legal_email' => ['label' => 'Email по персональным данным', 'type' => 'email'],
-            'legal_phone' => ['label' => 'Телефон оператора данных'],
-            'billing_name' => ['label' => 'Плательщик / юр. лицо'],
-            'billing_inn' => ['label' => 'ИНН плательщика'],
-            'billing_email' => ['label' => 'Email для счетов', 'type' => 'email'],
-            'billing_comment' => ['label' => 'Комментарий для оплаты', 'type' => 'textarea'],
+            'legal_inn' => ['label' => 'ИНН'],
+            'legal_address' => ['label' => 'Адрес'],
             'subscription_plan_id' => [
                 'label' => 'Подписка',
                 'type' => 'select',

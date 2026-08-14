@@ -102,7 +102,7 @@ function crud_display_columns(string $moduleKey): array
             'contacts' => app_text('auto.k_dba0fcb2cbbb'),
             'referral_code' => app_text('auto.k_b162c37f62ea'),
             'team_capacity' => 'Ветка',
-            'billing_summary' => 'Плательщик',
+            'billing_summary' => 'Реквизиты',
             'subscription_summary' => 'Подписка',
             'users_count' => app_text('auto.k_0f0b8f55edcc'),
             'state' => app_text('auto.k_f7f293b5c58c'),
@@ -449,8 +449,8 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
         }
         return [
             "SELECT r.id, r.parent_reseller_id, parent.name AS parent_name,
-                    r.name, r.email, r.phone, r.billing_name, r.billing_inn, r.billing_email,
-                    r.billing_comment, r.referral_code, r.subscription_plan_id,
+                    r.name, r.email, r.phone, r.legal_status, r.legal_inn, r.legal_address,
+                    r.referral_code, r.subscription_plan_id,
                     COALESCE(sp.direct_consultant_limit, r.manager_limit) AS manager_limit,
                     COALESCE(sp.direct_leader_limit, r.direct_leader_limit) AS direct_leader_limit,
                     COALESCE(sp.branch_leader_limit, r.branch_leader_limit) AS branch_leader_limit,
@@ -732,14 +732,14 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
 
     if ($moduleKey === 'resellers' && $column === 'billing_summary') {
         $items = [];
-        if (trim((string)($row['billing_name'] ?? '')) !== '') {
-            $items[] = (string)$row['billing_name'];
+        if (trim((string)($row['name'] ?? '')) !== '') {
+            $items[] = (string)$row['name'];
         }
-        if (trim((string)($row['billing_inn'] ?? '')) !== '') {
-            $items[] = 'ИНН ' . $row['billing_inn'];
+        if (trim((string)($row['legal_inn'] ?? '')) !== '') {
+            $items[] = 'ИНН ' . $row['legal_inn'];
         }
-        if (trim((string)($row['billing_email'] ?? '')) !== '') {
-            $items[] = (string)$row['billing_email'];
+        if (trim((string)($row['email'] ?? '')) !== '') {
+            $items[] = (string)$row['email'];
         }
         return $items ? implode("\n", $items) : app_text('auto.k_1b93795b9768');
     }
@@ -1073,7 +1073,7 @@ function crud_table_request(): array
 function crud_search_columns(string $moduleKey): array
 {
     return match ($moduleKey) {
-        'resellers' => ['id', 'name', 'parent_name', 'email', 'phone', 'billing_name', 'billing_email', 'referral_code', 'subscription_plan_title', 'subscription_status', 'state'],
+        'resellers' => ['id', 'name', 'parent_name', 'email', 'phone', 'legal_inn', 'referral_code', 'subscription_plan_title', 'subscription_status', 'state'],
         'managers' => ['id', 'name', 'email', 'phone', 'referral_code', 'reseller_name', 'state'],
         'users' => ['id', 'full_name', 'username', 'platform', 'platform_user_id', 'city', 'reseller_name', 'manager_name', 'client_stage', 'platform_accounts_summary'],
         'platform_accounts' => ['id', 'full_name', 'user_username', 'display_name', 'username', 'platform', 'platform_user_id'],
@@ -1192,7 +1192,7 @@ function crud_paginated_rows(string $moduleKey, string $sql, array $params, arra
         'id', 'name', 'title', 'email', 'phone', 'username', 'full_name', 'parent_name', 'reseller_name',
         'manager_name', 'platform', 'platform_user_id', 'city', 'referral_code', 'subscription_plan_title',
         'subscription_status', 'owner_label', 'category_title', 'status', 'state', 'external_id',
-        'platform_accounts_summary', 'billing_name', 'billing_email',
+        'platform_accounts_summary', 'legal_inn',
     ]));
 
     return admin_table_paginated_rows($sql, $params, crud_sort_columns($moduleKey), $searchColumns, 'id', 'desc');
