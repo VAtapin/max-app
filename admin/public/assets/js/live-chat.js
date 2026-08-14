@@ -25,6 +25,59 @@
     const replyAttention = (item) => Number(item.needs_reply) > 0
         ? '<em class="dashboard-chat-reply-needed"><i aria-hidden="true">!</i> Нужно ответить</em>'
         : '';
+    const safeMediaUrl = (value) => {
+        const url = String(value || '').trim();
+        if (!url || /^(?:javascript|data):/i.test(url)) return '';
+        return /^(?:https?:\/\/|\/|\.\/|\.\.\/)/i.test(url) || !/^[a-z][a-z0-9+.-]*:/i.test(url) ? url : '';
+    };
+    const largestImageUrl = (images) => {
+        if (!Array.isArray(images)) return '';
+        const sorted = [...images].sort((left, right) =>
+            (Number(right?.width || 0) * Number(right?.height || 0))
+            - (Number(left?.width || 0) * Number(left?.height || 0))
+        );
+        return safeMediaUrl(sorted.find(item => item?.url)?.url || '');
+    };
+    const attachmentInfo = (attachment) => {
+        if (typeof attachment === 'string') {
+            return {type: '', title: 'Вложение', url: safeMediaUrl(attachment)};
+        }
+        if (!attachment || typeof attachment !== 'object') return {type: '', title: 'Вложение', url: ''};
+        const type = String(attachment.type || '').toLowerCase();
+        const raw = attachment.raw && typeof attachment.raw === 'object' ? attachment.raw : attachment;
+        const payload = raw[type] && typeof raw[type] === 'object' ? raw[type] : {};
+        let url = safeMediaUrl(attachment.url || payload.url || '');
+        if (!url && type === 'photo') url = largestImageUrl(payload.sizes);
+        if (!url && type === 'sticker') url = largestImageUrl(payload.images?.length ? payload.images : payload.images_with_background);
+        if (!url && type === 'audio_message') url = safeMediaUrl(payload.link_mp3 || payload.link_ogg || '');
+        if (!url && type === 'video' && payload.owner_id && payload.id) {
+            url = `https://vk.com/video${encodeURIComponent(payload.owner_id)}_${encodeURIComponent(payload.id)}${payload.access_key ? `_${encodeURIComponent(payload.access_key)}` : ''}`;
+        }
+        return {type, title: String(attachment.title || '').trim() || 'Вложение', url};
+    };
+    const attachmentMarkup = (attachment) => {
+        const info = attachmentInfo(attachment);
+        if (!info.url) return `<span class="dashboard-chat-attachment-file">${escapeHtml(info.title)}</span>`;
+        const safeUrl = escapeHtml(info.url);
+        const safeTitle = escapeHtml(info.title);
+        const pathname = info.url.split(/[?#]/)[0].toLowerCase();
+        const isImage = ['photo', 'sticker'].includes(info.type) || /\.(png|jpe?g|webp|gif)$/.test(pathname);
+        const isAudio = ['audio', 'audio_message'].includes(info.type) || /\.(mp3|m4a|ogg|oga|wav|opus)$/.test(pathname) || pathname.includes('/api/voice_media.php');
+        const isDirectVideo = /\.(mp4|webm|mov|m4v|ogv)$/.test(pathname);
+        if (isImage) {
+            return `<a class="dashboard-chat-attachment-image" href="${safeUrl}" target="_blank" rel="noopener" title="${safeTitle}"><img src="${safeUrl}" alt="${safeTitle}" loading="lazy"><span>${safeTitle}</span></a>`;
+        }
+        if (isAudio) {
+            return `<div class="dashboard-chat-attachment-player"><span>${safeTitle}</span><audio controls preload="metadata" src="${safeUrl}"></audio></div>`;
+        }
+        if (info.type === 'video' && !isDirectVideo) {
+            return `<a class="dashboard-chat-attachment-file" href="${safeUrl}" target="_blank" rel="noopener">▶ ${safeTitle}</a>`;
+        }
+        if (isDirectVideo) {
+            return `<div class="dashboard-chat-attachment-player"><span>${safeTitle}</span><video controls preload="metadata" src="${safeUrl}"></video></div>`;
+        }
+        return `<a class="dashboard-chat-attachment-file" href="${safeUrl}" target="_blank" rel="noopener">↗ ${safeTitle}</a>`;
+    };
     const contactBadges = (item) => {
         const labels = String(item.contact_platforms || '').split(',').filter(Boolean);
         if (String(item.email || '').trim()) labels.push('Email');
@@ -51,10 +104,15 @@
     const renderMessages = (messages) => {
         if (!messages.length) { elements.messages.innerHTML = '<div class="empty-state">Сообщений пока нет. Напишите первое сообщение.</div>'; state.lastMessageId = 0; return; }
         elements.messages.innerHTML = messages.map(message => {
-            const attachments = (message.attachments || []).map(path => typeof path === 'string' ? `<a href="${escapeHtml(path)}" target="_blank" rel="noopener">Вложение</a>` : '').join('');
+            const attachmentItems = Array.isArray(message.attachments)
+                ? message.attachments
+                : (message.attachments ? [message.attachments] : []);
+            const attachments = attachmentItems.map(attachmentMarkup).join('');
             const status = message.status === 'failed' ? `<small class="chat-message-error">Ошибка отправки</small>` : '';
             const senderClass = message.sender_type === 'client' ? 'is-client' : (message.sender_type === 'ai' ? 'is-ai' : 'is-admin');
-            return `<article class="dashboard-chat-message ${senderClass}"><div><strong>${escapeHtml(message.sender_name || (message.sender_type === 'admin' ? 'Команда' : 'Клиент'))}</strong><span>${escapeHtml(message.channel === 'internal' ? '' : message.channel)} ${escapeHtml(dateLabel(message.created_at))}</span></div><p>${escapeHtml(message.message_text).replace(/\n/g, '<br>')}</p>${attachments ? `<div class="dashboard-chat-attachments">${attachments}</div>` : ''}${status}</article>`;
+            const placeholderOnly = attachments && String(message.message_text || '').trim() === 'Клиент отправил вложение без текста.';
+            const text = placeholderOnly ? '' : String(message.message_text || '');
+            return `<article class="dashboard-chat-message ${senderClass}"><div><strong>${escapeHtml(message.sender_name || (message.sender_type === 'admin' ? 'Команда' : 'Клиент'))}</strong><span>${escapeHtml(message.channel === 'internal' ? '' : message.channel)} ${escapeHtml(dateLabel(message.created_at))}</span></div>${text ? `<p>${escapeHtml(text).replace(/\n/g, '<br>')}</p>` : ''}${attachments ? `<div class="dashboard-chat-attachments">${attachments}</div>` : ''}${status}</article>`;
         }).join('');
         state.lastMessageId = Math.max(...messages.map(message => Number(message.id) || 0));
         elements.messages.scrollTop = elements.messages.scrollHeight;

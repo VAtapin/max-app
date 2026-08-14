@@ -1626,6 +1626,12 @@ button:disabled {
 .dashboard-chat-message > div:first-child strong { color: #25434a; font-size: 11px; }
 .dashboard-chat-message p { margin: 5px 0 0; line-height: 1.45; overflow-wrap: anywhere; }
 .dashboard-chat-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.dashboard-chat-attachment-image { display: grid; gap: 4px; color: var(--text); font-size: 11px; text-decoration: none; }
+.dashboard-chat-attachment-image img { display: block; width: min(240px, 100%); max-height: 260px; border: 1px solid var(--line); border-radius: 12px; object-fit: contain; background: #f7fafb; }
+.dashboard-chat-attachment-player { display: grid; gap: 5px; width: min(100%, 420px); color: var(--muted); font-size: 11px; }
+.dashboard-chat-attachment-player audio { width: min(100%, 360px); height: 38px; }
+.dashboard-chat-attachment-player video { display: block; width: min(100%, 420px); max-height: 360px; border-radius: 12px; background: #0f172a; }
+.dashboard-chat-attachment-file { display: inline-flex; align-items: center; min-height: 34px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.72); color: var(--accent-dark); font-size: 12px; font-weight: 700; text-decoration: none; }
 .ai-voice-results { display: grid; gap: 14px; }
 .ai-voice-item { display: grid; gap: 12px; }
 .ai-voice-item-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

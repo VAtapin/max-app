@@ -97,7 +97,7 @@ function live_chat_backfill_client(int $endUserId): int
     $threadId = live_chat_ensure_client_thread($endUserId);
     $leadStmt = db()->prepare('SELECT id, source_platform, message, attachments_json, created_at FROM leads WHERE end_user_id = :user_id ORDER BY id');
     $leadStmt->execute(['user_id' => $endUserId]);
-    $insert = db()->prepare('INSERT IGNORE INTO chat_messages (thread_id, sender_type, sender_end_user_id, channel, message_text, attachments_json, status, dedupe_key, created_at) VALUES (:thread_id, "client", :user_id, :channel, :message, :attachments, "delivered", :dedupe, :created_at)');
+    $insert = db()->prepare('INSERT INTO chat_messages (thread_id, sender_type, sender_end_user_id, channel, message_text, attachments_json, status, dedupe_key, created_at) VALUES (:thread_id, "client", :user_id, :channel, :message, :attachments, "delivered", :dedupe, :created_at) ON DUPLICATE KEY UPDATE attachments_json = IF(chat_messages.attachments_json IS NULL OR JSON_LENGTH(chat_messages.attachments_json) = 0, VALUES(attachments_json), chat_messages.attachments_json)');
     foreach ($leadStmt->fetchAll() as $row) {
         $insert->execute(['thread_id' => $threadId, 'user_id' => $endUserId, 'channel' => normalize_platform((string)$row['source_platform']) ?: 'web', 'message' => (string)$row['message'], 'attachments' => $row['attachments_json'], 'dedupe' => 'legacy-lead:' . (int)$row['id'], 'created_at' => $row['created_at']]);
     }
