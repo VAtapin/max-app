@@ -401,7 +401,14 @@ function ai_openai_response(array $payload): array
         $text = trim($text);
     }
     if ($text === '') {
-        throw new RuntimeException('OpenAI не вернул текст ответа.');
+        $incompleteReason = (string)($json['incomplete_details']['reason'] ?? '');
+        if (($json['status'] ?? '') === 'incomplete' && $incompleteReason === 'max_output_tokens') {
+            throw new RuntimeException('OpenAI не успел сформировать текст: исчерпан лимит токенов ответа.');
+        }
+        if (($json['status'] ?? '') === 'failed') {
+            throw new RuntimeException('OpenAI не смог завершить формирование ответа.');
+        }
+        throw new RuntimeException('OpenAI принял запрос, но не вернул текст ответа.');
     }
 
     return [
@@ -436,7 +443,7 @@ function ai_openai_generate(string $question, array $sources, bool $isAdmin): ar
         'instructions' => mb_substr($instructions, 0, 7000, 'UTF-8'),
         'input' => "Вопрос пользователя:\n" . ai_redact_external_text($question) . "\n\nРазрешённые источники:\n" . implode("\n\n", $sourceBlocks),
         'reasoning' => ['effort' => 'low'],
-        'max_output_tokens' => 900,
+        'max_output_tokens' => 1200,
         'store' => false,
     ]);
 }
@@ -448,7 +455,7 @@ function ai_openai_test(string $model): array
         'instructions' => 'Это техническая проверка подключения. Не добавляй никаких пояснений.',
         'input' => 'Ответь одним словом: готово.',
         'reasoning' => ['effort' => 'low'],
-        'max_output_tokens' => 64,
+        'max_output_tokens' => 512,
         'store' => false,
     ]);
 }
