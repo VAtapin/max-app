@@ -381,6 +381,87 @@ function ai_openai_model(?string $model = null): string
     return $model;
 }
 
+function ai_answer_complexity(string $question, array $sources, bool $isAdmin): array
+{
+    $normalized = mb_strtolower(trim($question), 'UTF-8');
+    $score = 0;
+    $reasons = [];
+    $checkupCount = 0;
+    $productCount = 0;
+    $hasRestrictions = false;
+
+    foreach ($sources as $source) {
+        $key = (string)($source['source_key'] ?? '');
+        $content = mb_strtolower((string)($source['content'] ?? ''), 'UTF-8');
+        if (str_starts_with($key, 'checkup:')) {
+            $checkupCount++;
+        } elseif (str_starts_with($key, 'product:')) {
+            $productCount++;
+        }
+        if (preg_match('/противопоказ|исключени|предупреждени|передать человеку|эскалац/u', $content)) {
+            $hasRestrictions = true;
+        }
+    }
+
+    $analysisIntent = (bool)preg_match('/(?:^|[^\p{L}])(проанализир\p{L}*|сравни\p{L}*|сопостав\p{L}*|взаимосвяз\p{L}*|комплексн\p{L}*|учти\p{L}*|учитывая|с учетом|с учётом|общ(?:ий|ая|ее) вывод|план действий)(?:$|[^\p{L}])/u', $normalized);
+    $restrictionIntent = (bool)preg_match('/(?:^|[^\p{L}])(противопоказ\p{L}*|ограничени\p{L}*|исключени\p{L}*|совместим\p{L}*|можно ли принимать|безопасн\p{L}*)(?:$|[^\p{L}])/u', $normalized);
+
+    if ($checkupCount >= 2) {
+        $score += 3;
+        $reasons[] = 'several_checkup_results';
+    }
+    if ($checkupCount >= 1 && $productCount >= 1) {
+        $score += 2;
+        $reasons[] = 'checkup_and_product';
+    }
+    if ($analysisIntent) {
+        $score += 2;
+        $reasons[] = 'analysis_intent';
+    }
+    if ($restrictionIntent && $hasRestrictions) {
+        $score += 2;
+        $reasons[] = 'restrictions';
+    }
+    if (mb_strlen($question, 'UTF-8') >= 700) {
+        $score += 1;
+        $reasons[] = 'long_question';
+    }
+    if (count($sources) >= 4 && $analysisIntent) {
+        $score += 1;
+        $reasons[] = 'many_sources';
+    }
+
+    // A normal HELP lookup needs a precise excerpt, not a more expensive model.
+    if ($isAdmin && !$analysisIntent && !$restrictionIntent) {
+        $score = min($score, 2);
+    }
+
+    return ['score' => $score, 'reasons' => array_values(array_unique($reasons))];
+}
+
+function ai_answer_route(string $question, array $sources, bool $isAdmin): array
+{
+    $complexity = ai_answer_complexity($question, $sources, $isAdmin);
+    $threshold = max(3, min(10, (int)ai_setting('ai.complexity_threshold', '4')));
+    $complex = ai_setting('ai.smart_routing_enabled', '1') === '1'
+        && $complexity['score'] >= $threshold;
+
+    return [
+        'route' => $complex ? 'complex' : 'standard',
+        'model' => ai_openai_model($complex
+            ? ai_setting('ai.complex_model', 'gpt-5')
+            : ai_setting('ai.text_model', 'gpt-5-mini')),
+        'score' => $complexity['score'],
+        'threshold' => $threshold,
+        'reasons' => $complexity['reasons'],
+        'source_limit' => $complex ? 4 : 3,
+        'source_chars' => $complex ? 3000 : 2200,
+        'max_output_tokens' => $complex
+            ? max(500, min(3000, (int)ai_setting('ai.complex_max_output_tokens', '1100')))
+            : max(300, min(2000, (int)ai_setting('ai.standard_max_output_tokens', '700'))),
+    ];
+}
+
 function ai_redact_external_text(string $value): string
 {
     $value = preg_replace('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/iu', '[email скрыт]', $value) ?? $value;
@@ -471,12 +552,12 @@ function ai_openai_response(array $payload): array
 
 function ai_openai_generate(string $question, array $sources, bool $isAdmin, array $personalization = []): array
 {
-    $model = ai_openai_model();
+    $route = ai_answer_route($question, $sources, $isAdmin);
     $ruleKey = $isAdmin ? 'ai.admin_system_prompt' : 'ai.client_system_prompt';
     $rules = trim((string)ai_setting($ruleKey, ''));
     $sourceBlocks = [];
-    foreach (array_slice($sources, 0, 4) as $index => $source) {
-        $content = ai_redact_external_text(mb_substr(trim((string)($source['content'] ?? '')), 0, 3500, 'UTF-8'));
+    foreach (array_slice($sources, 0, $route['source_limit']) as $index => $source) {
+        $content = ai_redact_external_text(mb_substr(trim((string)($source['content'] ?? '')), 0, $route['source_chars'], 'UTF-8'));
         $sourceBlocks[] = sprintf("[Источник %d: %s]\n%s", $index + 1, (string)($source['source_label'] ?? $source['title'] ?? 'SWPro'), $content);
     }
     $instructions = trim($rules . "\n\n" . implode("\n", [
@@ -503,16 +584,17 @@ function ai_openai_generate(string $question, array $sources, bool $isAdmin, arr
             $city !== '' ? 'Город: ' . $city : null,
         ]);
     }
-    return ai_openai_response([
-        'model' => $model,
+    $generated = ai_openai_response([
+        'model' => $route['model'],
         'instructions' => mb_substr($instructions, 0, 7000, 'UTF-8'),
         'input' => "Вопрос пользователя:\n" . ai_redact_external_text($question)
             . ($personalLines ? "\n\nКонтекст пользователя:\n" . implode("\n", $personalLines) : '')
             . "\n\nРазрешённые источники:\n" . implode("\n\n", $sourceBlocks),
         'reasoning' => ['effort' => 'low'],
-        'max_output_tokens' => 1200,
+        'max_output_tokens' => $route['max_output_tokens'],
         'store' => false,
     ]);
+    return $generated + ['route' => $route['route'], 'routing' => $route];
 }
 
 function ai_openai_studio_draft(string $type, string $subject, string $facts, array $personalization = []): array
@@ -660,7 +742,7 @@ function ai_answer(string $question, string $audience, array $actor, string $cha
                     'age' => $age > 0 ? (string)$age : '',
                     'city' => trim((string)($actor['city'] ?? '')),
                 ]);
-                $answerSources = $safeSources;
+                $answerSources = array_slice($safeSources, 0, (int)$generated['routing']['source_limit']);
                 $provider = 'openai';
                 $model = (string)$generated['model'];
                 $usageMetadata = [
@@ -668,6 +750,10 @@ function ai_answer(string $question, string $audience, array $actor, string $cha
                     'input_tokens' => $generated['input_tokens'],
                     'output_tokens' => $generated['output_tokens'],
                     'total_tokens' => $generated['total_tokens'],
+                    'route' => $generated['route'],
+                    'routing_score' => $generated['routing']['score'],
+                    'routing_threshold' => $generated['routing']['threshold'],
+                    'routing_reasons' => $generated['routing']['reasons'],
                 ];
                 $generatedText = trim((string)$generated['text']);
                 if (str_contains($generatedText, 'SWPRO_NO_RELEVANT_SOURCE')) {

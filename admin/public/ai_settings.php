@@ -27,6 +27,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'ai.text_model' => trim((string)($_POST['text_model'] ?? 'gpt-5-mini')),
         'ai.complex_model' => trim((string)($_POST['complex_model'] ?? 'gpt-5')),
         'ai.studio_model' => trim((string)($_POST['studio_model'] ?? 'gpt-5-mini')),
+        'ai.smart_routing_enabled' => isset($_POST['smart_routing_enabled']) ? '1' : '0',
+        'ai.complexity_threshold' => (string)max(3, min(10, (int)($_POST['complexity_threshold'] ?? 4))),
+        'ai.standard_max_output_tokens' => (string)max(300, min(2000, (int)($_POST['standard_max_output_tokens'] ?? 700))),
+        'ai.complex_max_output_tokens' => (string)max(500, min(3000, (int)($_POST['complex_max_output_tokens'] ?? 1100))),
         'ai.openai_tts_model' => trim((string)($_POST['openai_tts_model'] ?? 'gpt-4o-mini-tts')),
         'ai.openai_voice' => trim((string)($_POST['openai_voice'] ?? 'coral')),
         'ai.openai_voice_instructions' => trim((string)($_POST['openai_voice_instructions'] ?? '')),
@@ -84,10 +88,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save' && $values['ai.video_provider'] !== 'disabled' && !ai_video_provider_configured($values['ai.video_provider'])) {
         $errors[] = 'Для выбранного видеопровайдера не найден ' . strtoupper($values['ai.video_provider']) . '_API_KEY на сервере.';
     }
-    if (!$errors && $action === 'test_openai') {
+    if (!$errors && in_array($action, ['test_openai', 'test_complex'], true)) {
         try {
-            $test = ai_openai_test($values['ai.text_model']);
-            $testMessage = 'OpenAI подключён. Модель ' . $test['model'] . ' ответила, использовано токенов: ' . $test['total_tokens'] . '.';
+            $testedLabel = $action === 'test_complex' ? 'Усиленная модель' : 'Основная модель';
+            $testedModel = $action === 'test_complex' ? $values['ai.complex_model'] : $values['ai.text_model'];
+            $test = ai_openai_test($testedModel);
+            $testMessage = $testedLabel . ' OpenAI подключена. Модель ' . $test['model'] . ' ответила, использовано токенов: ' . $test['total_tokens'] . '.';
         } catch (Throwable $error) {
             $errors[] = $error->getMessage();
         }
@@ -107,16 +113,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $settings = ai_settings(true);
-if ($submittedValues !== null && (string)($_POST['action'] ?? '') === 'test_openai') {
+if ($submittedValues !== null && in_array((string)($_POST['action'] ?? ''), ['test_openai', 'test_complex'], true)) {
     $settings = array_merge($settings, $submittedValues);
 }
 $value = static fn(string $key, string $default = ''): string => (string)($settings[$key] ?? $default);
 $usage = [];
+$textUsage = ['requests' => 0, 'standard' => 0, 'complex' => 0, 'input_tokens' => 0, 'output_tokens' => 0];
 try {
     $usage = db()->query(
         'SELECT event_type, COUNT(*) events_count, COALESCE(SUM(quantity), 0) quantity, COALESCE(SUM(cost_amount), 0) cost_amount
          FROM ai_usage_events WHERE created_at >= DATE_FORMAT(NOW(), "%Y-%m-01") GROUP BY event_type ORDER BY event_type'
     )->fetchAll();
+    $textRows = db()->query(
+        'SELECT metadata_json FROM ai_usage_events
+         WHERE event_type = "text" AND provider = "openai" AND created_at >= DATE_FORMAT(NOW(), "%Y-%m-01")'
+    )->fetchAll();
+    foreach ($textRows as $row) {
+        $meta = json_decode((string)($row['metadata_json'] ?? ''), true);
+        if (!is_array($meta)) {
+            continue;
+        }
+        $textUsage['requests']++;
+        $route = ($meta['route'] ?? 'standard') === 'complex' ? 'complex' : 'standard';
+        $textUsage[$route]++;
+        $textUsage['input_tokens'] += (int)($meta['input_tokens'] ?? 0);
+        $textUsage['output_tokens'] += (int)($meta['output_tokens'] ?? 0);
+    }
 } catch (Throwable) {
     $usage = [];
 }
@@ -142,6 +164,14 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <?php endif; ?>
 </section>
 
+<?php if ($textUsage['requests'] > 0): ?>
+<section class="grid stats-grid">
+    <article class="stat"><span>OpenAI-запросы</span><strong><?= $textUsage['requests'] ?></strong></article>
+    <article class="stat"><span>Экономичные / сложные</span><strong><?= $textUsage['standard'] ?> / <?= $textUsage['complex'] ?></strong></article>
+    <article class="stat"><span>Токены вход / выход</span><strong><?= $textUsage['input_tokens'] ?> / <?= $textUsage['output_tokens'] ?></strong></article>
+</section>
+<?php endif; ?>
+
 <form method="post" class="panel form-panel crud-form">
     <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
     <label class="check-row wide"><input type="checkbox" name="ai_enabled" value="1" <?= $value('ai.enabled', '0') === '1' ? 'checked' : '' ?>><span><strong>Включить AI-центр</strong><small>Показывает текстового помощника всем пользователям админки. Видео, голос и другие дополнительные возможности регулируются тарифом.</small></span></label>
@@ -159,8 +189,13 @@ require __DIR__ . '/../app/views/layouts/header.php';
         </select>
         <small class="field-hint">HeyGen: <?= ai_video_provider_configured('heygen') ? 'ключ найден' : 'нет HEYGEN_API_KEY' ?>. Tavus: <?= ai_video_provider_configured('tavus') ? 'ключ найден' : 'нет TAVUS_API_KEY' ?>.</small>
     </label>
-    <label class="field"><span>Основная модель</span><input name="text_model" value="<?= h($value('ai.text_model', 'gpt-5-mini')) ?>"></label>
-    <label class="field"><span>Модель сложных ответов</span><input name="complex_model" value="<?= h($value('ai.complex_model', 'gpt-5')) ?>"></label>
+    <h2 class="wide">Экономичная маршрутизация</h2>
+    <label class="check-row wide"><input type="checkbox" name="smart_routing_enabled" value="1" <?= $value('ai.smart_routing_enabled', '1') === '1' ? 'checked' : '' ?>><span><strong>Автоматически выбирать модель по сложности</strong><small>Обычные HELP- и продуктовые вопросы обслуживает экономичная модель. Усиленная модель используется только при объединении нескольких результатов, продуктов и ограничений.</small></span></label>
+    <label class="field"><span>Основная экономичная модель</span><input name="text_model" value="<?= h($value('ai.text_model', 'gpt-5-mini')) ?>"><small class="field-hint">Используется для большинства коротких ответов.</small></label>
+    <label class="field"><span>Модель сложных ответов</span><input name="complex_model" value="<?= h($value('ai.complex_model', 'gpt-5')) ?>"><small class="field-hint">Вызывается только при достижении порога сложности.</small></label>
+    <label class="field"><span>Порог сложности</span><input type="number" min="3" max="10" name="complexity_threshold" value="<?= (int)$value('ai.complexity_threshold', '4') ?>"><small class="field-hint">4 — экономичный баланс. Чем выше, тем реже используется усиленная модель.</small></label>
+    <label class="field"><span>Лимит обычного ответа, токенов</span><input type="number" min="300" max="2000" name="standard_max_output_tokens" value="<?= (int)$value('ai.standard_max_output_tokens', '700') ?>"></label>
+    <label class="field"><span>Лимит сложного ответа, токенов</span><input type="number" min="500" max="3000" name="complex_max_output_tokens" value="<?= (int)$value('ai.complex_max_output_tokens', '1100') ?>"></label>
     <label class="field"><span>Модель AI-студии</span><input name="studio_model" value="<?= h($value('ai.studio_model', 'gpt-5-mini')) ?>"></label>
     <label class="field">
         <span>Видеоаватары</span>
@@ -198,7 +233,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <label class="field wide"><span>Правила помощника клиентов</span><textarea name="client_system_prompt" rows="5"><?= h($value('ai.client_system_prompt')) ?></textarea></label>
     <div class="form-actions">
         <button type="submit" name="action" value="save">Сохранить</button>
-        <button type="submit" name="action" value="test_openai" class="secondary-button">Проверить OpenAI</button>
+        <button type="submit" name="action" value="test_openai" class="secondary-button">Проверить основную модель</button>
+        <button type="submit" name="action" value="test_complex" class="secondary-button">Проверить усиленную модель</button>
     </div>
 </form>
 <?php require __DIR__ . '/../app/views/layouts/footer.php'; ?>
