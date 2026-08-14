@@ -340,7 +340,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
 </details><?php endforeach; ?></section><?php endif; ?>
 
 <section class="panel ai-card-section"><div class="ai-studio-heading"><div><h2>Карточки для отправки</h2><p class="cell-muted">Готовые изображения с вашей ссылкой и QR‑кодом. Их можно скачать как PNG или сразу отправить с телефона.</p></div></div>
-<div class="ai-card-themes" role="group" aria-label="Оформление карточек">
+<h3 class="ai-card-option-title">1. Выберите фон</h3>
+<div class="ai-card-themes" role="group" aria-label="Фон карточек">
     <button type="button" class="ai-card-theme is-active" data-card-theme="ocean" aria-pressed="true"><span class="ai-theme-preview theme-ocean"></span><span><strong>Океан</strong><small>Основной фирменный</small></span></button>
     <button type="button" class="ai-card-theme" data-card-theme="pearl" aria-pressed="false"><span class="ai-theme-preview theme-pearl"></span><span><strong>Жемчуг</strong><small>Светлый и спокойный</small></span></button>
     <button type="button" class="ai-card-theme" data-card-theme="botanical" aria-pressed="false"><span class="ai-theme-preview theme-botanical"></span><span><strong>Ботаника</strong><small>Натуральный зелёный</small></span></button>
@@ -350,6 +351,14 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <button type="button" class="ai-card-theme" data-card-theme="technology" aria-pressed="false"><span class="ai-theme-preview theme-technology"></span><span><strong>Технологии</strong><small>Синий 3D-стиль</small></span></button>
     <button type="button" class="ai-card-theme" data-card-theme="herbarium" aria-pressed="false"><span class="ai-theme-preview theme-herbarium"></span><span><strong>Гербарий</strong><small>Зелень и золото</small></span></button>
     <button type="button" class="ai-card-theme" data-card-theme="sunlight" aria-pressed="false"><span class="ai-theme-preview theme-sunlight"></span><span><strong>Солнечный</strong><small>Тёплый светлый</small></span></button>
+</div>
+<h3 class="ai-card-option-title">2. Выберите компоновку</h3>
+<div class="ai-card-layouts" role="group" aria-label="Компоновка карточек">
+    <button type="button" class="ai-card-layout is-active" data-card-layout="classic" aria-pressed="true"><span class="ai-layout-preview layout-classic"><i></i><b></b><em></em></span><span><strong>Классика</strong><small>Фото слева, QR справа</small></span></button>
+    <button type="button" class="ai-card-layout" data-card-layout="portrait" aria-pressed="false"><span class="ai-layout-preview layout-portrait"><i></i><b></b><em></em></span><span><strong>Фото крупно</strong><small>Акцент на специалисте</small></span></button>
+    <button type="button" class="ai-card-layout" data-card-layout="columns" aria-pressed="false"><span class="ai-layout-preview layout-columns"><i></i><b></b><em></em></span><span><strong>Две колонки</strong><small>Строгая визитка</small></span></button>
+    <button type="button" class="ai-card-layout" data-card-layout="centered" aria-pressed="false"><span class="ai-layout-preview layout-centered"><i></i><b></b><em></em></span><span><strong>По центру</strong><small>Симметричный вариант</small></span></button>
+    <button type="button" class="ai-card-layout" data-card-layout="minimal" aria-pressed="false"><span class="ai-layout-preview layout-minimal"><i></i><b></b><em></em></span><span><strong>Минимализм</strong><small>Только самое важное</small></span></button>
 </div>
 <div class="ai-card-grid">
     <article class="ai-card-item"><div><h3>Горизонтальная визитка</h3><p class="cell-muted">Для сообщений, публикаций и превью ссылки.</p></div><canvas id="ai-card-wide" data-variant="wide" aria-label="Горизонтальная персональная карточка"></canvas><div class="form-actions"><button type="button" class="secondary-button ai-card-download" data-canvas="ai-card-wide" data-name="swpro-card.png" disabled>Скачать PNG</button><button type="button" class="secondary-button ai-card-share" data-canvas="ai-card-wide" data-name="swpro-card.png" disabled>Поделиться</button></div></article>
@@ -416,11 +425,15 @@ require __DIR__ . '/../app/views/layouts/header.php';
     const themeBackgrounds = {};
     let selectedTheme = localStorage.getItem('swpro.cardTheme');
     if (!themes[selectedTheme]) selectedTheme = 'ocean';
+    const layouts = ['classic', 'portrait', 'columns', 'centered', 'minimal'];
+    let selectedLayout = localStorage.getItem('swpro.cardLayout');
+    if (!layouts.includes(selectedLayout)) selectedLayout = 'classic';
     const theme = () => themes[selectedTheme];
     const drawBackground = (ctx, width, height) => {
         const colors = theme();
-        if (colors.image && themeBackgrounds[selectedTheme]) {
-            coverImage(ctx, themeBackgrounds[selectedTheme], 0, 0, width, height);
+        if (colors.image) {
+            if (themeBackgrounds[selectedTheme]) coverImage(ctx, themeBackgrounds[selectedTheme], 0, 0, width, height);
+            else { ctx.fillStyle = colors.panel; ctx.fillRect(0, 0, width, height); }
             return;
         }
         const gradient = ctx.createLinearGradient(0, 0, width, height);
@@ -480,56 +493,117 @@ require __DIR__ . '/../app/views/layouts/header.php';
         ctx.fillStyle = colors.overlay;
         ctx.fill();
     };
+    const drawPhotoCircle = (ctx, photo, cx, cy, radius, colors) => {
+        if (!photo) return;
+        ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.clip(); coverImage(ctx, photo, cx - radius, cy - radius, radius * 2, radius * 2); ctx.restore();
+        ctx.strokeStyle = colors.panel; ctx.lineWidth = Math.max(7, radius * .07); ctx.beginPath(); ctx.arc(cx, cy, radius + 3, 0, Math.PI * 2); ctx.stroke();
+    };
+    const drawPhotoRect = (ctx, photo, x, y, width, height, radius, colors) => {
+        if (!photo) return;
+        ctx.save(); roundRect(ctx, x, y, width, height, radius); ctx.clip(); coverImage(ctx, photo, x, y, width, height); ctx.restore();
+        roundRect(ctx, x, y, width, height, radius); ctx.strokeStyle = colors.panel; ctx.lineWidth = 8; ctx.stroke();
+    };
+    const drawNameBlock = (ctx, colors, x, y, maxWidth, fontSize, align = 'left') => {
+        ctx.textAlign = align; ctx.fillStyle = colors.text; ctx.font = `700 ${fontSize}px Arial, sans-serif`;
+        const nameLines = fitText(ctx, profile.name, maxWidth, 2); drawLines(ctx, nameLines, x, y, fontSize + 8);
+        const subtitleY = y + nameLines.length * (fontSize + 8) + 10;
+        ctx.fillStyle = colors.muted; ctx.font = `${Math.max(24, Math.round(fontSize * .52))}px Arial, sans-serif`;
+        const subtitleLines = fitText(ctx, profile.subtitle, maxWidth, 2); drawLines(ctx, subtitleLines, x, subtitleY, Math.max(34, Math.round(fontSize * .7)));
+        ctx.textAlign = 'left';
+        return subtitleY + subtitleLines.length * Math.max(34, Math.round(fontSize * .7));
+    };
+    const drawFeatures = (ctx, colors, x, y, maxWidth, centered = false) => {
+        ctx.textAlign = centered ? 'center' : 'left'; ctx.fillStyle = colors.text; ctx.font = '700 25px Arial, sans-serif';
+        drawLines(ctx, fitText(ctx, 'Чек‑ап • полезные материалы • личная поддержка', maxWidth, 2), x, y, 32); ctx.textAlign = 'left';
+    };
+    const drawUrl = (ctx, colors, x, y, maxWidth, centered = false, fontSize = 22) => {
+        ctx.textAlign = centered ? 'center' : 'left'; ctx.fillStyle = colors.muted; ctx.font = `${fontSize}px Arial, sans-serif`; ctx.fillText(ellipsize(ctx, profile.url, maxWidth), x, y); ctx.textAlign = 'left';
+    };
     const renderWide = (canvas, photo, qr) => {
         canvas.width = 1200; canvas.height = 630;
         const ctx = canvas.getContext('2d');
         drawBackground(ctx, canvas.width, canvas.height);
         const colors = theme();
-        drawContentPanel(ctx, 45, 105, 800, 300);
-        drawContentPanel(ctx, 45, 450, 800, 125, 24);
         ctx.fillStyle = colors.accent; ctx.font = '700 30px Arial, sans-serif'; ctx.fillText('SWPro', 70, 72);
-        let textX = 70;
-        if (photo) {
-            ctx.save(); ctx.beginPath(); ctx.arc(155, 235, 82, 0, Math.PI * 2); ctx.clip(); coverImage(ctx, photo, 73, 153, 164, 164); ctx.restore();
-            ctx.strokeStyle = colors.panel; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(155, 235, 85, 0, Math.PI * 2); ctx.stroke();
-            textX = 280;
+        if (selectedLayout === 'portrait') {
+            drawContentPanel(ctx, 45, 90, 1110, 500);
+            drawPhotoRect(ctx, photo, 75, 120, 310, 400, 35, colors);
+            drawNameBlock(ctx, colors, 430, 175, 420, profile.name.length > 28 ? 41 : 47);
+            drawFeatures(ctx, colors, 430, 385, 410);
+            drawUrl(ctx, colors, 430, 500, 410);
+            drawQrPanel(ctx, qr, 875, 130, 250, 335, 205, 'Открыть сайт');
+        } else if (selectedLayout === 'columns') {
+            drawContentPanel(ctx, 45, 90, 630, 500);
+            drawPhotoCircle(ctx, photo, 180, 235, 112, colors);
+            drawNameBlock(ctx, colors, 330, 190, 300, profile.name.length > 25 ? 38 : 44);
+            drawFeatures(ctx, colors, 90, 430, 535);
+            drawUrl(ctx, colors, 90, 550, 535);
+            drawQrPanel(ctx, qr, 760, 120, 355, 430, 285, 'Открыть сайт');
+        } else if (selectedLayout === 'centered') {
+            drawContentPanel(ctx, 45, 90, 1110, 500);
+            drawPhotoCircle(ctx, photo, 390, 225, 118, colors);
+            drawQrPanel(ctx, qr, 655, 85, 270, 350, 220, 'Открыть сайт');
+            drawNameBlock(ctx, colors, 600, 485, 920, profile.name.length > 28 ? 40 : 47, 'center');
+            drawUrl(ctx, colors, 600, 580, 850, true, 20);
+        } else if (selectedLayout === 'minimal') {
+            drawContentPanel(ctx, 45, 90, 805, 430);
+            drawPhotoCircle(ctx, photo, 180, 260, 125, colors);
+            drawNameBlock(ctx, colors, 350, 215, 455, profile.name.length > 28 ? 42 : 50);
+            drawUrl(ctx, colors, 350, 405, 440);
+            drawQrPanel(ctx, qr, 880, 105, 270, 360, 220, 'Открыть сайт');
+        } else {
+            drawContentPanel(ctx, 45, 105, 800, 300);
+            drawContentPanel(ctx, 45, 450, 800, 125, 24);
+            drawPhotoCircle(ctx, photo, 165, 240, 98, colors);
+            drawNameBlock(ctx, colors, 305, 205, 520, profile.name.length > 28 ? 43 : 50);
+            drawFeatures(ctx, colors, 70, 485, 760);
+            drawUrl(ctx, colors, 70, 550, 760);
+            drawQrPanel(ctx, qr, 880, 115, 260, 345, 210, 'Открыть сайт');
         }
-        ctx.fillStyle = colors.text; ctx.font = `700 ${profile.name.length > 28 ? 43 : 50}px Arial, sans-serif`;
-        const nameLines = fitText(ctx, profile.name, 540, 2); drawLines(ctx, nameLines, textX, 205, 55);
-        ctx.fillStyle = colors.muted; ctx.font = '27px Arial, sans-serif';
-        const subtitleY = 205 + nameLines.length * 55 + 15;
-        drawLines(ctx, fitText(ctx, profile.subtitle, 540, 2), textX, subtitleY, 37);
-        ctx.fillStyle = colors.text; ctx.font = '700 25px Arial, sans-serif';
-        drawLines(ctx, fitText(ctx, 'Чек‑ап • полезные материалы • личная поддержка', 760, 2), 70, 485, 32);
-        ctx.fillStyle = colors.muted; ctx.font = '22px Arial, sans-serif'; ctx.fillText(ellipsize(ctx, profile.url, 760), 70, 550);
-        drawQrPanel(ctx, qr, 900, 135, 235, 305, 185, 'Открыть сайт');
     };
     const renderStory = (canvas, photo, qr) => {
         canvas.width = 1080; canvas.height = 1350;
         const ctx = canvas.getContext('2d');
         drawBackground(ctx, canvas.width, canvas.height);
         const colors = theme();
-        drawContentPanel(ctx, 45, 115, 990, 300);
-        drawContentPanel(ctx, 50, 465, 480, 435);
         ctx.fillStyle = colors.accent; ctx.font = '700 42px Arial, sans-serif'; ctx.fillText('SWPro', 80, 92);
-        if (photo) {
-            ctx.save(); ctx.beginPath(); ctx.arc(185, 260, 105, 0, Math.PI * 2); ctx.clip(); coverImage(ctx, photo, 80, 155, 210, 210); ctx.restore();
-            ctx.strokeStyle = colors.panel; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(185, 260, 110, 0, Math.PI * 2); ctx.stroke();
+        if (selectedLayout === 'portrait') {
+            drawContentPanel(ctx, 45, 115, 990, 1110);
+            drawPhotoRect(ctx, photo, 70, 135, 940, 430, 38, colors);
+            drawNameBlock(ctx, colors, 80, 665, 900, profile.name.length > 28 ? 48 : 56);
+            drawFeatures(ctx, colors, 80, 850, 440);
+            drawQrPanel(ctx, qr, 605, 750, 365, 430, 280, 'Наведите камеру');
+            drawUrl(ctx, colors, 80, 1170, 480);
+        } else if (selectedLayout === 'columns') {
+            drawContentPanel(ctx, 45, 115, 990, 1110);
+            drawPhotoRect(ctx, photo, 75, 155, 410, 520, 36, colors);
+            drawNameBlock(ctx, colors, 75, 770, 410, profile.name.length > 25 ? 43 : 50);
+            drawUrl(ctx, colors, 75, 1120, 410, false, 20);
+            drawQrPanel(ctx, qr, 590, 220, 390, 465, 305, 'Наведите камеру');
+            drawFeatures(ctx, colors, 590, 800, 390);
+        } else if (selectedLayout === 'centered') {
+            drawContentPanel(ctx, 45, 115, 990, 1110);
+            drawPhotoCircle(ctx, photo, 540, 290, 145, colors);
+            drawNameBlock(ctx, colors, 540, 510, 850, profile.name.length > 28 ? 48 : 56, 'center');
+            drawQrPanel(ctx, qr, 355, 735, 370, 440, 285, 'Наведите камеру');
+            drawUrl(ctx, colors, 540, 1240, 850, true, 22);
+        } else if (selectedLayout === 'minimal') {
+            drawContentPanel(ctx, 45, 115, 990, 1110);
+            drawPhotoCircle(ctx, photo, 185, 285, 125, colors);
+            drawNameBlock(ctx, colors, 365, 245, 610, profile.name.length > 28 ? 46 : 54);
+            drawQrPanel(ctx, qr, 300, 610, 480, 535, 390, 'Наведите камеру');
+            drawUrl(ctx, colors, 540, 1235, 850, true, 22);
+        } else {
+            drawContentPanel(ctx, 45, 115, 990, 300);
+            drawContentPanel(ctx, 50, 465, 480, 435);
+            drawContentPanel(ctx, 80, 1070, 890, 140);
+            drawPhotoCircle(ctx, photo, 185, 260, 112, colors);
+            drawNameBlock(ctx, colors, 350, 230, 620, profile.name.length > 28 ? 48 : 56);
+            ctx.fillStyle = colors.text; ctx.font = '700 36px Arial, sans-serif'; drawLines(ctx, fitText(ctx, 'Всё полезное — в одном месте', 430, 2), 80, 525, 45);
+            ctx.fillStyle = colors.muted; ctx.font = '28px Arial, sans-serif'; drawLines(ctx, ['Чек‑ап ощущений', 'Полезные материалы', 'Личная поддержка'], 80, 655, 56);
+            drawQrPanel(ctx, qr, 590, 500, 390, 455, 305, 'Наведите камеру');
+            drawUrl(ctx, colors, 120, 1172, 800);
         }
-        const textX = photo ? 345 : 80;
-        ctx.fillStyle = colors.text; ctx.font = `700 ${profile.name.length > 28 ? 48 : 56}px Arial, sans-serif`;
-        const nameLines = fitText(ctx, profile.name, photo ? 650 : 900, 2); drawLines(ctx, nameLines, textX, photo ? 230 : 205, 62);
-        ctx.fillStyle = colors.muted; ctx.font = '29px Arial, sans-serif';
-        drawLines(ctx, fitText(ctx, profile.subtitle, photo ? 650 : 900, 2), textX, (photo ? 230 : 205) + nameLines.length * 62 + 18, 40);
-        ctx.globalAlpha = .28; ctx.strokeStyle = colors.accent; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(80, 430); ctx.lineTo(1000, 430); ctx.stroke(); ctx.globalAlpha = 1;
-        ctx.fillStyle = colors.text; ctx.font = '700 36px Arial, sans-serif';
-        drawLines(ctx, fitText(ctx, 'Всё полезное — в одном месте', 430, 2), 80, 525, 45);
-        ctx.fillStyle = colors.muted; ctx.font = '28px Arial, sans-serif';
-        drawLines(ctx, ['Чек‑ап ощущений', 'Полезные материалы', 'Личная поддержка'], 80, 655, 56);
-        drawQrPanel(ctx, qr, 590, 500, 380, 440, 290, 'Наведите камеру');
-        roundRect(ctx, 80, 1070, 890, 140, 28); ctx.fillStyle = selectedTheme === 'pearl' ? 'rgba(255,255,255,.62)' : 'rgba(255,255,255,.14)'; ctx.fill();
-        ctx.fillStyle = colors.text; ctx.font = '700 29px Arial, sans-serif'; ctx.fillText('Открыть персональную страницу', 120, 1125);
-        ctx.fillStyle = colors.muted; ctx.font = '22px Arial, sans-serif'; ctx.fillText(ellipsize(ctx, profile.url, 800), 120, 1172);
     };
     const toBlob = (canvas) => new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG не создан')), 'image/png', 1));
     const saveBlob = (blob, name) => { const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
@@ -548,8 +622,21 @@ require __DIR__ . '/../app/views/layouts/header.php';
         });
         renderCards();
     };
+    const selectLayout = (name) => {
+        if (!layouts.includes(name)) return;
+        selectedLayout = name;
+        localStorage.setItem('swpro.cardLayout', name);
+        document.querySelectorAll('.ai-card-layout').forEach(button => {
+            const active = button.dataset.cardLayout === name;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        renderCards();
+    };
     document.querySelectorAll('.ai-card-theme').forEach(button => button.addEventListener('click', () => selectTheme(button.dataset.cardTheme)));
+    document.querySelectorAll('.ai-card-layout').forEach(button => button.addEventListener('click', () => selectLayout(button.dataset.cardLayout)));
     selectTheme(selectedTheme);
+    selectLayout(selectedLayout);
     const imageThemeEntries = Object.entries(themes).filter(([, value]) => value.image);
     Promise.all([loadImage(profile.photo), loadImage(profile.qr), ...imageThemeEntries.map(([, value]) => loadImage(value.image))]).then(([photo, qr, ...backgrounds]) => {
         imageThemeEntries.forEach(([name], index) => { themeBackgrounds[name] = backgrounds[index]; });
