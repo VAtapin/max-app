@@ -28,5 +28,6 @@
   - [Контроль базы ИИ](/ai/content-control.md)
   - [Каталог и рекомендации](/ai/product-catalog.md)
   - [Задачи и персональные планы](/ai/workflows.md)
+  - [Подключение AI-аватара](/ai/avatar.md)
 - **ОБСЛУЖИВАНИЕ**
   - [Автоматические задачи](/operations/automation.md)

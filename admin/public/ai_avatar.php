@@ -116,12 +116,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $stmt->execute($owner);
 $avatar = $stmt->fetch() ?: null;
+$selectedVideoProvider = (string)(ai_setting('ai.video_provider', 'disabled') ?: 'disabled');
+$selectedVideoProviderLabel = match ($selectedVideoProvider) { 'heygen' => 'HeyGen', 'tavus' => 'Tavus', default => 'не выбран' };
+$selectedVideoProviderReady = ai_video_provider_configured($selectedVideoProvider);
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
 <div class="page-title-row"><div><h1><?= $isSystemAvatar ? 'Системный AI-аватар SWPro' : 'Мой AI-аватар' ?></h1><p class="cell-muted"><?= $isSystemAvatar ? 'Используется для технических видео, инструкций и общих объяснений от имени платформы.' : 'Исходные фото и видео хранятся закрыто и недоступны по прямой публичной ссылке.' ?></p></div></div>
 <?php if ($success): ?><div class="notice success"><?= h(match ($success) { 'approved' => 'Аватар утверждён.', 'rejected' => 'Аватар отклонён. Можно создать новую версию.', default => 'Новая версия аватара сохранена.' }) ?></div><?php endif; ?>
 <?php foreach ($errors as $error): ?><div class="alert"><?= h($error) ?></div><?php endforeach; ?>
 <?php if (!$access['video'] && !$access['personal_video']): ?><div class="alert">AI-видео не входит в текущую подписку.</div><?php endif; ?>
+
+<section class="panel">
+    <div class="page-title-row"><div><h2>Подключение видеопровайдера</h2><p class="cell-muted">Видео создаёт HeyGen или Tavus. OpenAI используется для текста и голоса, но не создаёт видеоаватар в этой функции.</p></div><a class="button secondary-button" href="/docs/#/ai/avatar" target="_blank" rel="noopener">Инструкция</a></div>
+    <p>Выбранный провайдер: <strong><?= h($selectedVideoProviderLabel) ?></strong> · <?= $selectedVideoProviderReady ? '<span class="badge badge-active">ключ найден</span>' : '<span class="badge badge-pending">не подключён</span>' ?></p>
+    <?php if ($isSystemAvatar): ?>
+        <p class="cell-muted">Ключ добавляется в серверный файл <code>deploy/plesk/live.env</code>, затем провайдер выбирается в разделе «Настройки ИИ». В веб-форму секретный ключ не вводится и не сохраняется в базе.</p>
+        <a class="button secondary-button" href="ai_settings.php">Открыть настройки ИИ</a>
+    <?php elseif (!$selectedVideoProviderReady): ?>
+        <p class="cell-muted">Попросите суперадминистратора подключить видеопровайдера. После этого здесь потребуется указать ID вашего аватара у выбранного провайдера.</p>
+    <?php endif; ?>
+</section>
 
 <?php if ($avatar): ?><section class="panel"><h2>Текущая версия №<?= (int)$avatar['version'] ?></h2><p>Статус: <strong><?= h((string)$avatar['status']) ?></strong> · провайдер: <?= h((string)$avatar['provider']) ?></p>
     <?php if ($avatar['source_photo_path']): ?><a class="button secondary-button" href="ai_avatar_media.php?id=<?= (int)$avatar['id'] ?>&type=photo" target="_blank">Просмотреть исходное фото</a><?php endif; ?>

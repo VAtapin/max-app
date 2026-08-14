@@ -187,7 +187,6 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <option value="swpro" <?= $value('ai.text_provider', 'swpro') === 'swpro' ? 'selected' : '' ?>>Собственный поиск SWPro</option>
             <option value="openai" <?= $value('ai.text_provider') === 'openai' ? 'selected' : '' ?>>OpenAI (после отдельного разрешения)</option>
         </select>
-        <small class="field-hint">HeyGen: <?= ai_video_provider_configured('heygen') ? 'ключ найден' : 'нет HEYGEN_API_KEY' ?>. Tavus: <?= ai_video_provider_configured('tavus') ? 'ключ найден' : 'нет TAVUS_API_KEY' ?>.</small>
     </label>
     <h2 class="wide">Экономичная маршрутизация</h2>
     <label class="check-row wide"><input type="checkbox" name="smart_routing_enabled" value="1" <?= $value('ai.smart_routing_enabled', '1') === '1' ? 'checked' : '' ?>><span><strong>Автоматически выбирать модель по сложности</strong><small>Обычные HELP- и продуктовые вопросы обслуживает экономичная модель. Усиленная модель используется только при объединении нескольких результатов, продуктов и ограничений.</small></span></label>
@@ -204,7 +203,15 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <option value="heygen" <?= $value('ai.video_provider') === 'heygen' ? 'selected' : '' ?>>HeyGen</option>
             <option value="tavus" <?= $value('ai.video_provider') === 'tavus' ? 'selected' : '' ?>>Tavus</option>
         </select>
+        <small class="field-hint">Выберите провайдера после добавления его серверного ключа.</small>
     </label>
+    <div class="notice wide">
+        <strong>Подключение видеоаватара</strong><br>
+        HeyGen: <?= ai_video_provider_configured('heygen') ? '<strong>ключ найден</strong>' : 'нет <code>HEYGEN_API_KEY</code>' ?> ·
+        Tavus: <?= ai_video_provider_configured('tavus') ? '<strong>ключ найден</strong>' : 'нет <code>TAVUS_API_KEY</code>' ?>.<br>
+        Секретный ключ хранится только на сервере в <code>deploy/plesk/live.env</code> и никогда не показывается в браузере.
+        <a href="/docs/#/ai/avatar" target="_blank" rel="noopener">Открыть пошаговую инструкцию</a>.
+    </div>
     <label class="field"><span>Голосовые сообщения</span><select name="voice_provider"><option value="disabled" <?= $value('ai.voice_provider', 'disabled') === 'disabled' ? 'selected' : '' ?>>Выключены</option><option value="openai" <?= $value('ai.voice_provider') === 'openai' ? 'selected' : '' ?>>OpenAI Voice</option></select></label>
     <label class="field"><span>Модель голоса OpenAI</span><input name="openai_tts_model" value="<?= h($value('ai.openai_tts_model', 'gpt-4o-mini-tts')) ?>"></label>
     <label class="field"><span>Стандартный голос OpenAI</span><select name="openai_voice"><?php foreach (['coral','alloy','ash','ballad','echo','fable','nova','onyx','sage','shimmer','verse'] as $voice): ?><option value="<?= h($voice) ?>" <?= $value('ai.openai_voice', 'coral') === $voice ? 'selected' : '' ?>><?= h($voice) ?></option><?php endforeach; ?></select></label>
