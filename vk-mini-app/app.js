@@ -1100,13 +1100,6 @@ function legalDocumentLink(type, fallback) {
 
 function updateLegalFooterLinks() {
     const documents = onboardingDocuments();
-    const leaderScoped = new Set([
-        'leader_privacy_policy',
-        'personal_data_consent',
-        'health_data_consent',
-        'marketing_consent',
-    ]);
-    const referralCode = getReferralCode();
     document.querySelectorAll('[data-legal-type]').forEach((link) => {
         const type = link.dataset.legalType || '';
         const document = documents.find((item) => item.type === type);
@@ -1115,14 +1108,7 @@ function updateLegalFooterLinks() {
             link.hidden = false;
             return;
         }
-        if (type === 'leader_privacy_policy') {
-            link.hidden = true;
-            return;
-        }
         const params = new URLSearchParams({type});
-        if (leaderScoped.has(type) && referralCode) {
-            params.set('ref', referralCode);
-        }
         link.href = `/legal.php?${params.toString()}`;
         link.hidden = false;
     });

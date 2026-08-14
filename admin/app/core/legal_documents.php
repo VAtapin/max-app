@@ -2,13 +2,11 @@
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/helpers.php';
-require_once __DIR__ . '/referral_codes.php';
 
 function legal_document_types(): array
 {
     return [
         'privacy_policy',
-        'leader_privacy_policy',
         'personal_data_consent',
         'health_data_consent',
         'marketing_consent',
@@ -21,7 +19,7 @@ function legal_document_type_labels(): array
 {
     return [
         'privacy_policy' => 'Политика SWPro',
-        'leader_privacy_policy' => 'Политика лидера',
+        'leader_privacy_policy' => 'Архив: политика лидера (не используется)',
         'personal_data_consent' => 'Согласие на обработку данных',
         'health_data_consent' => 'Согласие на ответы чек-апа',
         'marketing_consent' => 'Согласие на рассылку',
@@ -30,20 +28,11 @@ function legal_document_type_labels(): array
     ];
 }
 
-function legal_document_is_leader_scoped(string $type): bool
-{
-    return in_array($type, [
-        'leader_privacy_policy',
-        'personal_data_consent',
-        'health_data_consent',
-        'marketing_consent',
-    ], true);
-}
-
 function legal_active_documents(): array
 {
     $types = legal_document_types();
     $fieldOrder = implode(', ', array_map(static fn(string $type): string => db()->quote($type), $types));
+    $typeFilter = $fieldOrder;
     $stmt = db()->query(
         'SELECT ld.*
          FROM legal_documents ld
@@ -51,6 +40,7 @@ function legal_active_documents(): array
              SELECT document_type, MAX(id) AS max_id
              FROM legal_documents
              WHERE is_active = 1
+               AND document_type IN (' . $typeFilter . ')
              GROUP BY document_type
          ) latest ON latest.max_id = ld.id
          ORDER BY FIELD(ld.document_type, ' . $fieldOrder . ')'
@@ -92,93 +82,6 @@ function legal_swpro_party(): array
     ];
 }
 
-function legal_reseller_id_from_referral(?string $referralCode): ?int
-{
-    $referralCode = trim((string)$referralCode);
-    if ($referralCode === '') {
-        return null;
-    }
-    if (str_starts_with(strtolower($referralCode), 'ref_')) {
-        $referralCode = substr($referralCode, 4);
-    }
-
-    $binding = referral_code_binding($referralCode);
-    $resellerId = (int)($binding['reseller_id'] ?? 0);
-    return $resellerId > 0 ? $resellerId : null;
-}
-
-function legal_reseller_id_for_user(array $user): ?int
-{
-    $resellerId = (int)($user['reseller_id'] ?? 0);
-    if ($resellerId > 0) {
-        return $resellerId;
-    }
-
-    $managerId = (int)($user['manager_id'] ?? 0);
-    if ($managerId > 0) {
-        $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id AND is_active = 1 LIMIT 1');
-        $stmt->execute(['id' => $managerId]);
-        $resellerId = (int)$stmt->fetchColumn();
-        if ($resellerId > 0) {
-            return $resellerId;
-        }
-    }
-
-    return legal_reseller_id_from_referral((string)($user['referral_code_used'] ?? ''));
-}
-
-function legal_referral_code_for_user(array $user): ?string
-{
-    $managerId = (int)($user['manager_id'] ?? 0);
-    if ($managerId > 0) {
-        $stmt = db()->prepare('SELECT referral_code FROM managers WHERE id = :id AND is_active = 1 LIMIT 1');
-        $stmt->execute(['id' => $managerId]);
-        $code = trim((string)$stmt->fetchColumn());
-        if ($code !== '') {
-            return $code;
-        }
-    }
-
-    $resellerId = (int)($user['reseller_id'] ?? 0);
-    if ($resellerId > 0) {
-        $stmt = db()->prepare('SELECT referral_code FROM resellers WHERE id = :id AND is_active = 1 LIMIT 1');
-        $stmt->execute(['id' => $resellerId]);
-        $code = trim((string)$stmt->fetchColumn());
-        if ($code !== '') {
-            return $code;
-        }
-    }
-
-    $code = trim((string)($user['referral_code_used'] ?? ''));
-    return $code !== '' ? $code : null;
-}
-
-function legal_leader_party(?int $resellerId): ?array
-{
-    if (!$resellerId) {
-        return null;
-    }
-    $stmt = db()->prepare('SELECT * FROM resellers WHERE id = :id AND is_active = 1 LIMIT 1');
-    $stmt->execute(['id' => $resellerId]);
-    $row = $stmt->fetch();
-    if (!$row) {
-        return null;
-    }
-
-    $config = app_config();
-    $publicUrl = rtrim((string)($config['app']['public_url'] ?? 'https://swpro.ru'), '/');
-    return [
-        'id' => (int)$row['id'],
-        'name' => trim((string)($row['legal_name'] ?: $row['name'])),
-        'status' => trim((string)($row['legal_status'] ?? '')),
-        'inn' => trim((string)($row['legal_inn'] ?: $row['billing_inn'])),
-        'address' => trim((string)($row['legal_address'] ?? '')),
-        'email' => trim((string)$row['email']),
-        'phone' => trim((string)$row['phone']),
-        'site' => $publicUrl . '/?ref=' . rawurlencode((string)$row['referral_code']),
-    ];
-}
-
 function legal_party_placeholder(string $value, string $placeholder): string
 {
     return $value !== '' ? $value : $placeholder;
@@ -208,10 +111,9 @@ function legal_remove_empty_requisite_lines(string $body, array $emptyTokens): s
     return preg_replace("/\n{3,}/", "\n\n", implode("\n", $lines)) ?? implode("\n", $lines);
 }
 
-function legal_document_replacements(?int $resellerId = null): array
+function legal_document_replacements(): array
 {
     $swpro = legal_swpro_party();
-    $leader = legal_leader_party($resellerId) ?: $swpro;
     $settings = legal_settings();
 
     return [
@@ -222,13 +124,13 @@ function legal_document_replacements(?int $resellerId = null): array
         '[SWPRO_EMAIL]' => legal_optional_party_value($swpro['email']),
         '[SWPRO_PHONE]' => legal_optional_party_value($swpro['phone']),
         '[SWPRO_SITE]' => legal_optional_party_value($swpro['site']),
-        '[OPERATOR_NAME]' => legal_optional_party_value($leader['name']),
-        '[OPERATOR_STATUS]' => legal_optional_party_value($leader['status']),
-        '[OPERATOR_INN]' => legal_optional_party_value($leader['inn']),
-        '[OPERATOR_ADDRESS]' => legal_optional_party_value($leader['address']),
-        '[OPERATOR_EMAIL]' => legal_optional_party_value($leader['email'] !== '' ? $leader['email'] : $swpro['email']),
-        '[OPERATOR_PHONE]' => legal_optional_party_value($leader['phone']),
-        '[OPERATOR_SITE]' => legal_optional_party_value($leader['site']),
+        '[OPERATOR_NAME]' => legal_optional_party_value($swpro['name']),
+        '[OPERATOR_STATUS]' => legal_optional_party_value($swpro['status']),
+        '[OPERATOR_INN]' => legal_optional_party_value($swpro['inn']),
+        '[OPERATOR_ADDRESS]' => legal_optional_party_value($swpro['address']),
+        '[OPERATOR_EMAIL]' => legal_optional_party_value($swpro['email']),
+        '[OPERATOR_PHONE]' => legal_optional_party_value($swpro['phone']),
+        '[OPERATOR_SITE]' => legal_optional_party_value($swpro['site']),
         '[ОПЕРАТОР]' => legal_party_placeholder($swpro['name'], '[ОПЕРАТОР]'),
         '[УКАЖИТЕ НАИМЕНОВАНИЕ ИЛИ ФИО ОПЕРАТОРА]' => legal_party_placeholder($swpro['name'], '[ОПЕРАТОР]'),
         '[ИНН]' => legal_party_placeholder($swpro['inn'], '[ИНН]'),
@@ -239,11 +141,9 @@ function legal_document_replacements(?int $resellerId = null): array
     ];
 }
 
-function legal_render_document(array $document, ?int $resellerId = null): array
+function legal_render_document(array $document): array
 {
-    $type = (string)$document['document_type'];
-    $effectiveResellerId = legal_document_is_leader_scoped($type) ? $resellerId : null;
-    $replacements = legal_document_replacements($effectiveResellerId);
+    $replacements = legal_document_replacements();
     $emptyTokens = array_keys(array_filter(
         $replacements,
         static fn(string $value, string $token): bool => $value === '' && preg_match('/^\[(?:SWPRO|OPERATOR)_[A-Z_]+\]$/', $token) === 1,
@@ -255,17 +155,12 @@ function legal_render_document(array $document, ?int $resellerId = null): array
         'title' => (string)$document['title'],
         'body' => $body,
         'hash' => hash('sha256', $body),
-        'operator_reseller_id' => $effectiveResellerId,
     ];
 }
 
-function legal_document_url(string $type, ?string $referralCode = null): string
+function legal_document_url(string $type): string
 {
-    $params = ['type' => $type];
-    if (legal_document_is_leader_scoped($type) && trim((string)$referralCode) !== '') {
-        $params['ref'] = trim((string)$referralCode);
-    }
-    return '/legal.php?' . http_build_query($params);
+    return '/legal.php?' . http_build_query(['type' => $type]);
 }
 
 function legal_date_ru(?string $value, bool $withTime = false): string

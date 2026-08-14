@@ -9,7 +9,7 @@ if ($admin['role'] !== 'superadmin') {
     exit('Access denied');
 }
 
-$title = 'Реквизиты документов';
+$title = 'Оператор персональных данных';
 $fields = [
     'legal_operator_name' => 'Наименование организации или ФИО оператора',
     'legal_operator_status' => 'Правовой статус',
@@ -44,10 +44,10 @@ foreach ($stmt->fetchAll() as $row) {
 
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
-<div class="toolbar"><h1>Реквизиты документов</h1></div>
+<div class="toolbar"><h1>Оператор персональных данных</h1></div>
 <?php if (($_GET['success'] ?? '') === 'saved'): ?><div class="notice success">Реквизиты сохранены.</div><?php endif; ?>
 <section class="panel form-panel">
-    <p class="cell-muted">Эти значения подставляются вместо служебных плейсхолдеров в политике, согласиях и оферте.</p>
+    <p class="cell-muted">Это единые реквизиты ИП — владельца платформы SWPro.ru. Они подставляются во все политики и согласия независимо от реферального кода и выбранного лидера.</p>
     <form method="post" class="crud-form">
         <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
         <?php foreach ($fields as $key => $label): ?>

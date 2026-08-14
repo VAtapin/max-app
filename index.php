@@ -492,11 +492,9 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
     </main>
 <?php endif; ?>
 <?php
-$legalRef = $profileReferralCode ?: ($profile ? $referralCode : null);
 $activeLegalDocuments = legal_active_documents();
 $footerDocuments = $profile
     ? [
-        'leader_privacy_policy' => 'Политика лидера',
         'personal_data_consent' => 'Обработка данных',
         'health_data_consent' => 'Ответы чек-апа',
         'marketing_consent' => 'Рассылки',
@@ -517,7 +515,7 @@ $footerDocuments = array_filter(
 <?php if ($footerDocuments): ?>
 <footer class="legal-footer" aria-label="Юридические документы">
     <?php foreach ($footerDocuments as $documentType => $label): ?>
-        <a href="<?= h(legal_document_url($documentType, $legalRef)) ?>" target="_blank" rel="noopener"><?= h($label) ?></a>
+        <a href="<?= h(legal_document_url($documentType)) ?>" target="_blank" rel="noopener"><?= h($label) ?></a>
     <?php endforeach; ?>
 </footer>
 <?php endif; ?>

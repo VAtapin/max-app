@@ -25,10 +25,7 @@ if (!$document) {
 }
 
 $referralCode = trim((string)($_GET['ref'] ?? ''));
-$resellerId = legal_document_is_leader_scoped($type)
-    ? legal_reseller_id_from_referral($referralCode)
-    : null;
-$rendered = legal_render_document($document, $resellerId);
+$rendered = legal_render_document($document);
 $body = $rendered['body'];
 $backUrl = $referralCode !== '' ? '/?ref=' . rawurlencode($referralCode) : '/';
 ?>

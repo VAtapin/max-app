@@ -59,7 +59,7 @@ function client_consent_granted(
     array $consents,
     string $documentType,
     ?string $requiredVersion = null,
-    ?int $requiredOperatorResellerId = null
+    ?string $requiredDocumentHash = null
 ): bool
 {
     $consent = $consents[$documentType] ?? null;
@@ -69,9 +69,8 @@ function client_consent_granted(
     if ($requiredVersion !== null && !hash_equals($requiredVersion, (string)$consent['document_version'])) {
         return false;
     }
-    if (legal_document_is_leader_scoped($documentType)
-        && $requiredOperatorResellerId !== null
-        && (int)($consent['operator_reseller_id'] ?? 0) !== $requiredOperatorResellerId) {
+    if ($requiredDocumentHash !== null
+        && !hash_equals($requiredDocumentHash, (string)($consent['document_hash'] ?? ''))) {
         return false;
     }
     return true;
@@ -81,14 +80,13 @@ function client_onboarding_status(array $user): array
 {
     $documents = active_legal_documents();
     $consents = latest_user_consents((int)$user['id']);
-    $operatorResellerId = legal_reseller_id_for_user($user);
-    $legalReferralCode = legal_referral_code_for_user($user);
     $requiredTypes = ['personal_data_consent', 'health_data_consent', 'user_agreement'];
     $missing = [];
 
     foreach ($requiredTypes as $type) {
         $version = isset($documents[$type]) ? (string)$documents[$type]['version'] : null;
-        if (!client_consent_granted($consents, $type, $version, $operatorResellerId)) {
+        $documentHash = isset($documents[$type]) ? (string)legal_render_document($documents[$type])['hash'] : null;
+        if (!client_consent_granted($consents, $type, $version, $documentHash)) {
             $missing[] = $type;
         }
     }
@@ -134,7 +132,9 @@ function client_onboarding_status(array $user): array
             $consents,
             'marketing_consent',
             isset($documents['marketing_consent']) ? (string)$documents['marketing_consent']['version'] : null,
-            $operatorResellerId
+            isset($documents['marketing_consent'])
+                ? (string)legal_render_document($documents['marketing_consent'])['hash']
+                : null
         ),
         'notifications_enabled' => (int)($user['notifications_enabled'] ?? 1) === 1,
         'has_confirmed_platform' => $hasConfirmedPlatform,
@@ -146,7 +146,7 @@ function client_onboarding_status(array $user): array
                 'title' => (string)$document['title'],
                 'version' => (string)$document['version'],
                 'is_required' => (bool)$document['is_required'],
-                'url' => legal_document_url((string)$document['document_type'], $legalReferralCode),
+                'url' => legal_document_url((string)$document['document_type']),
             ],
             $documents
         ),
@@ -211,23 +211,21 @@ function grant_user_consent(
     if (!$user) {
         throw new RuntimeException('User is missing');
     }
-    $operatorResellerId = legal_reseller_id_for_user($user);
-    $rendered = legal_render_document($document, $operatorResellerId);
+    $rendered = legal_render_document($document);
     $existing = latest_user_consents($endUserId)[$documentType] ?? null;
     if ($existing
         && empty($existing['revoked_at'])
         && hash_equals((string)$document['version'], (string)$existing['document_version'])
-        && hash_equals((string)$rendered['hash'], (string)($existing['document_hash'] ?? ''))
-        && (int)($rendered['operator_reseller_id'] ?? 0) === (int)($existing['operator_reseller_id'] ?? 0)) {
+        && hash_equals((string)$rendered['hash'], (string)($existing['document_hash'] ?? ''))) {
         return;
     }
 
     $stmt = db()->prepare(
         'INSERT INTO user_consents (
-            end_user_id, document_type, document_version, operator_reseller_id,
+            end_user_id, document_type, document_version,
             document_snapshot, document_hash, platform, metadata_json
          ) VALUES (
-            :end_user_id, :document_type, :document_version, :operator_reseller_id,
+            :end_user_id, :document_type, :document_version,
             :document_snapshot, :document_hash, :platform, :metadata_json
          )'
     );
@@ -235,7 +233,6 @@ function grant_user_consent(
         'end_user_id' => $endUserId,
         'document_type' => $documentType,
         'document_version' => $document['version'],
-        'operator_reseller_id' => $rendered['operator_reseller_id'],
         'document_snapshot' => $rendered['body'],
         'document_hash' => $rendered['hash'],
         'platform' => normalize_platform($platform),
