@@ -17,7 +17,22 @@ if (isset($_GET['id'])) {
     );
     $stmt->execute(['id' => (int)$_GET['id']] + $ownerParams);
     $product = $stmt->fetch();
-    $product ? json_response(['product' => $product]) : json_response(['error' => 'not found'], 404);
+    if (!$product) {
+        json_response(['error' => 'not found'], 404);
+    }
+    if (($product['image_review_status'] ?? '') === 'rejected') {
+        $product['image_path'] = null;
+    }
+    $variantStmt = db()->prepare('SELECT id, sku, title, volume_text, price, currency, image_path, is_sample FROM product_variants WHERE product_id = :product_id AND is_active = 1 ORDER BY is_sample, sort_order, id');
+    $variantStmt->execute(['product_id' => (int)$product['id']]);
+    $product['variants'] = $variantStmt->fetchAll();
+    if (($product['image_review_status'] ?? '') === 'rejected') {
+        foreach ($product['variants'] as &$variant) {
+            $variant['image_path'] = null;
+        }
+        unset($variant);
+    }
+    json_response(['product' => $product]);
 }
 
 $categoryId = $_GET['category_id'] ?? null;
@@ -28,7 +43,10 @@ if (isset($_GET['platform'], $_GET['platform_user_id'])) {
     [$ownerWhere, $params] = client_owner_scope($user, 'p');
 }
 $sql = "SELECT p.id, p.category_id, p.title, p.slug, p.short_description, p.full_description,
-               p.image_path, p.document_path, p.video_url, p.purchase_url, p.price,
+               CASE WHEN p.image_review_status = 'rejected' THEN NULL ELSE p.image_path END image_path, p.document_path, p.video_url, p.purchase_url, p.price,
+               p.catalog_sku, p.product_kind, p.recommendation_notice,
+               (SELECT pv.id FROM product_variants pv WHERE pv.product_id = p.id AND pv.is_active = 1 ORDER BY pv.is_sample, pv.sort_order, pv.id LIMIT 1) AS primary_variant_id,
+               (SELECT pv.sku FROM product_variants pv WHERE pv.product_id = p.id AND pv.is_active = 1 ORDER BY pv.is_sample, pv.sort_order, pv.id LIMIT 1) AS primary_sku,
                c.title AS category_title
         FROM products p
         LEFT JOIN product_categories c ON c.id = p.category_id

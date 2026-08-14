@@ -1,6 +1,9 @@
 /deploy/plesk/live.env
 /admin/uploads/*
 !/admin/uploads/.gitkeep
+!/admin/uploads/products/
+!/admin/uploads/products/catalog-2026/
+!/admin/uploads/products/catalog-2026/*.webp
 !/admin/uploads/content/
 !/admin/uploads/content/*.png
 !/admin/uploads/help/

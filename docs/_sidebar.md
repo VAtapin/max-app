@@ -26,6 +26,7 @@
 - **AI-ЦЕНТР**
   - [Помощник и база знаний](/ai/assistant.md)
   - [Контроль базы ИИ](/ai/content-control.md)
+  - [Каталог и рекомендации](/ai/product-catalog.md)
   - [Задачи и персональные планы](/ai/workflows.md)
 - **ОБСЛУЖИВАНИЕ**
   - [Автоматические задачи](/operations/automation.md)

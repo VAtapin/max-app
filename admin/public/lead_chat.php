@@ -29,10 +29,13 @@ function lead_chat_row(int $leadId, array $admin): ?array
     $stmt = db()->prepare(
         "SELECT l.*, CONCAT_WS(' ', NULLIF(eu.first_name, ''), NULLIF(eu.last_name, '')) AS user_name,
                 eu.username AS user_username, eu.platform_user_id AS user_platform_user_id,
-                p.title AS product_title, m.name AS manager_name, r.name AS reseller_name
+                p.title AS product_title, COALESCE(pv.sku, p.catalog_sku) AS product_sku,
+                pv.title AS variant_title, pv.volume_text AS variant_volume,
+                m.name AS manager_name, r.name AS reseller_name
          FROM leads l
          LEFT JOIN end_users eu ON eu.id = l.end_user_id
          LEFT JOIN products p ON p.id = l.product_id
+         LEFT JOIN product_variants pv ON pv.id = l.product_variant_id
          LEFT JOIN managers m ON m.id = l.manager_id
          LEFT JOIN resellers r ON r.id = l.reseller_id
          WHERE l.id = :id{$scopeSql}
@@ -161,6 +164,12 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <span><b>Консультант</b><?= h((string)($lead['manager_name'] ?: '—')) ?></span>
                     <?php if (!empty($lead['product_title'])): ?>
                         <span><b>Продукт</b><?= h((string)$lead['product_title']) ?></span>
+                    <?php endif; ?>
+                    <?php if (!empty($lead['product_sku'])): ?>
+                        <span><b>Артикул</b><?= h((string)$lead['product_sku']) ?></span>
+                    <?php endif; ?>
+                    <?php if (!empty($lead['variant_title']) || !empty($lead['variant_volume'])): ?>
+                        <span><b>Вариант</b><?= h(trim((string)($lead['variant_title'] ?? '') . ' ' . (string)($lead['variant_volume'] ?? ''))) ?></span>
                     <?php endif; ?>
                     <span><b>Обращение</b>#<?= (int)$lead['id'] ?></span>
                 </div>

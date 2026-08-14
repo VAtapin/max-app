@@ -1955,7 +1955,7 @@ async function renderProducts() {
                 </div>
                 <div class="card-actions">
                     <button class="secondary" data-open-product-id="${product.id}">${escapeHtml(ui('products.details'))}</button>
-                    <button class="secondary" data-product-id="${product.id}">${escapeHtml(ui('products.request_info'))}</button>
+                    <button class="secondary" data-product-id="${product.id}" data-product-variant-id="${product.primary_variant_id || ''}">${escapeHtml(ui('products.request_info'))}</button>
                 </div>
             </article>
         `).join('')
@@ -1975,12 +1975,21 @@ async function renderProductDetail(productId) {
                 ${product.price ? `<span class="price-pill">${escapeHtml(product.price)}</span>` : ''}
             </div>
             ${product.short_description ? `<div class="detail-lead">${renderTextBlocks(product.short_description)}</div>` : ''}
+            ${Array.isArray(product.variants) && product.variants.length ? `
+                <label class="field">
+                    <span>${escapeHtml(ui('products.variant', 'Выберите вариант'))}</span>
+                    <select id="product-variant-select">
+                        ${product.variants.map((variant) => `<option value="${variant.id}">${escapeHtml([variant.title, variant.volume_text, `арт. ${variant.sku}`, variant.price ? `${variant.price} ${variant.currency || 'RUB'}` : ''].filter(Boolean).join(' · '))}</option>`).join('')}
+                    </select>
+                </label>
+            ` : (product.catalog_sku ? `<p class="muted">${escapeHtml(`Артикул: ${product.catalog_sku}`)}</p>` : '')}
             ${product.full_description ? `<div class="detail-body">${renderTextBlocks(product.full_description)}</div>` : ''}
+            ${product.recommendation_notice ? `<div class="notice-card">${renderTextBlocks(product.recommendation_notice)}</div>` : ''}
             ${renderVideoBlock(product.video_url, product.title)}
             <div class="detail-actions">
                 ${product.document_path ? `<a class="soft-link" href="${escapeHtml(product.document_path)}" target="_blank" rel="noopener">${escapeHtml(ui('products.open_file'))}</a>` : ''}
                 ${product.purchase_url ? `<a class="soft-link" href="${escapeHtml(product.purchase_url)}" target="_blank" rel="noopener">${escapeHtml(ui('products.open_link'))}</a>` : ''}
-                <button class="primary" data-product-id="${product.id}">${escapeHtml(ui('products.request_info'))}</button>
+                <button class="primary" data-product-id="${product.id}" data-use-variant-select="1">${escapeHtml(ui('products.request_info'))}</button>
             </div>
         </section>
     `;
@@ -2042,7 +2051,7 @@ async function renderRecommendations() {
                 </div>
                 <div class="recommendation-actions">
                     ${item.product_id ? `<button class="secondary compact" data-open-product-id="${item.product_id}">${escapeHtml(ui('products.details'))}</button>` : ''}
-                    ${item.product_id ? `<button class="secondary compact" data-product-id="${item.product_id}">${escapeHtml(ui('products.request_info'))}</button>` : ''}
+                    ${item.product_id ? `<button class="secondary compact" data-product-id="${item.product_id}" data-product-variant-id="${item.primary_variant_id || ''}" data-recommendation-id="${item.id || ''}" data-recommendation-reason="${escapeHtml(item.reason_text || '')}">${escapeHtml(ui('products.request_info'))}</button>` : ''}
                     <button class="secondary compact" data-action="contact">${escapeHtml(ui('home.write_manager'))}</button>
                 </div>
             </article>
@@ -2205,7 +2214,7 @@ async function renderLeads() {
     await Promise.allSettled(unreadLeadIds.map(markLeadRead));
 }
 
-function openContactModal(productId = null, presetMessage = '', titleOverride = '', requestType = 'consultation') {
+function openContactModal(productId = null, presetMessage = '', titleOverride = '', requestType = 'consultation', productVariantId = null, recommendationId = null, recommendationReason = '') {
     document.querySelector('.modal-backdrop')?.remove();
     const productTitle = productId
         ? document.querySelector(`[data-product-id="${productId}"]`)?.closest('article')?.querySelector('strong')?.textContent || ''
@@ -2220,6 +2229,9 @@ function openContactModal(productId = null, presetMessage = '', titleOverride = 
                 <p class="muted">${escapeHtml(ui('lead.modal_hint'))}</p>
                 <form id="contact-form">
                     <input type="hidden" name="product_id" value="${productId ? Number(productId) : ''}">
+                    <input type="hidden" name="product_variant_id" value="${productVariantId ? Number(productVariantId) : ''}">
+                    <input type="hidden" name="recommendation_id" value="${recommendationId ? Number(recommendationId) : ''}">
+                    <input type="hidden" name="recommendation_reason" value="${escapeHtml(recommendationReason)}">
                     <input type="hidden" name="request_type" value="${escapeHtml(requestType)}">
                     <textarea name="message" rows="5" required placeholder="${escapeHtml(ui('lead.message_placeholder'))}">${escapeHtml(presetMessage)}</textarea>
                     <div class="form-error" id="contact-error"></div>
@@ -2238,7 +2250,7 @@ function closeModal() {
     document.querySelector('.modal-backdrop')?.remove();
 }
 
-async function createLeadFromMessage(productId = null, message = '', requestType = 'consultation') {
+async function createLeadFromMessage(productId = null, message = '', requestType = 'consultation', productVariantId = null, recommendationId = null, recommendationReason = '') {
     const text = String(message || '').trim();
     if (!text) {
         throw new Error(ui('lead.message_required'));
@@ -2249,6 +2261,9 @@ async function createLeadFromMessage(productId = null, message = '', requestType
         body: JSON.stringify({
             ...userPayload(),
             product_id: productId,
+            product_variant_id: productVariantId,
+            recommendation_id: recommendationId,
+            recommendation_context: recommendationReason ? {reason: recommendationReason} : {},
             request_type: requestType,
             message: text,
         }),
@@ -2937,7 +2952,20 @@ page.addEventListener('click', async (event) => {
     if (target.dataset.openTestId) await renderTest(Number(target.dataset.openTestId));
     if (target.dataset.openProductId) await renderProductDetail(Number(target.dataset.openProductId));
     if (target.dataset.openMaterialId) await renderMaterialDetail(Number(target.dataset.openMaterialId));
-    if (target.dataset.productId) openContactModal(Number(target.dataset.productId), '', '', 'product');
+    if (target.dataset.productId) {
+        const selectedVariant = target.dataset.useVariantSelect === '1'
+            ? Number(document.querySelector('#product-variant-select')?.value || 0)
+            : Number(target.dataset.productVariantId || 0);
+        openContactModal(
+            Number(target.dataset.productId),
+            '',
+            '',
+            'product',
+            selectedVariant || null,
+            Number(target.dataset.recommendationId || 0) || null,
+            target.dataset.recommendationReason || ''
+        );
+    }
 });
 
 document.addEventListener('click', (event) => {
@@ -3107,6 +3135,9 @@ document.addEventListener('submit', async (event) => {
     const button = target.querySelector('button[type="submit"]');
     const formData = new FormData(target);
     const productId = Number(formData.get('product_id') || 0) || null;
+    const productVariantId = Number(formData.get('product_variant_id') || 0) || null;
+    const recommendationId = Number(formData.get('recommendation_id') || 0) || null;
+    const recommendationReason = String(formData.get('recommendation_reason') || '').trim();
     const requestType = String(formData.get('request_type') || 'consultation');
     const message = String(formData.get('message') || '').trim();
 
@@ -3122,7 +3153,7 @@ document.addEventListener('submit', async (event) => {
     }
 
     try {
-        await createLeadFromMessage(productId, message, requestType);
+        await createLeadFromMessage(productId, message, requestType, productVariantId, recommendationId, recommendationReason);
         closeModal();
     } catch (exception) {
         if (error) error.textContent = exception instanceof Error ? exception.message : ui('common.load_failed');

@@ -719,9 +719,12 @@ function notify_consultant_about_contact(array $user, int $leadId): void
     $name = $name !== '' ? $name : 'Клиент #' . (int)$user['id'];
     $eventKey = 'consultation_requested:' . $leadId;
     $leadStmt = db()->prepare(
-        'SELECT l.message, l.request_type, l.source_platform, p.title AS product_title
+        'SELECT l.message, l.request_type, l.source_platform, l.recommendation_context_json,
+                p.title AS product_title, COALESCE(pv.sku, p.catalog_sku) AS product_sku,
+                pv.title AS variant_title, pv.volume_text AS variant_volume
          FROM leads l
          LEFT JOIN products p ON p.id = l.product_id
+         LEFT JOIN product_variants pv ON pv.id = l.product_variant_id
          WHERE l.id = :id
          LIMIT 1'
     );
@@ -738,6 +741,16 @@ function notify_consultant_about_contact(array $user, int $leadId): void
     ];
     if (!empty($lead['product_title'])) {
         $parts[] = 'Продукт: ' . $lead['product_title'];
+    }
+    if (!empty($lead['variant_title']) || !empty($lead['variant_volume'])) {
+        $parts[] = 'Вариант: ' . trim((string)($lead['variant_title'] ?? '') . ' ' . (string)($lead['variant_volume'] ?? ''));
+    }
+    if (!empty($lead['product_sku'])) {
+        $parts[] = 'Артикул: ' . $lead['product_sku'];
+    }
+    $recommendationContext = json_decode((string)($lead['recommendation_context_json'] ?? ''), true);
+    if (is_array($recommendationContext) && !empty($recommendationContext['reason'])) {
+        $parts[] = 'Почему заинтересовало: ' . trim((string)$recommendationContext['reason']);
     }
     if ($leadMessage !== '') {
         $parts[] = "Сообщение:\n" . $leadMessage;

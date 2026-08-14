@@ -67,9 +67,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 $stmt = db()->prepare(
-    'SELECT l.*, p.title AS product_title
+    'SELECT l.*, p.title AS product_title, COALESCE(pv.sku, p.catalog_sku) AS product_sku,
+            pv.title AS variant_title, pv.volume_text AS variant_volume
      FROM leads l
      LEFT JOIN products p ON p.id = l.product_id
+     LEFT JOIN product_variants pv ON pv.id = l.product_variant_id
      WHERE l.end_user_id = :end_user_id
      ORDER BY l.id DESC
      LIMIT 50'

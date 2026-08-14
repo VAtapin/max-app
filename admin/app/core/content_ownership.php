@@ -333,19 +333,30 @@ function owned_content_clone_product(array $source, string $ownerType, int $owne
 {
     $stmt = db()->prepare(
         'INSERT INTO products
-            (category_id, owner_type, owner_id, source_product_id, is_deleted, title, slug, short_description,
-             full_description, composition, usage_text, warning_text, contraindications, image_path,
-             document_path, video_url, price, purchase_url, is_active, sort_order)
+            (category_id, owner_type, owner_id, source_product_id, catalog_sku, catalog_source, catalog_page,
+             product_kind, safety_review_status, image_review_status, recommendation_notice, is_deleted, title,
+             slug, short_description, full_description, composition, usage_text, warning_text, contraindications,
+             allowed_claims, source_urls, ai_enabled, content_status, reviewed_by, reviewed_at, next_review_at,
+             image_path, document_path, video_url, price, purchase_url, is_active, sort_order)
          VALUES
-            (:category_id, :owner_type, :owner_id, :source_product_id, :is_deleted, :title, :slug, :short_description,
-             :full_description, :composition, :usage_text, :warning_text, :contraindications, :image_path,
-             :document_path, :video_url, :price, :purchase_url, :is_active, :sort_order)'
+            (:category_id, :owner_type, :owner_id, :source_product_id, :catalog_sku, :catalog_source, :catalog_page,
+             :product_kind, :safety_review_status, :image_review_status, :recommendation_notice, :is_deleted, :title,
+             :slug, :short_description, :full_description, :composition, :usage_text, :warning_text, :contraindications,
+             :allowed_claims, :source_urls, :ai_enabled, :content_status, :reviewed_by, :reviewed_at, :next_review_at,
+             :image_path, :document_path, :video_url, :price, :purchase_url, :is_active, :sort_order)'
     );
     $stmt->execute([
         'category_id' => owned_content_map_category_for_owner($source['category_id'] !== null ? (int)$source['category_id'] : null, $ownerType, $ownerId),
         'owner_type' => $ownerType,
         'owner_id' => $ownerId,
         'source_product_id' => owned_content_source_root($source, 'source_product_id'),
+        'catalog_sku' => $source['catalog_sku'] ?? null,
+        'catalog_source' => $source['catalog_source'] ?? null,
+        'catalog_page' => $source['catalog_page'] ?? null,
+        'product_kind' => $source['product_kind'] ?? 'other',
+        'safety_review_status' => $source['safety_review_status'] ?? 'catalog_only',
+        'image_review_status' => $source['image_review_status'] ?? 'missing',
+        'recommendation_notice' => $source['recommendation_notice'] ?? null,
         'is_deleted' => $inactive ? 1 : 0,
         'title' => $source['title'],
         'slug' => owned_content_unique_slug('products', (string)($source['slug'] ?? ''), $ownerType, $ownerId),
@@ -355,6 +366,13 @@ function owned_content_clone_product(array $source, string $ownerType, int $owne
         'usage_text' => $source['usage_text'],
         'warning_text' => $source['warning_text'],
         'contraindications' => $source['contraindications'],
+        'allowed_claims' => $source['allowed_claims'] ?? null,
+        'source_urls' => $source['source_urls'] ?? null,
+        'ai_enabled' => (int)($source['ai_enabled'] ?? 0),
+        'content_status' => $source['content_status'] ?? 'draft',
+        'reviewed_by' => $source['reviewed_by'] ?? null,
+        'reviewed_at' => $source['reviewed_at'] ?? null,
+        'next_review_at' => $source['next_review_at'] ?? null,
         'image_path' => $source['image_path'],
         'document_path' => $source['document_path'],
         'video_url' => $source['video_url'],
@@ -364,7 +382,23 @@ function owned_content_clone_product(array $source, string $ownerType, int $owne
         'sort_order' => (int)$source['sort_order'],
     ]);
 
-    return (int)db()->lastInsertId();
+    $cloneId = (int)db()->lastInsertId();
+    $copyVariants = db()->prepare(
+        'INSERT INTO product_variants
+            (product_id, sku, title, volume_text, price, currency, image_path, is_sample, is_active, sort_order)
+         SELECT :clone_id, sku, title, volume_text, price, currency, image_path, is_sample, is_active, sort_order
+         FROM product_variants WHERE product_id = :source_id'
+    );
+    $copyVariants->execute(['clone_id' => $cloneId, 'source_id' => (int)$source['id']]);
+    $copySignals = db()->prepare(
+        'INSERT INTO product_signal_links
+            (product_id, signal_id, match_type, weight, rationale, is_approved)
+         SELECT :clone_id, signal_id, match_type, weight, rationale, is_approved
+         FROM product_signal_links WHERE product_id = :source_id'
+    );
+    $copySignals->execute(['clone_id' => $cloneId, 'source_id' => (int)$source['id']]);
+
+    return $cloneId;
 }
 
 function owned_content_clone_content(array $source, string $ownerType, int $ownerId, bool $inactive): int

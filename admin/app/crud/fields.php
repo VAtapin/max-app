@@ -7,6 +7,8 @@ function select_options(string $source, array $admin): array
         'managers' => ['table' => 'managers', 'label' => 'name'],
         'end_users' => ['table' => 'end_users', 'label' => 'platform_user_id'],
         'products' => ['table' => 'products', 'label' => 'title'],
+        'product_variants' => ['table' => 'product_variants', 'label' => 'sku'],
+        'recommendation_signals' => ['table' => 'recommendation_signals', 'label' => 'title'],
         'product_categories' => ['table' => 'product_categories', 'label' => 'title'],
         'content_posts' => ['table' => 'content_posts', 'label' => 'title'],
         'tests' => ['table' => 'tests', 'label' => 'title'],

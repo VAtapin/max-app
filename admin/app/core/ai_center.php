@@ -242,7 +242,7 @@ function ai_client_sources(array $user, array $owner): array
         ];
     }
 
-    foreach (db()->query('SELECT * FROM products WHERE is_active = 1 AND is_deleted = 0 AND ai_enabled = 1 AND content_status = "approved" ORDER BY updated_at DESC LIMIT 300')->fetchAll() as $row) {
+    foreach (db()->query('SELECT * FROM products WHERE is_active = 1 AND is_deleted = 0 AND ai_enabled = 1 AND content_status = "approved" AND (product_kind NOT IN ("supplement","food") OR (safety_review_status = "verified" AND NULLIF(composition, "") IS NOT NULL AND NULLIF(usage_text, "") IS NOT NULL AND NULLIF(warning_text, "") IS NOT NULL AND NULLIF(contraindications, "") IS NOT NULL AND NULLIF(allowed_claims, "") IS NOT NULL AND NULLIF(source_urls, "") IS NOT NULL)) ORDER BY updated_at DESC LIMIT 1000')->fetchAll() as $row) {
         if (!ai_owner_row_visible($row, $owner, $resellerId)) {
             continue;
         }

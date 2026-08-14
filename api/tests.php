@@ -25,7 +25,11 @@ function test_ai_recommendations(array $user, int $sessionId): array
     }
     try {
         ai_apply_recommendation_rules((int)$user['id'], $sessionId);
-        $stmt = db()->prepare('SELECT r.product_id, r.reason_text, r.score, p.title, p.short_description, p.image_path, p.purchase_url FROM recommendations r JOIN products p ON p.id = r.product_id AND p.is_active = 1 AND p.is_deleted = 0 AND p.ai_enabled = 1 AND p.content_status = "approved" WHERE r.test_session_id = :session_id ORDER BY r.score DESC, r.id');
+        $stmt = db()->prepare('SELECT r.id recommendation_id, r.product_id, r.reason_text, r.score,
+            p.title, p.short_description, CASE WHEN p.image_review_status = "rejected" THEN NULL ELSE p.image_path END image_path, p.purchase_url, p.catalog_sku, p.recommendation_notice,
+            (SELECT pv.id FROM product_variants pv WHERE pv.product_id = p.id AND pv.is_active = 1 ORDER BY pv.is_sample, pv.sort_order, pv.id LIMIT 1) primary_variant_id,
+            (SELECT pv.sku FROM product_variants pv WHERE pv.product_id = p.id AND pv.is_active = 1 ORDER BY pv.is_sample, pv.sort_order, pv.id LIMIT 1) primary_sku
+            FROM recommendations r JOIN products p ON p.id = r.product_id AND p.is_active = 1 AND p.is_deleted = 0 AND p.ai_enabled = 1 AND p.content_status = "approved" AND (p.product_kind NOT IN ("supplement","food") OR (p.safety_review_status = "verified" AND NULLIF(p.composition, "") IS NOT NULL AND NULLIF(p.usage_text, "") IS NOT NULL AND NULLIF(p.warning_text, "") IS NOT NULL AND NULLIF(p.contraindications, "") IS NOT NULL AND NULLIF(p.allowed_claims, "") IS NOT NULL AND NULLIF(p.source_urls, "") IS NOT NULL)) WHERE r.test_session_id = :session_id ORDER BY r.score DESC, r.id');
         $stmt->execute(['session_id' => $sessionId]);
         return ['recommendations' => $stmt->fetchAll(), 'materials' => ai_rule_materials_for_session($sessionId)];
     } catch (Throwable) {
@@ -105,6 +109,10 @@ function add_result_recommendation(int $endUserId, int $sessionId, ?array $resul
              LEFT JOIN product_categories pc ON pc.id = p.category_id
              WHERE (p.category_id = :category_id OR pc.source_category_id = :category_id_clone" . ($sourceCategoryId ? " OR p.category_id = :source_category_id" : "") . ")
                AND p.is_active = 1
+               AND p.is_deleted = 0
+               AND p.ai_enabled = 1
+               AND p.content_status = 'approved'
+               AND (p.product_kind NOT IN ('supplement','food') OR (p.safety_review_status = 'verified' AND NULLIF(p.composition, '') IS NOT NULL AND NULLIF(p.usage_text, '') IS NOT NULL AND NULLIF(p.warning_text, '') IS NOT NULL AND NULLIF(p.contraindications, '') IS NOT NULL AND NULLIF(p.allowed_claims, '') IS NOT NULL AND NULLIF(p.source_urls, '') IS NOT NULL))
                AND $ownerWhere
              ORDER BY p.sort_order, p.id
              LIMIT 1"

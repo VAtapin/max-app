@@ -350,6 +350,126 @@ function ai_apply_recommendation_rules(int $endUserId, int $testSessionId): void
             ]);
         }
     }
+    ai_apply_signal_recommendations($endUserId, $testSessionId);
+}
+
+function ai_session_recommendation_signals(int $testSessionId): array
+{
+    $weights = [];
+    $explicit = db()->prepare(
+        'SELECT signal_id, MAX(weight) weight FROM (
+            SELECT trsl.signal_id, trsl.weight
+            FROM user_test_sessions uts
+            JOIN test_results tr ON tr.test_id = uts.test_id AND tr.min_score <= uts.total_score AND tr.max_score >= uts.total_score
+            JOIN test_result_signal_links trsl ON trsl.test_result_id = tr.id
+            WHERE uts.id = :test_session
+            UNION ALL
+            SELECT srsl.signal_id, srsl.weight
+            FROM user_test_scale_scores uss
+            JOIN scale_result_signal_links srsl ON srsl.scale_result_id = uss.result_id
+            WHERE uss.session_id = :scale_session AND uss.result_id IS NOT NULL
+        ) linked GROUP BY signal_id'
+    );
+    $explicit->execute(['test_session' => $testSessionId, 'scale_session' => $testSessionId]);
+    foreach ($explicit->fetchAll() as $row) {
+        $weights[(int)$row['signal_id']] = max((int)($weights[(int)$row['signal_id']] ?? 0), (int)$row['weight']);
+    }
+
+    $textStmt = db()->prepare(
+        'SELECT CONCAT_WS(" ", t.title, tr.title, tr.summary_text, tr.advice_text,
+            GROUP_CONCAT(CONCAT_WS(" ", ts.title, sr.title, sr.summary_text, sr.advice_text) SEPARATOR " ")) signal_text
+         FROM user_test_sessions uts
+         JOIN tests t ON t.id = uts.test_id
+         LEFT JOIN test_results tr ON tr.test_id = uts.test_id AND tr.min_score <= uts.total_score AND tr.max_score >= uts.total_score
+         LEFT JOIN user_test_scale_scores uss ON uss.session_id = uts.id
+         LEFT JOIN test_scale_results sr ON sr.id = uss.result_id
+         LEFT JOIN test_scales ts ON ts.id = sr.scale_id
+         WHERE uts.id = :session_id
+         GROUP BY uts.id, t.title, tr.title, tr.summary_text, tr.advice_text'
+    );
+    $textStmt->execute(['session_id' => $testSessionId]);
+    $haystack = mb_strtolower(trim((string)$textStmt->fetchColumn()));
+    if ($haystack !== '') {
+        foreach (db()->query('SELECT id, keywords_json FROM recommendation_signals WHERE is_active = 1')->fetchAll() as $signal) {
+            $keywords = json_decode((string)($signal['keywords_json'] ?? ''), true);
+            if (!is_array($keywords)) {
+                continue;
+            }
+            foreach ($keywords as $keyword) {
+                $keyword = mb_strtolower(trim((string)$keyword));
+                if ($keyword !== '' && mb_strpos($haystack, $keyword) !== false) {
+                    $id = (int)$signal['id'];
+                    $weights[$id] = max((int)($weights[$id] ?? 0), 60);
+                    break;
+                }
+            }
+        }
+    }
+
+    arsort($weights);
+    return $weights;
+}
+
+function ai_apply_signal_recommendations(int $endUserId, int $testSessionId): void
+{
+    $signals = ai_session_recommendation_signals($testSessionId);
+    if (!$signals) {
+        return;
+    }
+    $ids = array_keys($signals);
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = db()->prepare(
+        'SELECT psl.product_id, psl.signal_id, psl.match_type, psl.weight, psl.rationale, rs.title signal_title
+         FROM product_signal_links psl
+         JOIN recommendation_signals rs ON rs.id = psl.signal_id AND rs.is_active = 1
+         JOIN products p ON p.id = psl.product_id
+           AND p.is_active = 1 AND p.is_deleted = 0 AND p.ai_enabled = 1 AND p.content_status = "approved"
+           AND (p.product_kind NOT IN ("supplement","food") OR (p.safety_review_status = "verified" AND NULLIF(p.composition, "") IS NOT NULL AND NULLIF(p.usage_text, "") IS NOT NULL AND NULLIF(p.warning_text, "") IS NOT NULL AND NULLIF(p.contraindications, "") IS NOT NULL AND NULLIF(p.allowed_claims, "") IS NOT NULL AND NULLIF(p.source_urls, "") IS NOT NULL))
+         WHERE psl.signal_id IN (' . $placeholders . ')
+           AND psl.is_approved = 1
+         ORDER BY psl.match_type = "exclude" DESC, psl.weight DESC, p.id
+         LIMIT 30'
+    );
+    $stmt->execute($ids);
+    $candidates = [];
+    $excluded = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $productId = (int)$row['product_id'];
+        if ($row['match_type'] === 'exclude') {
+            $excluded[$productId] = true;
+            unset($candidates[$productId]);
+            continue;
+        }
+        if (isset($excluded[$productId])) {
+            continue;
+        }
+        $score = (int)$row['weight'] + (int)($signals[(int)$row['signal_id']] ?? 0);
+        if (!isset($candidates[$productId]) || $score > $candidates[$productId]['score']) {
+            $candidates[$productId] = [
+                'score' => $score,
+                'reason' => trim((string)($row['rationale'] ?? '')) ?: 'Подходит к вашему запросу: ' . (string)$row['signal_title'],
+            ];
+        }
+    }
+    uasort($candidates, static fn(array $a, array $b): int => $b['score'] <=> $a['score']);
+    $insert = db()->prepare(
+        'INSERT INTO recommendations (end_user_id, test_session_id, product_id, reason_text, score)
+         VALUES (:end_user_id, :test_session_id, :product_id, :reason_text, :score)'
+    );
+    $exists = db()->prepare('SELECT id FROM recommendations WHERE test_session_id = :session_id AND product_id = :product_id LIMIT 1');
+    foreach (array_slice($candidates, 0, 3, true) as $productId => $candidate) {
+        $exists->execute(['session_id' => $testSessionId, 'product_id' => $productId]);
+        if ($exists->fetchColumn()) {
+            continue;
+        }
+        $insert->execute([
+            'end_user_id' => $endUserId,
+            'test_session_id' => $testSessionId,
+            'product_id' => $productId,
+            'reason_text' => $candidate['reason'],
+            'score' => $candidate['score'],
+        ]);
+    }
 }
 
 function ai_rule_materials_for_session(int $testSessionId): array
