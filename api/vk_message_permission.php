@@ -8,8 +8,8 @@ $data = input_json() ?: $_REQUEST;
 $user = require_platform_user($data);
 $platform = normalize_platform((string)($data['platform'] ?? $user['current_platform'] ?? $user['platform'] ?? ''));
 
-if ($platform !== 'VK') {
-    json_response(['error' => 'Разрешение сообщений VK доступно только внутри приложения VK.'], 422);
+if (!in_array($platform, ['VK', 'web'], true)) {
+    json_response(['error' => 'Подключение сообщений VK недоступно на этой платформе.'], 422);
 }
 
 $documents = active_legal_documents();
@@ -18,9 +18,19 @@ if (empty($documents['marketing_consent'])) {
 }
 
 $platformUserId = preg_replace('/\D+/', '', (string)($data['platform_user_id'] ?? '')) ?? '';
-$account = messaging_vk_platform_account((int)$user['id'], $platformUserId);
-if (!$account || $platformUserId === '') {
-    json_response(['error' => 'Аккаунт VK не подтверждён.'], 422);
+if ($platform === 'VK') {
+    $account = messaging_vk_platform_account((int)$user['id'], $platformUserId);
+} else {
+    $accountStmt = db()->prepare(
+        'SELECT * FROM platform_accounts
+         WHERE end_user_id = :end_user_id AND platform = "web"
+         ORDER BY id DESC LIMIT 1'
+    );
+    $accountStmt->execute(['end_user_id' => (int)$user['id']]);
+    $account = $accountStmt->fetch() ?: null;
+}
+if (!$account || ($platform === 'VK' && $platformUserId === '')) {
+    json_response(['error' => 'Аккаунт пользователя не подтверждён.'], 422);
 }
 
 $integration = messaging_integration_for_owner(
@@ -32,7 +42,25 @@ if (!$integration) {
     json_response(['error' => 'Нет готового сообщества VK для подключения. Укажите email для получения уведомлений.'], 409);
 }
 
-$existing = messaging_vk_permission_for_user((int)$user['id'], $platformUserId, (int)$integration['id']);
+$existing = null;
+if ($platform === 'VK') {
+    $existing = messaging_vk_permission_for_user((int)$user['id'], $platformUserId, (int)$integration['id']);
+} else {
+    $existingStmt = db()->prepare(
+        'SELECT p.*, i.*, i.id AS integration_id
+         FROM vk_message_permissions p
+         INNER JOIN messaging_integrations i ON i.id = p.integration_id
+         WHERE p.end_user_id = :end_user_id
+           AND p.integration_id = :integration_id
+           AND p.status = "allowed"
+         LIMIT 1'
+    );
+    $existingStmt->execute([
+        'end_user_id' => (int)$user['id'],
+        'integration_id' => (int)$integration['id'],
+    ]);
+    $existing = $existingStmt->fetch() ?: null;
+}
 if ($existing) {
     json_response([
         'active' => true,
@@ -40,6 +68,11 @@ if ($existing) {
         'group_id' => (string)$integration['external_id'],
         'title' => (string)$integration['title'],
     ]);
+}
+
+$vkAppId = preg_replace('/\D+/', '', (string)(app_config()['integrations']['vk_app_id'] ?? '')) ?: null;
+if ($platform === 'web' && !$vkAppId) {
+    json_response(['error' => 'VK App ID не настроен. Укажите email для получения уведомлений.'], 409);
 }
 
 $requestKey = bin2hex(random_bytes(24));
@@ -58,4 +91,6 @@ json_response([
     'group_id' => (string)$integration['external_id'],
     'title' => (string)$integration['title'],
     'key' => $requestKey,
+    'app_id' => $vkAppId,
+    'flow' => $platform === 'VK' ? 'mini_app' : 'web_widget',
 ]);

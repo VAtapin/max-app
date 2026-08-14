@@ -545,12 +545,11 @@ function vk_callback_apply_permission_key(string $key, string $groupId, string $
         return false;
     }
     $stmt = db()->prepare(
-        'SELECT p.*, pa.platform_user_id
+        'SELECT p.*, pa.platform AS account_platform, pa.platform_user_id
          FROM vk_message_permissions p
          INNER JOIN platform_accounts pa ON pa.id = p.platform_account_id
          WHERE p.request_key_hash = :request_key_hash
            AND p.group_id = :group_id
-           AND pa.platform_user_id = :platform_user_id
            AND p.status = "pending"
            AND p.request_expires_at >= NOW()
          LIMIT 1'
@@ -558,11 +557,46 @@ function vk_callback_apply_permission_key(string $key, string $groupId, string $
     $stmt->execute([
         'request_key_hash' => hash('sha256', $key),
         'group_id' => $groupId,
-        'platform_user_id' => $platformUserId,
     ]);
     $permission = $stmt->fetch();
     if (!$permission) {
         return false;
+    }
+
+    if ((string)$permission['account_platform'] === 'VK') {
+        if ((string)$permission['platform_user_id'] !== $platformUserId) {
+            return false;
+        }
+    } elseif ($allowed) {
+        $accountStmt = db()->prepare(
+            'SELECT * FROM platform_accounts
+             WHERE platform = "VK" AND platform_user_id = :platform_user_id
+             LIMIT 1'
+        );
+        $accountStmt->execute(['platform_user_id' => $platformUserId]);
+        $vkAccount = $accountStmt->fetch();
+        if ($vkAccount && (int)$vkAccount['end_user_id'] !== (int)$permission['end_user_id']) {
+            $conflict = db()->prepare(
+                'UPDATE vk_message_permissions
+                 SET status = "denied", request_key_hash = NULL,
+                     request_expires_at = NULL, denied_at = NOW()
+                 WHERE id = :id'
+            );
+            $conflict->execute(['id' => $permission['id']]);
+            return true;
+        }
+        if (!$vkAccount) {
+            $createAccount = db()->prepare(
+                'INSERT INTO platform_accounts (end_user_id, platform, platform_user_id)
+                 VALUES (:end_user_id, "VK", :platform_user_id)'
+            );
+            $createAccount->execute([
+                'end_user_id' => $permission['end_user_id'],
+                'platform_user_id' => $platformUserId,
+            ]);
+            $vkAccount = ['id' => (int)db()->lastInsertId()];
+        }
+        $permission['platform_account_id'] = (int)$vkAccount['id'];
     }
 
     $update = db()->prepare(
@@ -571,13 +605,15 @@ function vk_callback_apply_permission_key(string $key, string $groupId, string $
              request_key_hash = NULL,
              request_expires_at = NULL,
              allowed_at = :allowed_at,
-             denied_at = :denied_at
+             denied_at = :denied_at,
+             platform_account_id = :platform_account_id
          WHERE id = :id'
     );
     $update->execute([
         'status' => $allowed ? 'allowed' : 'denied',
         'allowed_at' => $allowed ? date('Y-m-d H:i:s') : null,
         'denied_at' => $allowed ? null : date('Y-m-d H:i:s'),
+        'platform_account_id' => $permission['platform_account_id'],
         'id' => $permission['id'],
     ]);
     vk_callback_sync_messages_allowed((int)$permission['platform_account_id']);

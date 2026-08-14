@@ -1832,6 +1832,11 @@ button.secondary,
     color: #17643a;
 }
 
+.vk-web-message-widget {
+    min-height: 30px;
+    margin-top: 10px;
+}
+
 .main-action-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

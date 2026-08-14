@@ -1012,12 +1012,16 @@ function renderMessagingPermissionCard() {
     `;
 }
 
+async function prepareVkMessagePermission() {
+    return api('vk_message_permission.php', {
+        method: 'POST',
+        body: JSON.stringify(userPayload()),
+    });
+}
+
 async function allowSocialMessages() {
     if (state.platform === 'VK' && window.vkBridge) {
-        const permission = await api('vk_message_permission.php', {
-            method: 'POST',
-            body: JSON.stringify(userPayload()),
-        });
+        const permission = await prepareVkMessagePermission();
         if (permission.status !== 'allowed') {
             await vkBridge.send('VKWebAppAllowMessagesFromGroup', {
                 group_id: Number(permission.group_id),
@@ -1053,6 +1057,65 @@ async function allowSocialMessages() {
     );
 }
 
+function loadVkOpenApi() {
+    if (window.VK?.Widgets?.AllowMessagesFromCommunity) {
+        return Promise.resolve(window.VK);
+    }
+    return new Promise((resolve, reject) => {
+        const existing = document.querySelector('script[data-vk-open-api]');
+        if (existing) {
+            existing.addEventListener('load', () => resolve(window.VK), {once: true});
+            existing.addEventListener('error', reject, {once: true});
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://vk.com/js/api/openapi.js?169';
+        script.async = true;
+        script.dataset.vkOpenApi = '1';
+        script.onload = () => resolve(window.VK);
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
+}
+
+async function showWebVkPermissionWidget(form) {
+    const permission = await prepareVkMessagePermission();
+    if (permission.status === 'allowed') {
+        setMarketingDeliveryHint(form, 'Готово: сообщения VK уже подключены.', 'success');
+        return;
+    }
+
+    const hint = form?.querySelector('#marketing-delivery-hint');
+    if (!hint) return;
+    hint.hidden = false;
+    hint.className = 'marketing-delivery-hint';
+    hint.innerHTML = `
+        <div>Подключите сообщения VK. Если вы ещё не вошли, VK сначала предложит войти. Либо укажите email ниже.</div>
+        <div id="vk-web-message-widget" class="vk-web-message-widget"></div>
+    `;
+
+    const VK = await loadVkOpenApi();
+    if (!VK?.Widgets?.AllowMessagesFromCommunity) {
+        throw new Error('VK web widget is unavailable');
+    }
+    try {
+        VK.init({apiId: Number(permission.app_id), onlyWidgets: true});
+    } catch (_) {
+        // VK Open API may already be initialized on this page.
+    }
+    VK.Observer.subscribe('widgets.allowMessagesFromCommunity.allowed', () => {
+        setMarketingDeliveryHint(form, 'Готово: сообщения VK подключены.', 'success');
+    });
+    VK.Observer.subscribe('widgets.allowMessagesFromCommunity.denied', () => {
+        setMarketingDeliveryHint(form, 'Сообщения VK не подключены. Укажите email, чтобы получать материалы и уведомления.', 'warning');
+    });
+    VK.Widgets.AllowMessagesFromCommunity(
+        'vk-web-message-widget',
+        {height: 30, key: String(permission.key || '')},
+        Number(permission.group_id)
+    );
+}
+
 function setMarketingDeliveryHint(form, message, tone = 'info') {
     const hint = form?.querySelector('#marketing-delivery-hint');
     if (!hint) return;
@@ -1067,8 +1130,20 @@ async function handleMarketingConsentChange(checkbox) {
         setMarketingDeliveryHint(form, '');
         return;
     }
+    if (state.platform === 'web') {
+        checkbox.disabled = true;
+        state.vkMessagePermissionAttempted = true;
+        try {
+            await showWebVkPermissionWidget(form);
+        } catch (_) {
+            setMarketingDeliveryHint(form, 'Не удалось открыть VK. Попробуйте ещё раз или укажите email для получения материалов и уведомлений.', 'warning');
+        } finally {
+            checkbox.disabled = false;
+        }
+        return;
+    }
     if (state.platform !== 'VK' || !window.vkBridge) {
-        setMarketingDeliveryHint(form, 'Сообщения VK доступны только внутри приложения VK. Укажите email, чтобы получать материалы и уведомления.', 'warning');
+        setMarketingDeliveryHint(form, 'Для сообщений VK откройте эту страницу в браузере или приложении VK. Также можно указать email.', 'warning');
         return;
     }
     checkbox.disabled = true;
