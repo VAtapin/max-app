@@ -11,7 +11,7 @@ $aiWidgetVisible = isset($admin) && ai_enabled() && (ai_entitlements_for_admin($
         <span>AI</span><small>Помощник</small>
     </button>
     <section class="ai-chat-panel" data-ai-chat-panel hidden>
-        <header><div><strong>Помощник SWPro</strong><small>Отвечает по утверждённым материалам</small></div><button type="button" data-ai-chat-close aria-label="Закрыть">×</button></header>
+        <header><div><strong>Помощник SWPro</strong><small>Отвечает по материалам SWPro</small></div><button type="button" data-ai-chat-close aria-label="Закрыть">×</button></header>
         <div class="ai-chat-messages" data-ai-chat-messages>
             <div class="ai-chat-message assistant">Здравствуйте! Спросите, как выполнить нужное действие в админке.</div>
         </div>
