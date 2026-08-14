@@ -78,12 +78,14 @@ function subscription_plan_payload_from_post(array $source, array $admin, ?array
     $payload['discount_12'] = max(0, min(100, (float)str_replace(',', '.', (string)($source['discount_12'] ?? 5))));
     $payload['sort_order'] = (int)($source['sort_order'] ?? 100);
     $payload['is_active'] = isset($source['is_active']) ? 1 : 0;
-    $payload['ai_text_enabled'] = 1;
-    $payload['ai_text_monthly_limit'] = null;
+    // The admin-panel assistant is standard. This flag controls the
+    // client-facing assistant in Mini App and on the public page.
+    $payload['ai_text_enabled'] = isset($source['ai_text_enabled']) ? 1 : 0;
+    $payload['ai_text_monthly_limit'] = subscription_parse_limit($source['ai_text_monthly_limit'] ?? '');
     foreach (['ai_video_enabled', 'ai_personal_video_enabled', 'ai_voice_enabled', 'ai_realtime_enabled'] as $field) {
         $payload[$field] = isset($source[$field]) ? 1 : 0;
     }
-    foreach (['ai_video_monthly_seconds', 'ai_personal_video_monthly_seconds', 'ai_voice_monthly_seconds'] as $field) {
+    foreach (['ai_text_monthly_limit', 'ai_video_monthly_seconds', 'ai_personal_video_monthly_seconds', 'ai_voice_monthly_seconds'] as $field) {
         $payload[$field] = subscription_parse_limit($source[$field] ?? '');
     }
     $payload['ai_max_video_seconds'] = max(5, min(300, (int)($source['ai_max_video_seconds'] ?? 30)));
@@ -94,13 +96,6 @@ function subscription_plan_payload_from_post(array $source, array $admin, ?array
     foreach (subscription_plan_price_fields() as $field) {
         $payload[$field] = subscription_parse_money($source[$field] ?? '');
     }
-    foreach (['ai_video_monthly_seconds', 'ai_personal_video_monthly_seconds', 'ai_voice_monthly_seconds'] as $field) {
-        if ($payload[$field] !== null && $payload[$field] < 0) {
-            $errors[] = 'Лимиты ИИ должны быть целыми числами или пустыми.';
-            break;
-        }
-    }
-
     return $payload;
 }
 
@@ -165,6 +160,13 @@ function subscription_plan_validate(array &$payload, array $admin): array
     foreach (subscription_plan_price_fields() as $field) {
         if ($payload[$field] !== null && $payload[$field] < 0) {
             $errors[] = 'Стоимость не может быть отрицательной.';
+            break;
+        }
+    }
+
+    foreach (['ai_text_monthly_limit', 'ai_video_monthly_seconds', 'ai_personal_video_monthly_seconds', 'ai_voice_monthly_seconds'] as $field) {
+        if ($payload[$field] !== null && $payload[$field] < 0) {
+            $errors[] = 'Лимиты ИИ должны быть целыми числами или пустыми.';
             break;
         }
     }
@@ -454,6 +456,7 @@ function subscription_plan_limits_html(array $plan): string
     ob_start();
     ?>
     <div class="compact-lines">
+        <span><strong>ИИ-консультант:</strong> <?= (int)($plan['ai_text_enabled'] ?? 0) === 1 ? 'включён' : 'выключен' ?></span>
         <?php foreach ($items as $label => $value): ?>
             <span><strong><?= h($label) ?>:</strong> <?= h(subscription_limit_text($value)) ?></span>
         <?php endforeach; ?>
@@ -647,6 +650,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <div class="field"><span>Формула начисления</span><strong id="subscription-plan-preview">—</strong></div>
             <label class="field wide"><span>Условия</span><textarea name="payment_terms" rows="4"><?= h((string)($editPlan['payment_terms'] ?? '')) ?></textarea></label>
             <div class="field wide"><span><strong>Возможности ИИ</strong></span><small class="field-hint">Пустой месячный лимит означает отсутствие программного ограничения.</small></div>
+            <label class="check-row wide"><input type="checkbox" name="ai_text_enabled" value="1" <?= (int)($editPlan['ai_text_enabled'] ?? 0) === 1 ? 'checked' : '' ?>><span>ИИ-консультант для клиентов <small class="field-hint">Доступен в Mini App и на публичной странице консультанта. На внутренний помощник админки этот пункт не влияет.</small></span></label>
+            <label class="field"><span>Ответов ИИ-консультанта в месяц</span><input type="number" min="0" name="ai_text_monthly_limit" value="<?= h((string)($editPlan['ai_text_monthly_limit'] ?? '')) ?>" placeholder="без лимита"></label>
             <label class="check-row"><input type="checkbox" name="ai_video_enabled" value="1" <?= (int)($editPlan['ai_video_enabled'] ?? 0) === 1 ? 'checked' : '' ?>><span>Общие видеоответы</span></label>
             <label class="check-row"><input type="checkbox" name="ai_personal_video_enabled" value="1" <?= (int)($editPlan['ai_personal_video_enabled'] ?? 0) === 1 ? 'checked' : '' ?>><span>Персональные видеоответы</span></label>
             <label class="check-row"><input type="checkbox" name="ai_voice_enabled" value="1" <?= (int)($editPlan['ai_voice_enabled'] ?? 0) === 1 ? 'checked' : '' ?>><span>Голосовые AI-сообщения</span></label>

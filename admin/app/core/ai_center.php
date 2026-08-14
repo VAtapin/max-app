@@ -3,6 +3,7 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/workspace_billing.php';
+require_once __DIR__ . '/legal_documents.php';
 
 function ai_settings(bool $refresh = false): array
 {
@@ -226,6 +227,19 @@ function ai_client_sources(array $user, array $owner): array
         if ($text !== '') {
             $items[] = ['title' => 'О консультанте ' . $profile['display_name'], 'content' => $text, 'keywords' => 'консультант лидер опыт специализация', 'source_key' => 'profile:' . $profile['id'], 'source_label' => 'Мини-страница консультанта', 'version' => strtotime((string)$profile['updated_at']) ?: 1];
         }
+    }
+
+    foreach (legal_active_documents() as $document) {
+        $rendered = legal_render_document($document);
+        $items[] = [
+            'title' => (string)$rendered['title'],
+            'content' => (string)$rendered['body'],
+            'keywords' => 'SWPro соглашение согласие политика данные рассылка оферта документы',
+            'source_key' => 'legal:' . (string)$document['document_type'] . ':' . (int)$document['id'],
+            'source_label' => 'Документ: ' . (string)$rendered['title'],
+            'source_url' => legal_document_url((string)$document['document_type']),
+            'version' => strtotime((string)$document['updated_at']) ?: 1,
+        ];
     }
 
     foreach (db()->query('SELECT * FROM products WHERE is_active = 1 AND is_deleted = 0 AND ai_enabled = 1 AND content_status = "approved" ORDER BY updated_at DESC LIMIT 300')->fetchAll() as $row) {

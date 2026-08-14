@@ -5,6 +5,7 @@ require_once __DIR__ . '/admin/app/core/helpers.php';
 require_once __DIR__ . '/admin/app/core/consultant_profiles.php';
 require_once __DIR__ . '/admin/app/core/workspace_billing.php';
 require_once __DIR__ . '/admin/app/core/legal_documents.php';
+require_once __DIR__ . '/admin/app/core/ai_center.php';
 
 $slug = trim((string)($_GET['m'] ?? ''));
 $referralCode = consultant_referral_code($_GET['ref'] ?? $_POST['ref'] ?? null);
@@ -197,6 +198,36 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
 
     return $miniAppUrl . ($params ? '?' . http_build_query($params) : '');
 }
+
+function public_ai_assistant_enabled(array $profile): bool
+{
+    if (!ai_enabled()) {
+        return false;
+    }
+
+    $ownerType = (string)($profile['owner_type'] ?? '');
+    $ownerId = (int)($profile['owner_id'] ?? 0);
+    $resellerId = $ownerType === 'reseller' ? $ownerId : 0;
+    if ($ownerType === 'manager' && $ownerId > 0) {
+        $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE id = :id AND is_active = 1 LIMIT 1');
+        $stmt->execute(['id' => $ownerId]);
+        $resellerId = (int)$stmt->fetchColumn();
+    }
+    if ($resellerId <= 0) {
+        return false;
+    }
+
+    $plan = billing_plan_for_reseller_branch($resellerId);
+    return $plan
+        && (int)($plan['is_active'] ?? 0) === 1
+        && (int)($plan['ai_text_enabled'] ?? 0) === 1;
+}
+
+function public_person_first_name(string $displayName): string
+{
+    $parts = preg_split('/\s+/u', trim($displayName), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    return (string)($parts[0] ?? 'консультанта');
+}
 ?>
 <!doctype html>
 <html lang="ru">
@@ -290,6 +321,8 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
     )); ?>
     <?php $profileReferralCode = public_profile_referral_code($profileData); ?>
     <?php $miniAppUrl = public_mini_app_url($profileReferralCode); ?>
+    <?php $publicAiEnabled = $profileReferralCode && public_ai_assistant_enabled($profileData); ?>
+    <?php $publicAiName = public_person_first_name((string)$profileData['display_name']); ?>
     <main class="consultant-page" data-theme="<?= h((string)($profileData['theme_key'] ?? 'classic')) ?>">
         <header class="public-topnav">
             <a class="brand-link" href="/">SWPro</a>
@@ -322,6 +355,7 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
                     <a class="primary" href="#contacts">Получить консультацию</a>
                     <?php if (!empty($payload['tests'])): ?><a class="secondary" href="<?= h(public_mini_app_url($profileReferralCode, 'tests')) ?>">Пройти тест</a><?php endif; ?>
                     <a class="secondary" href="<?= h($miniAppUrl) ?>">Открыть кабинет</a>
+                    <?php if ($publicAiEnabled): ?><button class="secondary public-ai-open public-ai-hero-button" type="button">Задать вопрос ИИ</button><?php endif; ?>
                 </div>
                 <?php if ($profileReferralCode): ?><p class="referral-note">Код консультанта: <strong><?= h($profileReferralCode) ?></strong></p><?php endif; ?>
                 <div class="hero-metrics">
@@ -490,6 +524,30 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
             </div>
         </section>
     </main>
+<?php endif; ?>
+<?php if (!empty($publicAiEnabled)): ?>
+<aside class="public-ai" data-public-ai data-referral-code="<?= h((string)$profileReferralCode) ?>" data-consultant-name="<?= h($publicAiName) ?>">
+    <button class="public-ai-launcher public-ai-open" type="button" aria-controls="public-ai-dialog" aria-expanded="false">
+        <span class="public-ai-launcher-mark">AI</span>
+        <span>ИИ-помощник: <?= h($publicAiName) ?></span>
+    </button>
+    <section class="public-ai-dialog" id="public-ai-dialog" aria-label="ИИ-помощник консультанта" hidden>
+        <header class="public-ai-header">
+            <div><strong><?= h($publicAiName) ?> — ИИ-помощник</strong><span>Помощник вашего консультанта</span></div>
+            <button class="public-ai-close" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <div class="public-ai-messages" aria-live="polite">
+            <div class="public-ai-message assistant">Здравствуйте! Меня зовут <?= h($publicAiName) ?>. Я ИИ-помощник вашего консультанта. Спросите о SWPro, продуктах, консультации или документах.</div>
+        </div>
+        <form class="public-ai-form">
+            <label class="sr-only" for="public-ai-question">Ваш вопрос</label>
+            <textarea id="public-ai-question" maxlength="1000" rows="2" placeholder="Напишите вопрос…" required></textarea>
+            <button type="submit">Отправить</button>
+        </form>
+        <p class="public-ai-note">Ответ формирует ИИ по утверждённым материалам SWPro. Для личной консультации свяжитесь с консультантом.</p>
+    </section>
+</aside>
+<script src="/public-ai.js" defer></script>
 <?php endif; ?>
 <?php
 $activeLegalDocuments = legal_active_documents();
