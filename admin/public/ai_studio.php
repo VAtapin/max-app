@@ -58,84 +58,20 @@ function ai_studio_photo_uri(string $photo, string $base): string
     return str_starts_with($photo, '/') ? $base . $photo : $photo;
 }
 
-function ai_studio_text_lines(string $text, int $maxChars, int $maxLines = 2): array
-{
-    $words = preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-    $lines = [];
-    $line = '';
-    $truncated = false;
-    foreach ($words as $word) {
-        $candidate = $line === '' ? $word : $line . ' ' . $word;
-        if (mb_strlen($candidate, 'UTF-8') <= $maxChars) {
-            $line = $candidate;
-            continue;
-        }
-        if ($line !== '') {
-            $lines[] = $line;
-        }
-        $line = $word;
-        if (count($lines) >= $maxLines) {
-            $truncated = true;
-            break;
-        }
-    }
-    if ($line !== '' && count($lines) < $maxLines) {
-        $lines[] = mb_substr($line, 0, $maxChars, 'UTF-8');
-        $truncated = $truncated || mb_strlen($line, 'UTF-8') > $maxChars;
-    } elseif ($line !== '') {
-        $truncated = true;
-    }
-    if ($truncated && $lines) {
-        $last = count($lines) - 1;
-        $lines[$last] = rtrim(mb_substr($lines[$last], 0, max(1, $maxChars - 1), 'UTF-8')) . '…';
-    }
-    return $lines ?: ['SWPro'];
-}
-
-function ai_studio_card_uri(array $profile, string $theme = 'ocean'): string
+function ai_studio_card_payload(array $profile): array
 {
     $name = trim((string)($profile['display_name'] ?? $profile['name'] ?? 'SWPro'));
-    $subtitle = trim((string)($profile['subtitle'] ?? $profile['title'] ?? 'Ваш персональный консультант'));
+    $subtitle = trim((string)($profile['subtitle'] ?? $profile['title'] ?? 'Ваш персональный консультант SWPro'));
     $base = rtrim((string)(getenv('SWPRO_PUBLIC_URL') ?: 'https://swpro.ru'), '/');
     $code = trim((string)($profile['referral_code'] ?? ''));
     $url = $base . ($code !== '' ? '/?ref=' . rawurlencode($code) : '');
-    $qr = qr_code_svg_data_uri($url);
-    $photo = ai_studio_photo_uri((string)($profile['photo_path'] ?? ''), $base);
-    [$from, $to, $accent] = match ($theme) {
-        'warm' => ['#7b3156', '#e27a5f', '#ffe0b5'],
-        'light' => ['#264653', '#68b0ab', '#e9fff9'],
-        default => ['#083f69', '#19a0ae', '#b9f3ef'],
-    };
-    $xml = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_XML1, 'UTF-8');
-    $textX = $photo !== '' ? 310 : 80;
-    $nameLines = ai_studio_text_lines($name, $photo !== '' ? 27 : 38, 2);
-    $subtitleLines = ai_studio_text_lines($subtitle, $photo !== '' ? 42 : 55, 2);
-    $nameSize = count($nameLines) > 1 ? 43 : 54;
-    $nameY = count($nameLines) > 1 ? 180 : 215;
-    $nameSvg = '<text x="' . $textX . '" y="' . $nameY . '" fill="#fff" font-family="Arial, sans-serif" font-size="' . $nameSize . '" font-weight="700">';
-    foreach ($nameLines as $index => $line) {
-        $nameSvg .= '<tspan x="' . $textX . '" dy="' . ($index === 0 ? 0 : 54) . '">' . $xml($line) . '</tspan>';
-    }
-    $nameSvg .= '</text>';
-    $subtitleY = $nameY + (count($nameLines) * 54) + 18;
-    $subtitleSvg = '<text x="' . $textX . '" y="' . $subtitleY . '" fill="#e8fbfb" font-family="Arial, sans-serif" font-size="27">';
-    foreach ($subtitleLines as $index => $line) {
-        $subtitleSvg .= '<tspan x="' . $textX . '" dy="' . ($index === 0 ? 0 : 36) . '">' . $xml($line) . '</tspan>';
-    }
-    $subtitleSvg .= '</text>';
-    $photoSvg = $photo !== '' ? '<image x="82" y="150" width="176" height="176" preserveAspectRatio="xMidYMid slice" clip-path="url(#photo)" href="' . $xml($photo) . '"/><circle cx="170" cy="238" r="92" fill="none" stroke="#fff" stroke-width="7" opacity=".92"/>' : '';
-    $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">'
-        . '<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="' . $from . '"/><stop offset="1" stop-color="' . $to . '"/></linearGradient><clipPath id="photo"><circle cx="170" cy="238" r="88"/></clipPath></defs>'
-        . '<rect width="1200" height="630" rx="44" fill="url(#g)"/><circle cx="1050" cy="70" r="270" fill="#fff" opacity=".08"/>'
-        . $photoSvg
-        . '<text x="80" y="95" fill="' . $accent . '" font-family="Arial, sans-serif" font-size="30" font-weight="700">SWPro</text>'
-        . $nameSvg . $subtitleSvg
-        . '<text x="80" y="500" fill="#fff" font-family="Arial, sans-serif" font-size="25" font-weight="700">Персональная страница</text>'
-        . '<text x="80" y="545" fill="#d8f5f3" font-family="Arial, sans-serif" font-size="22">' . $xml($url) . '</text>'
-        . '<rect x="915" y="330" width="225" height="225" rx="28" fill="#fff"/><image x="930" y="345" width="195" height="195" href="' . $xml($qr) . '"/>'
-        . '<text x="1027" y="585" text-anchor="middle" fill="#fff" font-family="Arial, sans-serif" font-size="20">Открыть мини-сайт</text>'
-        . '</svg>';
-    return 'data:image/svg+xml;base64,' . base64_encode($svg);
+    return [
+        'name' => $name !== '' ? $name : 'SWPro',
+        'subtitle' => $subtitle !== '' ? $subtitle : 'Ваш персональный консультант SWPro',
+        'url' => $url,
+        'photo' => ai_studio_photo_uri((string)($profile['photo_path'] ?? ''), $base),
+        'qr' => qr_code_svg_data_uri($url),
+    ];
 }
 
 $profile = ai_studio_owner_profile($owner);
@@ -299,30 +235,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$source && $occasion === '') {
             $errors[] = 'Выберите утверждённый материал или повод.';
         } else {
-            $name = trim((string)($profile['display_name'] ?? $profile['name'] ?? 'ваш консультант'));
             $facts = trim((string)($source['content'] ?? ''));
             $subject = $occasion !== '' ? $occasion : (string)($source['title'] ?? 'Полезный материал');
-            $provider = 'swpro';
-            $model = 'verified-template';
-            $inputTokens = null;
-            $outputTokens = null;
-            $content = match ($type) {
-                'greeting' => 'Здравствуйте! ' . $subject . ".\n\n" . $facts . "\n\nС теплом, " . $name,
-                'campaign' => $subject . ".\n\n" . $facts . "\n\nЕсли тема вам актуальна, напишите — помогу разобраться подробнее.",
-                'video_script' => 'Здравствуйте! Сегодня коротко поговорим о теме «' . $subject . '». ' . $facts . ' Если появились вопросы, напишите мне.',
-                'voice_script' => 'Здравствуйте! Хочу поделиться важной информацией. ' . $facts . ' Если захотите обсудить это лично, я на связи.',
-                default => $subject . "\n\n" . $facts . "\n\nМатериал подготовлен по утверждённой базе SWPro. Задайте вопрос, если хотите узнать больше.",
-            };
             $useOpenAi = ai_setting('ai.external_processing_enabled', '0') === '1'
                 && ai_setting('ai.studio_external_enabled', '0') === '1'
                 && ai_openai_key_configured();
-            if ($useOpenAi) {
+            if (!$useOpenAi) {
+                $errors[] = 'OpenAI для AI-студии не подключён. Черновик не создан — локальные шаблоны больше не используются.';
+            } else {
                 try {
                     $generated = ai_openai_studio_draft($type, $subject, $facts, $personalization);
                     $content = trim((string)$generated['text']);
-                    if ($type === 'greeting' && $name !== '') {
-                        $content .= "\n\nС теплом, " . $name;
-                    }
                     $provider = 'openai';
                     $model = (string)$generated['model'];
                     $inputTokens = (int)$generated['input_tokens'];
@@ -340,13 +263,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $insert = db()->prepare('INSERT INTO ai_content_drafts (owner_type, owner_id, end_user_id, draft_type, occasion, source_type, source_id, title, content, provider, model, input_tokens, output_tokens, status, created_by) VALUES (:owner_type, :owner_id, :end_user_id, :draft_type, :occasion, :source_type, :source_id, :title, :content, :provider, :model, :input_tokens, :output_tokens, "draft", :created_by)');
                 $insert->execute($owner + ['end_user_id' => $clientId ?: null, 'draft_type' => $type, 'occasion' => $occasion ?: null, 'source_type' => $sourceType, 'source_id' => $sourceId, 'title' => $subject, 'content' => $content, 'provider' => $provider, 'model' => $model, 'input_tokens' => $inputTokens, 'output_tokens' => $outputTokens, 'created_by' => (int)$admin['id']]);
+                $draftId = (int)db()->lastInsertId();
                 db()->prepare('INSERT INTO ai_usage_events (owner_type, owner_id, admin_user_id, event_type, provider, model, metadata_json) VALUES (:owner_type, :owner_id, :admin_id, "studio", :provider, :model, :metadata)')->execute($owner + [
                     'admin_id' => (int)$admin['id'],
                     'provider' => $provider,
                     'model' => $model,
                     'metadata' => json_encode(['input_tokens' => $inputTokens, 'output_tokens' => $outputTokens], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 ]);
-                redirect('ai_studio.php?success=created');
+                redirect('ai_studio.php?success=created&draft=' . $draftId . '#draft-' . $draftId);
             }
         }
     }
@@ -368,34 +292,163 @@ $seasonal = match ((int)date('n')) {
     6, 7, 8 => 'Летний режим, вода, отдых и поддержка энергии',
     default => 'Осенний ритм и возвращение к регулярной заботе о себе',
 };
-$cardUris = ['ocean' => ai_studio_card_uri($profile, 'ocean'), 'warm' => ai_studio_card_uri($profile, 'warm'), 'light' => ai_studio_card_uri($profile, 'light')];
+$openAiReady = ai_setting('ai.external_processing_enabled', '0') === '1'
+    && ai_setting('ai.studio_external_enabled', '0') === '1'
+    && ai_openai_key_configured();
+$selectedDraftId = max(0, (int)($_GET['draft'] ?? 0));
+$cardPayload = ai_studio_card_payload($profile);
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
 <div class="page-title-row"><div><h1>AI-студия</h1><p class="cell-muted">Черновики публикаций, сценариев, кампаний и персональные материалы на основе утверждённых данных.</p></div></div>
-<?php if (isset($_GET['success'])): ?><div class="notice success"><?= h(match ((string)$_GET['success']) { 'voice_ready' => 'Голосовое сообщение создано.', 'video_queued' => 'Видео поставлено в очередь.', default => 'Изменения сохранены.' }) ?></div><?php endif; ?>
+<?php if (isset($_GET['success'])): ?><div class="notice success"><?= h(match ((string)$_GET['success']) { 'created' => 'OpenAI создал текст. Проверьте его ниже.', 'voice_ready' => 'Голосовое сообщение создано.', 'video_queued' => 'Видео поставлено в очередь.', default => 'Изменения сохранены.' }) ?></div><?php endif; ?>
 <?php foreach ($errors as $error): ?><div class="alert"><?= h($error) ?></div><?php endforeach; ?>
 
-<div class="two-columns">
-<section class="panel form-panel"><h2>Подготовить черновик</h2><form method="post" class="crud-form"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="create">
+<section class="panel ai-studio-create"><div class="ai-studio-heading"><div><h2>Создать материал с OpenAI</h2><p class="cell-muted">Выберите формат, источник и при необходимости клиента — готовый текст откроется сразу под этой формой.</p></div><span class="ai-status <?= $openAiReady ? 'is-ready' : 'is-offline' ?>"><?= $openAiReady ? 'OpenAI подключён' : 'OpenAI выключен' ?></span></div>
+<div class="ai-studio-steps"><span><b>1</b> Выберите формат</span><span><b>2</b> Укажите тему</span><span><b>3</b> Получите и проверьте текст</span></div>
+<form method="post" class="crud-form"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="create">
     <label class="field"><span>Формат</span><select name="draft_type"><option value="post">Пост для соцсетей</option><option value="campaign">Кампания/рассылка</option><option value="greeting">Поздравление</option><option value="video_script">Сценарий видео</option><option value="voice_script">Сценарий голосового сообщения</option><option value="product_description">Описание продукта</option></select></label>
     <label class="field"><span>Утверждённый источник</span><select name="source_key"><option value="">Без источника — только повод</option><?php foreach ($sources as $source): ?><option value="<?= h((string)$source['source_key']) ?>"><?= h((string)$source['title']) ?></option><?php endforeach; ?></select></label>
     <label class="field"><span>Персонализация для клиента</span><select name="end_user_id"><option value="">Без персонализации</option><?php foreach ($clients as $client): ?><option value="<?= (int)$client['id'] ?>"><?= h(trim((string)$client['first_name'] . ' ' . (string)$client['last_name']) ?: 'Клиент #' . (int)$client['id']) ?></option><?php endforeach; ?></select><small class="field-hint">Передаются сведения профиля и содержание последнего чек-апа. Контакты, точный адрес, ID аккаунтов, логины и токены не передаются.</small></label>
     <label class="field wide"><span>Повод или тема</span><input name="occasion" value="<?= h($seasonal) ?>"></label>
-    <?php if (ai_setting('ai.external_processing_enabled', '0') === '1' && ai_setting('ai.studio_external_enabled', '0') === '1' && ai_openai_key_configured()): ?><div class="notice wide">После нажатия тема и выбранный утверждённый материал будут отправлены в OpenAI. При персонализации также передаются имя, пол, возраст или дата рождения, город и содержание последнего чек-апа. Контакты, точный адрес, ID, логины и токены не передаются.</div><?php else: ?><div class="alert wide">OpenAI для студии пока выключен. Будет создан только локальный шаблон; включить настоящую генерацию может суперадминистратор в настройках ИИ.</div><?php endif; ?>
-    <div class="form-actions"><button>Создать проверяемый черновик</button></div>
-</form><div class="form-actions"><a class="button secondary-button" href="crud.php?module=broadcasts">Открыть рассылки и сегменты</a></div><p class="cell-muted">Студия не публикует и не рассылает материалы автоматически.</p></section>
+    <?php if ($openAiReady): ?><div class="notice wide">OpenAI получит тему, утверждённый материал и выбранные сведения для персонализации. Контакты, точный адрес, ID, логины и токены не передаются.</div><?php else: ?><div class="alert wide"><strong>Создание текста недоступно.</strong> Суперадминистратору нужно включить OpenAI для AI‑студии в настройках ИИ. Локальный текст вместо ИИ создаваться не будет.<?php if (($admin['role'] ?? '') === 'superadmin'): ?> <a href="ai_settings.php#openai-studio-access">Открыть настройку</a>.<?php endif; ?></div><?php endif; ?>
+    <div class="form-actions"><button <?= $openAiReady ? '' : 'disabled' ?>>Создать текст с OpenAI</button><a class="button secondary-button" href="crud.php?module=broadcasts">Рассылки и сегменты</a></div>
+</form><p class="cell-muted">Ничего не публикуется и не рассылается автоматически.</p></section>
 
-<section class="panel"><h2>Персональные карточки</h2><?php foreach ($cardUris as $cardTheme => $cardUri): ?><div style="margin-bottom:16px"><img src="<?= h($cardUri) ?>" alt="Персональная карточка" style="width:100%;border-radius:14px"><div class="form-actions"><a class="button secondary-button" href="<?= h($cardUri) ?>" download="swpro-card-<?= h($cardTheme) ?>.svg">Скачать вариант</a></div></div><?php endforeach; ?><p class="cell-muted">Карточки содержат персональную ссылку и QR-код. Подходят как визитка, OG-превью и заготовка для соцсетей.</p></section>
-</div>
-
-<?php if ($drafts): ?><section class="panel"><h2>Черновики</h2>
-<?php foreach ($drafts as $draft): ?><details class="faq-manage-item"><summary><strong><?= h((string)$draft['title']) ?></strong><span class="cell-muted"><?= h((string)$draft['draft_type']) ?> · <?= h((string)$draft['status']) ?> · <?= h((string)($draft['provider'] ?? 'swpro')) ?></span></summary>
+<?php if ($drafts): ?><section class="panel ai-studio-results"><h2><?= $selectedDraftId > 0 ? 'Готовый текст' : 'Созданные тексты' ?></h2><p class="cell-muted">Проверьте текст, при необходимости исправьте его и сохраните. Последний созданный материал открыт автоматически.</p>
+<?php foreach ($drafts as $draft): $draftOpen = $selectedDraftId > 0 ? (int)$draft['id'] === $selectedDraftId : $draft === $drafts[0]; ?><details id="draft-<?= (int)$draft['id'] ?>" class="faq-manage-item ai-draft-item" <?= $draftOpen ? 'open' : '' ?>><summary><strong><?= h((string)$draft['title']) ?></strong><span class="cell-muted"><?= h((string)$draft['draft_type']) ?> · <?= h((string)$draft['status']) ?> · <?= h((string)($draft['provider'] ?? 'swpro')) ?><?= !empty($draft['model']) ? ' · ' . h((string)$draft['model']) : '' ?></span></summary>
 <form method="post" class="crud-form"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="save"><input type="hidden" name="id" value="<?= (int)$draft['id'] ?>"><label class="field wide"><span>Название</span><input name="title" value="<?= h((string)$draft['title']) ?>"></label><label class="field wide"><span>Текст</span><textarea name="content" rows="9"><?= h((string)$draft['content']) ?></textarea></label><label class="field"><span>Статус</span><select name="status"><?php foreach (['draft'=>'Черновик','approved'=>'Проверено','used'=>'Использовано'] as $key=>$label): ?><option value="<?= h($key) ?>" <?= $draft['status'] === $key ? 'selected' : '' ?>><?= h($label) ?></option><?php endforeach; ?></select></label><div class="form-actions"><button>Сохранить</button></div></form>
 <div class="form-actions">
 <?php if ($draft['draft_type'] === 'voice_script'): ?><form method="post" class="inline-form"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="queue_voice"><input type="hidden" name="id" value="<?= (int)$draft['id'] ?>"><label class="check-row"><input type="checkbox" name="external_voice_confirm" value="1"><span>Я проверил текст и разрешаю отправить его в OpenAI для создания аудио</span></label><button>Создать голосовое сообщение</button></form><?php endif; ?>
 <?php if (in_array($draft['draft_type'], ['video_script','greeting'], true)): ?><form method="post"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="queue_video"><input type="hidden" name="id" value="<?= (int)$draft['id'] ?>"><label class="check-row"><input type="checkbox" name="external_video_confirm" value="1"><span>Я проверил сценарий и разрешаю отправить его подключённому видеопровайдеру</span></label><button>Создать видео</button></form><?php endif; ?>
 <form method="post"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="archive"><input type="hidden" name="id" value="<?= (int)$draft['id'] ?>"><button class="link-button danger">В архив</button></form></div>
 </details><?php endforeach; ?></section><?php endif; ?>
+
+<section class="panel ai-card-section"><div class="ai-studio-heading"><div><h2>Карточки для отправки</h2><p class="cell-muted">Готовые изображения с вашей ссылкой и QR‑кодом. Их можно скачать как PNG или сразу отправить с телефона.</p></div></div>
+<div class="ai-card-grid">
+    <article class="ai-card-item"><div><h3>Горизонтальная визитка</h3><p class="cell-muted">Для сообщений, публикаций и превью ссылки.</p></div><canvas id="ai-card-wide" data-variant="wide" aria-label="Горизонтальная персональная карточка"></canvas><div class="form-actions"><button type="button" class="secondary-button ai-card-download" data-canvas="ai-card-wide" data-name="swpro-card.png" disabled>Скачать PNG</button><button type="button" class="secondary-button ai-card-share" data-canvas="ai-card-wide" data-name="swpro-card.png" disabled>Поделиться</button></div></article>
+    <article class="ai-card-item"><div><h3>Вертикальная карточка</h3><p class="cell-muted">Для историй и публикаций в мобильных соцсетях.</p></div><canvas id="ai-card-story" data-variant="story" aria-label="Вертикальная персональная карточка"></canvas><div class="form-actions"><button type="button" class="secondary-button ai-card-download" data-canvas="ai-card-story" data-name="swpro-story.png" disabled>Скачать PNG</button><button type="button" class="secondary-button ai-card-share" data-canvas="ai-card-story" data-name="swpro-story.png" disabled>Поделиться</button></div></article>
+</div></section>
 <?php if ($voiceJobs): ?><section class="panel"><h2>Голосовые сообщения</h2><p class="cell-muted">Голос создан искусственным интеллектом. При отправке обязательно сообщите это получателю.</p><?php foreach ($voiceJobs as $job): ?><div class="faq-manage-item"><strong><?= h(date('d.m.Y H:i', strtotime((string)$job['created_at']))) ?></strong> · <?= h((string)$job['status']) ?><?php if ($job['status'] === 'ready'): ?> · <?= h((string)$job['duration_seconds']) ?> сек.<div><audio controls preload="none" src="ai_voice_media.php?id=<?= (int)$job['id'] ?>"></audio> <a class="button secondary-button" href="ai_voice_media.php?id=<?= (int)$job['id'] ?>" download>Скачать MP3</a></div><?php elseif (!empty($job['error_text'])): ?><div class="alert"><?= h((string)$job['error_text']) ?></div><?php endif; ?></div><?php endforeach; ?></section><?php endif; ?>
 <?php if ($videoJobs): ?><section class="panel"><h2>AI-видео</h2><p class="cell-muted">Видео создано искусственным интеллектом. Обработка у провайдера может занять несколько минут.</p><?php foreach ($videoJobs as $job): ?><div class="faq-manage-item"><strong><?= h(date('d.m.Y H:i', strtotime((string)$job['created_at']))) ?></strong> · <?= h((string)$job['provider']) ?> · <?= h((string)$job['status']) ?><?php if ($job['status'] === 'ready'): ?><div><video controls preload="metadata" style="max-width:640px;width:100%" src="ai_video_media.php?id=<?= (int)$job['id'] ?>"></video><br><a class="button secondary-button" href="ai_video_media.php?id=<?= (int)$job['id'] ?>" download>Скачать MP4</a></div><?php elseif (!empty($job['error_text'])): ?><div class="alert"><?= h((string)$job['error_text']) ?></div><?php endif; ?></div><?php endforeach; ?></section><?php endif; ?>
+<script>
+(() => {
+    const profile = <?= json_encode($cardPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    const loadImage = (src) => new Promise((resolve) => {
+        if (!src) return resolve(null);
+        const image = new Image();
+        if (!src.startsWith('data:')) image.crossOrigin = 'anonymous';
+        image.onload = () => resolve(image);
+        image.onerror = () => resolve(null);
+        image.src = src;
+    });
+    const roundRect = (ctx, x, y, width, height, radius) => {
+        ctx.beginPath();
+        ctx.roundRect(x, y, width, height, radius);
+    };
+    const coverImage = (ctx, image, x, y, width, height) => {
+        const scale = Math.max(width / image.width, height / image.height);
+        const sourceWidth = width / scale;
+        const sourceHeight = height / scale;
+        ctx.drawImage(image, (image.width - sourceWidth) / 2, (image.height - sourceHeight) / 2, sourceWidth, sourceHeight, x, y, width, height);
+    };
+    const fitText = (ctx, text, maxWidth, maxLines) => {
+        const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+        const lines = [];
+        let line = '';
+        for (const word of words) {
+            const candidate = line ? `${line} ${word}` : word;
+            if (ctx.measureText(candidate).width <= maxWidth) {
+                line = candidate;
+            } else {
+                if (line) lines.push(line);
+                line = word;
+                if (lines.length === maxLines) break;
+            }
+        }
+        if (line && lines.length < maxLines) lines.push(line);
+        if (lines.length === maxLines && words.join(' ') !== lines.join(' ')) {
+            while (lines[maxLines - 1].length > 2 && ctx.measureText(lines[maxLines - 1] + '…').width > maxWidth) {
+                lines[maxLines - 1] = lines[maxLines - 1].slice(0, -1);
+            }
+            lines[maxLines - 1] = lines[maxLines - 1].trim() + '…';
+        }
+        return lines;
+    };
+    const drawLines = (ctx, lines, x, y, lineHeight) => lines.forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight));
+    const drawBackground = (ctx, width, height) => {
+        const gradient = ctx.createLinearGradient(0, 0, width, height);
+        gradient.addColorStop(0, '#073b5c');
+        gradient.addColorStop(.58, '#087885');
+        gradient.addColorStop(1, '#27a9a2');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+        ctx.globalAlpha = .09;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(width * .9, height * .08, width * .28, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+    };
+    const renderWide = (canvas, photo, qr) => {
+        canvas.width = 1200; canvas.height = 630;
+        const ctx = canvas.getContext('2d');
+        drawBackground(ctx, canvas.width, canvas.height);
+        ctx.fillStyle = '#b9fff2'; ctx.font = '700 30px Arial, sans-serif'; ctx.fillText('SWPro', 70, 78);
+        let textX = 70;
+        if (photo) {
+            ctx.save(); ctx.beginPath(); ctx.arc(170, 245, 92, 0, Math.PI * 2); ctx.clip(); coverImage(ctx, photo, 78, 153, 184, 184); ctx.restore();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(170, 245, 95, 0, Math.PI * 2); ctx.stroke();
+            textX = 315;
+        }
+        ctx.fillStyle = '#fff'; ctx.font = '700 52px Arial, sans-serif';
+        const nameLines = fitText(ctx, profile.name, 555, 2); drawLines(ctx, nameLines, textX, 205, 58);
+        ctx.fillStyle = '#dffaf7'; ctx.font = '28px Arial, sans-serif';
+        const subtitleY = 205 + nameLines.length * 58 + 15;
+        drawLines(ctx, fitText(ctx, profile.subtitle, 555, 2), textX, subtitleY, 38);
+        ctx.fillStyle = '#fff'; ctx.font = '700 25px Arial, sans-serif'; ctx.fillText('Чек‑ап  •  полезные материалы  •  личная поддержка', 70, 485);
+        ctx.fillStyle = '#d9f6f2'; ctx.font = '22px Arial, sans-serif'; ctx.fillText(profile.url, 70, 535);
+        roundRect(ctx, 915, 280, 225, 255, 28); ctx.fillStyle = '#fff'; ctx.fill();
+        if (qr) ctx.drawImage(qr, 935, 300, 185, 185);
+        ctx.fillStyle = '#073b5c'; ctx.font = '700 19px Arial, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Открыть мини‑сайт', 1027, 515); ctx.textAlign = 'left';
+    };
+    const renderStory = (canvas, photo, qr) => {
+        canvas.width = 1080; canvas.height = 1350;
+        const ctx = canvas.getContext('2d');
+        drawBackground(ctx, canvas.width, canvas.height);
+        ctx.fillStyle = '#b9fff2'; ctx.font = '700 42px Arial, sans-serif'; ctx.fillText('SWPro', 80, 100);
+        if (photo) {
+            ctx.save(); ctx.beginPath(); ctx.arc(200, 300, 120, 0, Math.PI * 2); ctx.clip(); coverImage(ctx, photo, 80, 180, 240, 240); ctx.restore();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(200, 300, 125, 0, Math.PI * 2); ctx.stroke();
+        }
+        const textX = photo ? 370 : 80;
+        ctx.fillStyle = '#fff'; ctx.font = '700 58px Arial, sans-serif';
+        const nameLines = fitText(ctx, profile.name, photo ? 620 : 900, 3); drawLines(ctx, nameLines, textX, photo ? 255 : 230, 66);
+        ctx.fillStyle = '#dffaf7'; ctx.font = '30px Arial, sans-serif';
+        drawLines(ctx, fitText(ctx, profile.subtitle, photo ? 620 : 900, 3), textX, (photo ? 255 : 230) + nameLines.length * 66 + 22, 42);
+        ctx.fillStyle = '#fff'; ctx.font = '700 38px Arial, sans-serif'; ctx.fillText('Всё полезное — в одном месте', 80, 610);
+        ctx.fillStyle = '#dffaf7'; ctx.font = '29px Arial, sans-serif';
+        drawLines(ctx, ['Чек‑ап ощущений', 'Полезные материалы', 'Личная поддержка'], 80, 675, 54);
+        roundRect(ctx, 590, 600, 370, 430, 34); ctx.fillStyle = '#fff'; ctx.fill();
+        if (qr) ctx.drawImage(qr, 635, 645, 280, 280);
+        ctx.fillStyle = '#073b5c'; ctx.font = '700 25px Arial, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Наведите камеру', 775, 980); ctx.textAlign = 'left';
+        roundRect(ctx, 80, 1110, 880, 110, 28); ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = '700 29px Arial, sans-serif'; ctx.fillText('Открыть персональную страницу', 120, 1160);
+        ctx.fillStyle = '#dffaf7'; ctx.font = '22px Arial, sans-serif'; ctx.fillText(profile.url, 120, 1198);
+    };
+    const toBlob = (canvas) => new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG не создан')), 'image/png', 1));
+    const saveBlob = (blob, name) => { const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
+    Promise.all([loadImage(profile.photo), loadImage(profile.qr)]).then(([photo, qr]) => {
+        document.querySelectorAll('canvas[data-variant]').forEach(canvas => canvas.dataset.variant === 'story' ? renderStory(canvas, photo, qr) : renderWide(canvas, photo, qr));
+        document.querySelectorAll('.ai-card-download, .ai-card-share').forEach(button => button.disabled = false);
+    });
+    document.querySelectorAll('.ai-card-download').forEach(button => button.addEventListener('click', async () => saveBlob(await toBlob(document.getElementById(button.dataset.canvas)), button.dataset.name)));
+    document.querySelectorAll('.ai-card-share').forEach(button => {
+        if (!navigator.share || !window.File) { button.hidden = true; return; }
+        button.addEventListener('click', async () => {
+            const blob = await toBlob(document.getElementById(button.dataset.canvas));
+            const file = new File([blob], button.dataset.name, {type: 'image/png'});
+            if (navigator.canShare && !navigator.canShare({files: [file]})) return saveBlob(blob, button.dataset.name);
+            try { await navigator.share({title: 'Моя страница SWPro', files: [file]}); } catch (error) { if (error.name !== 'AbortError') saveBlob(blob, button.dataset.name); }
+        });
+    });
+})();
+</script>
 <?php require __DIR__ . '/../app/views/layouts/footer.php'; ?>
