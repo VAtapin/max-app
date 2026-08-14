@@ -42,7 +42,7 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                     'my_page' => ['Мой мини-сайт', 'my_page.php'],
                     'ai_actions' => ['Что сделать сегодня', 'ai_actions.php'],
                     'ai_studio' => ['AI-студия', 'ai_studio.php'],
-                    'ai_avatar' => ['Мой AI-аватар', 'ai_avatar.php'],
+                    'ai_avatar' => [($admin['role'] ?? '') === 'superadmin' ? 'Системный AI-аватар' : 'Мой AI-аватар', 'ai_avatar.php'],
                 ],
                 'Команда' => [
                     'resellers' => ['Лидеры', 'crud.php?module=resellers'],

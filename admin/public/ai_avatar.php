@@ -10,11 +10,13 @@ if (!can_manage('ai_avatar', $admin)) {
     exit('Access denied');
 }
 $owner = ai_owner_for_admin($admin);
-if (!in_array($owner['owner_type'], ['reseller', 'manager'], true) || $owner['owner_id'] <= 0) {
+$isSystemAvatar = $owner['owner_type'] === 'superadmin' && (int)$owner['owner_id'] === 0;
+$isWorkspaceAvatar = in_array($owner['owner_type'], ['reseller', 'manager'], true) && (int)$owner['owner_id'] > 0;
+if (!$isSystemAvatar && !$isWorkspaceAvatar) {
     http_response_code(404);
     exit('Owner not found');
 }
-$title = 'Мой AI-аватар';
+$title = $isSystemAvatar ? 'Системный AI-аватар' : 'Мой AI-аватар';
 $errors = [];
 $success = (string)($_GET['success'] ?? '');
 $access = ai_entitlements_for_admin($admin);
@@ -116,7 +118,7 @@ $stmt->execute($owner);
 $avatar = $stmt->fetch() ?: null;
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
-<div class="page-title-row"><div><h1>Мой AI-аватар</h1><p class="cell-muted">Исходные фото и видео хранятся закрыто и недоступны по прямой публичной ссылке.</p></div></div>
+<div class="page-title-row"><div><h1><?= $isSystemAvatar ? 'Системный AI-аватар SWPro' : 'Мой AI-аватар' ?></h1><p class="cell-muted"><?= $isSystemAvatar ? 'Используется для технических видео, инструкций и общих объяснений от имени платформы.' : 'Исходные фото и видео хранятся закрыто и недоступны по прямой публичной ссылке.' ?></p></div></div>
 <?php if ($success): ?><div class="notice success"><?= h(match ($success) { 'approved' => 'Аватар утверждён.', 'rejected' => 'Аватар отклонён. Можно создать новую версию.', default => 'Новая версия аватара сохранена.' }) ?></div><?php endif; ?>
 <?php foreach ($errors as $error): ?><div class="alert"><?= h($error) ?></div><?php endforeach; ?>
 <?php if (!$access['video'] && !$access['personal_video']): ?><div class="alert">AI-видео не входит в текущую подписку.</div><?php endif; ?>
@@ -136,7 +138,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <label class="field"><span>ID голоса в HeyGen</span><input name="provider_voice_id" value="<?= h((string)($avatar['voice_id'] ?? '')) ?>"><small class="field-hint">Для Tavus можно оставить пустым.</small></label>
     <label class="field"><span>Фон</span><select name="background_key"><option value="neutral">Нейтральный</option><option value="office">Светлый кабинет</option><option value="home">Домашний</option><option value="transparent">Прозрачный</option></select></label>
     <label class="field"><span>Поза и кадр</span><select name="pose_key"><option value="portrait">Портрет</option><option value="waist">По пояс</option><option value="seated">Сидя</option></select></label>
-    <label class="check-row wide"><input type="checkbox" name="likeness_consent" value="1" required><span>Подтверждаю, что загружаю собственное изображение/голос и разрешаю SWPro создать и использовать мой AI-аватар.</span></label>
+    <label class="check-row wide"><input type="checkbox" name="likeness_consent" value="1" required><span>Подтверждаю, что загружаю собственное изображение/голос и разрешаю SWPro создать и использовать <?= $isSystemAvatar ? 'системный' : 'мой' ?> AI-аватар.</span></label>
     <div class="form-actions"><button type="submit" <?= (!$access['video'] && !$access['personal_video']) ? 'disabled' : '' ?>>Сохранить новую версию</button></div>
 </form></section>
 <?php require __DIR__ . '/../app/views/layouts/footer.php'; ?>
