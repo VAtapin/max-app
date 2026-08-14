@@ -256,17 +256,31 @@ function ai_client_sources(array $user, array $owner): array
     }
 
     $stmt = db()->prepare(
-        'SELECT ts.title scale_title, uss.score, tsr.title result_title, tsr.summary_text, tsr.advice_text, tsr.exclusions_text, tsr.escalation_text, uts.completed_at
-         FROM user_test_sessions uts JOIN user_test_scale_scores uss ON uss.session_id = uts.id
+        'SELECT t.title test_title, ts.title scale_title, uss.score, tsr.title result_title, tsr.summary_text, tsr.advice_text, tsr.exclusions_text, tsr.escalation_text, uts.completed_at, uts.id session_id
+         FROM user_test_sessions uts JOIN tests t ON t.id = uts.test_id
+         JOIN (SELECT test_id, MAX(id) session_id FROM user_test_sessions WHERE end_user_id = :latest_scale_user AND completed_at IS NOT NULL AND is_preview = 0 GROUP BY test_id) latest ON latest.session_id = uts.id
+         JOIN user_test_scale_scores uss ON uss.session_id = uts.id
          JOIN test_scales ts ON ts.id = uss.scale_id LEFT JOIN test_scale_results tsr ON tsr.id = uss.result_id
-         WHERE uts.end_user_id = :user_id AND uts.completed_at IS NOT NULL AND uts.is_preview = 0
-           AND tsr.ai_enabled = 1 AND tsr.content_status = "approved"
-           AND uts.id = (SELECT MAX(id) FROM user_test_sessions WHERE end_user_id = :user_id2 AND completed_at IS NOT NULL AND is_preview = 0)
-         ORDER BY uss.score DESC'
+         WHERE uts.end_user_id = :scale_user AND tsr.ai_enabled = 1 AND tsr.content_status = "approved"
+         ORDER BY uts.completed_at DESC, uss.score DESC LIMIT 100'
     );
-    $stmt->execute(['user_id' => (int)$user['id'], 'user_id2' => (int)$user['id']]);
+    $stmt->execute(['latest_scale_user' => (int)$user['id'], 'scale_user' => (int)$user['id']]);
     foreach ($stmt->fetchAll() as $row) {
-        $items[] = ['title' => 'Результат чек-апа: ' . $row['scale_title'], 'content' => implode("\n", array_filter(['Баллы: ' . $row['score'], $row['result_title'], $row['summary_text'], $row['advice_text'], $row['exclusions_text'] ? 'Исключения: ' . $row['exclusions_text'] : null, $row['escalation_text'] ? 'Передать человеку: ' . $row['escalation_text'] : null])), 'keywords' => 'чек-ап результат ' . $row['scale_title'], 'source_key' => 'checkup:' . $row['scale_title'], 'source_label' => 'Результат чек-апа: ' . $row['scale_title'], 'version' => strtotime((string)$row['completed_at']) ?: 1];
+        $label = $row['test_title'] . ' / ' . $row['scale_title'];
+        $items[] = ['title' => 'Результат чек-апа: ' . $label, 'content' => implode("\n", array_filter(['Баллы: ' . $row['score'], $row['result_title'], $row['summary_text'], $row['advice_text'], $row['exclusions_text'] ? 'Исключения: ' . $row['exclusions_text'] : null, $row['escalation_text'] ? 'Передать человеку: ' . $row['escalation_text'] : null])), 'keywords' => 'чек-ап тест результат ' . $label, 'source_key' => 'checkup:scale:' . $row['session_id'] . ':' . $row['scale_title'], 'source_label' => 'Результат чек-апа: ' . $label, 'version' => strtotime((string)$row['completed_at']) ?: 1];
+    }
+
+    $stmt = db()->prepare(
+        'SELECT t.title test_title, uts.total_score, tr.id result_id, tr.title result_title, tr.summary_text, tr.advice_text, tr.exclusions_text, tr.escalation_text, uts.completed_at, uts.id session_id
+         FROM user_test_sessions uts JOIN tests t ON t.id = uts.test_id
+         JOIN (SELECT test_id, MAX(id) session_id FROM user_test_sessions WHERE end_user_id = :latest_result_user AND completed_at IS NOT NULL AND is_preview = 0 GROUP BY test_id) latest ON latest.session_id = uts.id
+         JOIN test_results tr ON tr.test_id = uts.test_id AND tr.min_score <= uts.total_score AND tr.max_score >= uts.total_score
+         WHERE uts.end_user_id = :result_user AND tr.ai_enabled = 1 AND tr.content_status = "approved"
+         ORDER BY uts.completed_at DESC, tr.sort_order, tr.id LIMIT 30'
+    );
+    $stmt->execute(['latest_result_user' => (int)$user['id'], 'result_user' => (int)$user['id']]);
+    foreach ($stmt->fetchAll() as $row) {
+        $items[] = ['title' => 'Общий результат чек-апа: ' . $row['test_title'], 'content' => implode("\n", array_filter(['Баллы: ' . $row['total_score'], $row['result_title'], $row['summary_text'], $row['advice_text'], $row['exclusions_text'] ? 'Исключения: ' . $row['exclusions_text'] : null, $row['escalation_text'] ? 'Передать человеку: ' . $row['escalation_text'] : null])), 'keywords' => 'чек-ап тест общий результат ' . $row['test_title'], 'source_key' => 'checkup:test:' . $row['session_id'] . ':' . $row['result_id'], 'source_label' => 'Общий результат чек-апа: ' . $row['test_title'], 'version' => strtotime((string)$row['completed_at']) ?: 1];
     }
     return $items;
 }

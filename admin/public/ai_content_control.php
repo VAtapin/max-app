@@ -91,14 +91,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($rationale === '') {
                 throw new RuntimeException('Добавьте утверждённое объяснение связи или исключения.');
             }
-            $stmt = db()->prepare('INSERT INTO ai_recommendation_rules (scale_result_id, test_result_id, target_type, target_id, rule_type, rationale, priority, is_active, is_approved, approved_by, approved_at, created_by) VALUES (:scale_result_id, :test_result_id, :target_type, :target_id, :rule_type, :rationale, :priority, :is_active, 1, :admin_id, NOW(), :admin_id)');
+            $stmt = db()->prepare('INSERT INTO ai_recommendation_rules (scale_result_id, test_result_id, target_type, target_id, rule_type, rationale, priority, is_active, is_approved, approved_by, approved_at, created_by) VALUES (:scale_result_id, :test_result_id, :target_type, :target_id, :rule_type, :rationale, :priority, :is_active, 1, :approved_by, NOW(), :created_by)');
             $stmt->execute([
                 'scale_result_id' => $scaleResultId ?: null, 'test_result_id' => $testResultId ?: null,
                 'target_type' => $targetType, 'target_id' => $targetId,
                 'rule_type' => ($_POST['rule_type'] ?? '') === 'exclude' ? 'exclude' : 'include',
                 'rationale' => $rationale,
                 'priority' => max(1, min(1000, (int)($_POST['priority'] ?? 100))),
-                'is_active' => isset($_POST['is_active']) ? 1 : 0, 'admin_id' => (int)$admin['id'],
+                'is_active' => isset($_POST['is_active']) ? 1 : 0,
+                'approved_by' => (int)$admin['id'], 'created_by' => (int)$admin['id'],
             ]);
             log_activity('admin', (int)$admin['id'], 'save_ai_recommendation_rule', 'ai_recommendation_rules', (int)db()->lastInsertId());
             $notice = 'Правило рекомендации добавлено.';
@@ -115,13 +116,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $channel = in_array($_POST['channel'] ?? '', ['any','admin','web','telegram','VK','OK','MAX'], true) ? $_POST['channel'] : 'any';
             $audience = ($_POST['audience'] ?? '') === 'admin' ? 'admin' : 'client';
-            $stmt = db()->prepare('INSERT INTO ai_conversation_scenarios (owner_type, owner_id, event_key, channel, audience, title, template_text, allowed_variables, priority, is_active, is_approved, approved_by, approved_at, created_by) VALUES ("superadmin", 0, :event_key, :channel, :audience, :title, :template_text, :variables, :priority, :is_active, 1, :admin_id, NOW(), :admin_id)');
+            $stmt = db()->prepare('INSERT INTO ai_conversation_scenarios (owner_type, owner_id, event_key, channel, audience, title, template_text, allowed_variables, priority, is_active, is_approved, approved_by, approved_at, created_by) VALUES ("superadmin", 0, :event_key, :channel, :audience, :title, :template_text, :variables, :priority, :is_active, 1, :approved_by, NOW(), :created_by)');
             $stmt->execute([
                 'event_key' => $eventKey, 'channel' => $channel, 'audience' => $audience,
                 'title' => trim((string)($_POST['title'] ?? '')) ?: $eventKey, 'template_text' => $template,
                 'variables' => json_encode(['first_name','consultant_name','test_title','days','city'], JSON_UNESCAPED_UNICODE),
                 'priority' => max(1, min(1000, (int)($_POST['priority'] ?? 100))),
-                'is_active' => isset($_POST['is_active']) ? 1 : 0, 'admin_id' => (int)$admin['id'],
+                'is_active' => isset($_POST['is_active']) ? 1 : 0,
+                'approved_by' => (int)$admin['id'], 'created_by' => (int)$admin['id'],
             ]);
             log_activity('admin', (int)$admin['id'], 'save_ai_scenario', 'ai_conversation_scenarios', (int)db()->lastInsertId());
             $notice = 'Сценарий добавлен.';
@@ -170,9 +172,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php foreach ($errors as $error): ?><div class="alert"><?= h($error) ?></div><?php endforeach; ?>
 
 <section class="grid stats-grid">
-    <article class="stat"><span>Продукты готовы для ИИ</span><strong><?= $readiness['products_ready'] ?>/<?= $readiness['products_total'] ?></strong></article>
-    <article class="stat"><span>Диапазоны шкал готовы</span><strong><?= $readiness['scale_results_ready'] ?>/<?= $readiness['scale_results_total'] ?></strong></article>
-    <article class="stat"><span>Обычные результаты готовы</span><strong><?= $readiness['single_results_ready'] ?>/<?= $readiness['single_results_total'] ?></strong></article>
+    <article class="stat"><span>Продукты: утверждено / разрешено / всего</span><strong><?= $readiness['products_ready'] ?>/<?= $readiness['products_enabled'] ?>/<?= $readiness['products_total'] ?></strong></article>
+    <article class="stat"><span>Диапазоны: утверждено / разрешено / всего</span><strong><?= $readiness['scale_results_ready'] ?>/<?= $readiness['scale_results_enabled'] ?>/<?= $readiness['scale_results_total'] ?></strong></article>
+    <article class="stat"><span>Общие результаты: утверждено / разрешено / всего</span><strong><?= $readiness['single_results_ready'] ?>/<?= $readiness['single_results_enabled'] ?>/<?= $readiness['single_results_total'] ?></strong></article>
     <article class="stat"><span>Страницы Docsify в ИИ</span><strong><?= $readiness['docsify_active'] ?></strong></article>
     <article class="stat"><span>Правила рекомендаций</span><strong><?= $readiness['rules_active'] ?></strong></article>
     <article class="stat"><span>Сценарии</span><strong><?= $readiness['scenarios_active'] ?></strong></article>

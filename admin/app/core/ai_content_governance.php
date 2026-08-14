@@ -27,10 +27,11 @@ function ai_docs_parse(string $markdown, string $fallbackTitle): array
     $content = preg_replace('/^[#>*_-]+\s*/m', '', $content) ?? $content;
     $content = preg_replace('/[ \t]+/', ' ', $content) ?? $content;
     $content = preg_replace('/\R{3,}/', "\n\n", $content) ?? $content;
+    $audience = (string)($meta['ai_audience'] ?? 'admin');
     return [
         'title' => $title !== '' ? $title : $fallbackTitle,
         'content' => trim($content),
-        'audience' => in_array(($meta['ai_audience'] ?? 'admin'), ['admin', 'client', 'both'], true) ? $meta['ai_audience'] : 'admin',
+        'audience' => in_array($audience, ['admin', 'client', 'both'], true) ? $audience : 'admin',
         'keywords' => (string)($meta['ai_keywords'] ?? ''),
         'page_context' => (string)($meta['ai_page_context'] ?? ''),
         'enabled' => !in_array(strtolower((string)($meta['ai_enabled'] ?? 'true')), ['0', 'false', 'no', 'off'], true),
@@ -52,8 +53,8 @@ function ai_docs_sync(?int $adminId = null): array
     $unchanged = 0;
     $disabled = 0;
     $select = db()->prepare('SELECT id, content_hash, is_active FROM ai_knowledge_entries WHERE owner_type = "superadmin" AND owner_id = 0 AND source_type = "docsify" AND source_key = :source_key LIMIT 1');
-    $insert = db()->prepare('INSERT INTO ai_knowledge_entries (owner_type, owner_id, audience, source_type, source_key, source_url, title, content, content_hash, keywords, page_context, is_approved, is_active, version, approved_by, approved_at, last_synced_at, created_by) VALUES ("superadmin", 0, :audience, "docsify", :source_key, :source_url, :title, :content, :content_hash, :keywords, :page_context, 1, :is_active, 1, :admin_id, NOW(), NOW(), :admin_id)');
-    $update = db()->prepare('UPDATE ai_knowledge_entries SET audience = :audience, source_url = :source_url, title = :title, content = :content, content_hash = :content_hash, keywords = :keywords, page_context = :page_context, is_approved = 1, is_active = :is_active, version = version + 1, approved_by = :admin_id, approved_at = NOW(), last_synced_at = NOW() WHERE id = :id');
+    $insert = db()->prepare('INSERT INTO ai_knowledge_entries (owner_type, owner_id, audience, source_type, source_key, source_url, title, content, content_hash, keywords, page_context, is_approved, is_active, version, approved_by, approved_at, last_synced_at, created_by) VALUES ("superadmin", 0, :audience, "docsify", :source_key, :source_url, :title, :content, :content_hash, :keywords, :page_context, 1, :is_active, 1, :approved_by, NOW(), NOW(), :created_by)');
+    $update = db()->prepare('UPDATE ai_knowledge_entries SET audience = :audience, source_url = :source_url, title = :title, content = :content, content_hash = :content_hash, keywords = :keywords, page_context = :page_context, is_approved = 1, is_active = :is_active, version = version + 1, approved_by = :approved_by, approved_at = NOW(), last_synced_at = NOW() WHERE id = :id');
     $touch = db()->prepare('UPDATE ai_knowledge_entries SET last_synced_at = NOW(), is_active = :is_active WHERE id = :id');
     db()->beginTransaction();
     try {
@@ -78,9 +79,8 @@ function ai_docs_sync(?int $adminId = null): array
             $sourceUrl = '/docs/#/' . preg_replace('/(?:\/README)?\.md$/', '', $relative);
             $select->execute(['source_key' => $relative]);
             $existing = $select->fetch() ?: null;
-            $payload = [
+            $contentPayload = [
                 'audience' => $parsed['audience'],
-                'source_key' => $relative,
                 'source_url' => $sourceUrl,
                 'title' => $parsed['title'],
                 'content' => $parsed['content'],
@@ -88,17 +88,20 @@ function ai_docs_sync(?int $adminId = null): array
                 'keywords' => $parsed['keywords'],
                 'page_context' => $parsed['page_context'],
                 'is_active' => $parsed['enabled'] ? 1 : 0,
-                'admin_id' => $adminId,
+                'approved_by' => $adminId,
             ];
             $seen[] = $relative;
             if (!$existing) {
-                $insert->execute($payload);
+                $insert->execute($contentPayload + [
+                    'source_key' => $relative,
+                    'created_by' => $adminId,
+                ]);
                 $created++;
             } elseif (hash_equals((string)$existing['content_hash'], $hash)) {
-                $touch->execute(['id' => (int)$existing['id'], 'is_active' => $payload['is_active']]);
+                $touch->execute(['id' => (int)$existing['id'], 'is_active' => $contentPayload['is_active']]);
                 $unchanged++;
             } else {
-                $update->execute($payload + ['id' => (int)$existing['id']]);
+                $update->execute($contentPayload + ['id' => (int)$existing['id']]);
                 $updated++;
             }
         }
@@ -124,10 +127,13 @@ function ai_content_readiness(): array
 {
     $queries = [
         'products_total' => 'SELECT COUNT(*) FROM products WHERE is_deleted = 0',
+        'products_enabled' => 'SELECT COUNT(*) FROM products WHERE is_deleted = 0 AND ai_enabled = 1',
         'products_ready' => 'SELECT COUNT(*) FROM products WHERE is_deleted = 0 AND ai_enabled = 1 AND content_status = "approved" AND composition IS NOT NULL AND usage_text IS NOT NULL AND warning_text IS NOT NULL AND contraindications IS NOT NULL AND allowed_claims IS NOT NULL AND source_urls IS NOT NULL',
         'scale_results_total' => 'SELECT COUNT(*) FROM test_scale_results',
+        'scale_results_enabled' => 'SELECT COUNT(*) FROM test_scale_results WHERE ai_enabled = 1',
         'scale_results_ready' => 'SELECT COUNT(*) FROM test_scale_results WHERE ai_enabled = 1 AND content_status = "approved" AND summary_text IS NOT NULL AND advice_text IS NOT NULL AND source_urls IS NOT NULL',
         'single_results_total' => 'SELECT COUNT(*) FROM test_results',
+        'single_results_enabled' => 'SELECT COUNT(*) FROM test_results WHERE ai_enabled = 1',
         'single_results_ready' => 'SELECT COUNT(*) FROM test_results WHERE ai_enabled = 1 AND content_status = "approved" AND summary_text IS NOT NULL AND advice_text IS NOT NULL AND source_urls IS NOT NULL',
         'docsify_active' => 'SELECT COUNT(*) FROM ai_knowledge_entries WHERE source_type = "docsify" AND is_active = 1 AND is_approved = 1',
         'rules_active' => 'SELECT COUNT(*) FROM ai_recommendation_rules WHERE is_active = 1 AND is_approved = 1',
@@ -246,7 +252,9 @@ function ai_render_scenario(string $eventKey, string $channel, array $owner, arr
     foreach (['first_name', 'consultant_name', 'test_title', 'days', 'city'] as $key) {
         $safe['{{' . $key . '}}'] = trim((string)($variables[$key] ?? ''));
     }
-    return trim(strtr($template, $safe));
+    $rendered = trim(strtr($template, $safe));
+    $rendered = preg_replace('/^\s*,\s*/u', '', $rendered) ?? $rendered;
+    return trim(preg_replace('/[ \t]{2,}/u', ' ', $rendered) ?? $rendered);
 }
 
 function ai_rules_for_session(int $testSessionId): array
