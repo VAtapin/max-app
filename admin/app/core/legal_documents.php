@@ -191,6 +191,30 @@ function legal_party_placeholder(string $value, string $placeholder): string
     return $value !== '' ? $value : $placeholder;
 }
 
+function legal_optional_party_value(string $value): string
+{
+    return trim($value);
+}
+
+function legal_remove_empty_requisite_lines(string $body, array $emptyTokens): string
+{
+    if (!$emptyTokens) {
+        return $body;
+    }
+
+    $lines = preg_split('/\R/u', $body) ?: [$body];
+    $lines = array_values(array_filter($lines, static function (string $line) use ($emptyTokens): bool {
+        foreach ($emptyTokens as $token) {
+            if (preg_match('/^\s*[^:\[\]]{1,50}:\s*' . preg_quote($token, '/') . '\s*$/u', $line)) {
+                return false;
+            }
+        }
+        return true;
+    }));
+
+    return preg_replace("/\n{3,}/", "\n\n", implode("\n", $lines)) ?? implode("\n", $lines);
+}
+
 function legal_document_replacements(?int $resellerId = null): array
 {
     $swpro = legal_swpro_party();
@@ -198,20 +222,20 @@ function legal_document_replacements(?int $resellerId = null): array
     $settings = legal_settings();
 
     return [
-        '[SWPRO_NAME]' => legal_party_placeholder($swpro['name'], '[SWPRO_NAME]'),
-        '[SWPRO_STATUS]' => legal_party_placeholder($swpro['status'], '[SWPRO_STATUS]'),
-        '[SWPRO_INN]' => legal_party_placeholder($swpro['inn'], '[SWPRO_INN]'),
-        '[SWPRO_ADDRESS]' => legal_party_placeholder($swpro['address'], '[SWPRO_ADDRESS]'),
-        '[SWPRO_EMAIL]' => legal_party_placeholder($swpro['email'], '[SWPRO_EMAIL]'),
-        '[SWPRO_PHONE]' => legal_party_placeholder($swpro['phone'], '[SWPRO_PHONE]'),
-        '[SWPRO_SITE]' => legal_party_placeholder($swpro['site'], '[SWPRO_SITE]'),
-        '[OPERATOR_NAME]' => legal_party_placeholder($leader['name'], '[OPERATOR_NAME]'),
-        '[OPERATOR_STATUS]' => legal_party_placeholder($leader['status'], '[OPERATOR_STATUS]'),
-        '[OPERATOR_INN]' => legal_party_placeholder($leader['inn'], '[OPERATOR_INN]'),
-        '[OPERATOR_ADDRESS]' => legal_party_placeholder($leader['address'], '[OPERATOR_ADDRESS]'),
-        '[OPERATOR_EMAIL]' => legal_party_placeholder($leader['email'], '[OPERATOR_EMAIL]'),
-        '[OPERATOR_PHONE]' => legal_party_placeholder($leader['phone'], '[OPERATOR_PHONE]'),
-        '[OPERATOR_SITE]' => legal_party_placeholder($leader['site'], '[OPERATOR_SITE]'),
+        '[SWPRO_NAME]' => legal_optional_party_value($swpro['name']),
+        '[SWPRO_STATUS]' => legal_optional_party_value($swpro['status']),
+        '[SWPRO_INN]' => legal_optional_party_value($swpro['inn']),
+        '[SWPRO_ADDRESS]' => legal_optional_party_value($swpro['address']),
+        '[SWPRO_EMAIL]' => legal_optional_party_value($swpro['email']),
+        '[SWPRO_PHONE]' => legal_optional_party_value($swpro['phone']),
+        '[SWPRO_SITE]' => legal_optional_party_value($swpro['site']),
+        '[OPERATOR_NAME]' => legal_optional_party_value($leader['name']),
+        '[OPERATOR_STATUS]' => legal_optional_party_value($leader['status']),
+        '[OPERATOR_INN]' => legal_optional_party_value($leader['inn']),
+        '[OPERATOR_ADDRESS]' => legal_optional_party_value($leader['address']),
+        '[OPERATOR_EMAIL]' => legal_optional_party_value($leader['email'] !== '' ? $leader['email'] : $swpro['email']),
+        '[OPERATOR_PHONE]' => legal_optional_party_value($leader['phone']),
+        '[OPERATOR_SITE]' => legal_optional_party_value($leader['site']),
         '[ОПЕРАТОР]' => legal_party_placeholder($swpro['name'], '[ОПЕРАТОР]'),
         '[УКАЖИТЕ НАИМЕНОВАНИЕ ИЛИ ФИО ОПЕРАТОРА]' => legal_party_placeholder($swpro['name'], '[ОПЕРАТОР]'),
         '[ИНН]' => legal_party_placeholder($swpro['inn'], '[ИНН]'),
@@ -226,7 +250,14 @@ function legal_render_document(array $document, ?int $resellerId = null): array
 {
     $type = (string)$document['document_type'];
     $effectiveResellerId = legal_document_is_leader_scoped($type) ? $resellerId : null;
-    $body = strtr((string)$document['body'], legal_document_replacements($effectiveResellerId));
+    $replacements = legal_document_replacements($effectiveResellerId);
+    $emptyTokens = array_keys(array_filter(
+        $replacements,
+        static fn(string $value, string $token): bool => $value === '' && preg_match('/^\[(?:SWPRO|OPERATOR)_[A-Z_]+\]$/', $token) === 1,
+        ARRAY_FILTER_USE_BOTH
+    ));
+    $body = legal_remove_empty_requisite_lines((string)$document['body'], $emptyTokens);
+    $body = strtr($body, $replacements);
     return [
         'title' => (string)$document['title'],
         'body' => $body,
