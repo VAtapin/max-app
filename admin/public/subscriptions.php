@@ -52,6 +52,7 @@ function subscription_plan_defaults(): array
         'discount_12' => 5,
         'sort_order' => 100,
         'is_active' => 1,
+        'is_public' => 1,
     ];
 }
 
@@ -78,6 +79,7 @@ function subscription_plan_payload_from_post(array $source, array $admin, ?array
     $payload['discount_12'] = max(0, min(100, (float)str_replace(',', '.', (string)($source['discount_12'] ?? 5))));
     $payload['sort_order'] = (int)($source['sort_order'] ?? 100);
     $payload['is_active'] = isset($source['is_active']) ? 1 : 0;
+    $payload['is_public'] = isset($source['hide_on_public_site']) ? 0 : 1;
     // The admin-panel assistant is standard. This flag controls the
     // client-facing assistant in Mini App and on the public page.
     $payload['ai_text_enabled'] = isset($source['ai_text_enabled']) ? 1 : 0;
@@ -239,6 +241,7 @@ function subscription_plan_save(array $payload, array $admin): int
         'ai_max_video_seconds' => (int)$payload['ai_max_video_seconds'],
         'sort_order' => (int)$payload['sort_order'],
         'is_active' => (int)$payload['is_active'],
+        'is_public' => (int)$payload['is_public'],
     ];
 
     if ((int)$payload['id'] > 0) {
@@ -273,7 +276,8 @@ function subscription_plan_save(array $payload, array $admin): int
                  ai_voice_monthly_seconds = :ai_voice_monthly_seconds,
                  ai_max_video_seconds = :ai_max_video_seconds,
                  sort_order = :sort_order,
-                 is_active = :is_active
+                 is_active = :is_active,
+                 is_public = :is_public
              WHERE id = :id'
         );
         $stmt->execute($params);
@@ -291,7 +295,7 @@ function subscription_plan_save(array $payload, array $admin): int
             payment_terms, payment_grace_days,
             ai_text_enabled, ai_video_enabled, ai_personal_video_enabled, ai_voice_enabled, ai_realtime_enabled,
             ai_text_monthly_limit, ai_video_monthly_seconds, ai_personal_video_monthly_seconds, ai_voice_monthly_seconds, ai_max_video_seconds,
-            sort_order, is_active
+            sort_order, is_active, is_public
          ) VALUES (
             :owner_type, :owner_id, :slug, :title, :description, :billing_mode, :billing_basis,
             :direct_leader_limit, :branch_leader_limit,
@@ -300,7 +304,7 @@ function subscription_plan_save(array $payload, array $admin): int
             :payment_terms, :payment_grace_days,
             :ai_text_enabled, :ai_video_enabled, :ai_personal_video_enabled, :ai_voice_enabled, :ai_realtime_enabled,
             :ai_text_monthly_limit, :ai_video_monthly_seconds, :ai_personal_video_monthly_seconds, :ai_voice_monthly_seconds, :ai_max_video_seconds,
-            :sort_order, :is_active
+            :sort_order, :is_active, :is_public
          )'
     );
     $stmt->execute($params);
@@ -661,6 +665,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <label class="field"><span>Голосовых сообщений в месяц, секунд</span><input type="number" min="0" name="ai_voice_monthly_seconds" value="<?= h((string)($editPlan['ai_voice_monthly_seconds'] ?? '')) ?>" placeholder="без лимита"></label>
             <label class="field"><span>Максимум одного видео, секунд</span><input type="number" min="5" max="300" name="ai_max_video_seconds" value="<?= (int)($editPlan['ai_max_video_seconds'] ?? 30) ?>"></label>
             <label class="check-row"><input type="checkbox" name="is_active" value="1" <?= (int)($editPlan['is_active'] ?? 1) === 1 ? 'checked' : '' ?>><span>Подписка активна и доступна для выбора</span></label>
+            <label class="check-row wide"><input type="checkbox" name="hide_on_public_site" value="1" <?= (int)($editPlan['is_public'] ?? 1) === 0 ? 'checked' : '' ?>><span>Не отображать на публичном сайте <small class="field-hint">Тариф останется активным: суперадминистратор сможет назначать его вручную, но посетители не увидят его на странице регистрации.</small></span></label>
             <div class="form-actions">
                 <button type="submit">Сохранить</button>
                 <a class="button secondary-button" href="subscriptions.php">Отмена</a>
@@ -724,7 +729,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     ?>
                     <tr>
                         <td data-label="ID" data-column="id"><?= (int)$row['id'] ?></td>
-                        <td data-label="Подписка" data-column="title"><strong><?= h((string)$row['title']) ?></strong><br><span class="cell-muted"><?= h((string)$row['slug']) ?></span></td>
+                        <td data-label="Подписка" data-column="title"><strong><?= h((string)$row['title']) ?></strong><?php if ((int)($row['is_public'] ?? 1) === 0): ?> <span class="badge badge-new">Скрыт с сайта</span><?php endif; ?><br><span class="cell-muted"><?= h((string)$row['slug']) ?></span></td>
                         <td data-label="Владелец" data-column="owner"><?= h(subscription_plan_owner_label($row)) ?></td>
                         <td data-label="Условия" data-column="description">
                             <?= h((string)($row['description'] ?: '—')) ?>

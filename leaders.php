@@ -10,7 +10,7 @@ function leader_signup_plans(): array
 {
     return db()->query(
         "SELECT * FROM subscription_plans
-         WHERE owner_type = 'superadmin' AND owner_id = 0 AND is_active = 1
+         WHERE owner_type = 'superadmin' AND owner_id = 0 AND is_active = 1 AND is_public = 1
          ORDER BY sort_order, fixed_monthly_price, id"
     )->fetchAll();
 }
