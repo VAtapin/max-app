@@ -40,6 +40,7 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                     'dashboard' => [app_text('auto.dashboard'), 'index.php'],
                     'account' => ['Мои данные', 'account.php'],
                     'my_page' => ['Мой мини-сайт', 'my_page.php'],
+                    'ai_actions' => ['Что сделать сегодня', 'ai_actions.php'],
                 ],
                 'Команда' => [
                     'resellers' => ['Лидеры', 'crud.php?module=resellers'],
@@ -62,7 +63,6 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                     'content' => ['Материалы сайта', 'crud.php?module=content'],
                     'site_templates' => ['Шаблоны мини-сайта', 'crud.php?module=site_templates'],
                     'ai_knowledge' => ['База знаний ИИ', 'ai_knowledge.php'],
-                    'ai_actions' => ['Что сделать сегодня', 'ai_actions.php'],
                     'ai_studio' => ['AI-студия', 'ai_studio.php'],
                     'ai_avatar' => ['Мой AI-аватар', 'ai_avatar.php'],
                 ],

@@ -8,8 +8,8 @@ function can_manage(string $module, array $user): bool
         return true;
     }
 
-    $resellerModules = ['dashboard', 'account', 'my_page', 'resellers', 'managers', 'users', 'results', 'broadcasts', 'leads', 'categories', 'products', 'content', 'site_templates', 'subscriptions', 'billing_self', 'integrations', 'ai_knowledge', 'ai_avatar', 'ai_actions', 'ai_studio'];
-    $managerModules = ['dashboard', 'account', 'my_page', 'users', 'results', 'leads', 'categories', 'products', 'content', 'site_templates', 'broadcasts', 'billing_self', 'integrations', 'ai_knowledge', 'ai_avatar', 'ai_actions', 'ai_studio'];
+    $resellerModules = ['dashboard', 'account', 'my_page', 'resellers', 'managers', 'users', 'results', 'broadcasts', 'leads', 'categories', 'products', 'content', 'site_templates', 'subscriptions', 'billing_self', 'integrations', 'ai_avatar', 'ai_actions', 'ai_studio'];
+    $managerModules = ['dashboard', 'account', 'my_page', 'users', 'results', 'leads', 'categories', 'products', 'content', 'site_templates', 'broadcasts', 'billing_self', 'integrations', 'ai_avatar', 'ai_actions', 'ai_studio'];
 
     if ($user['role'] === 'reseller') {
         return in_array($module, $resellerModules, true);

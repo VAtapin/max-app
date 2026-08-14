@@ -2,7 +2,7 @@
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/helpers.php';
-require_once __DIR__ . '/subscription_plans.php';
+require_once __DIR__ . '/workspace_billing.php';
 
 function ai_settings(bool $refresh = false): array
 {
@@ -58,7 +58,8 @@ function ai_plan_for_admin(array $admin): ?array
         $stmt->execute(['id' => (int)$admin['manager_id']]);
         $resellerId = (int)$stmt->fetchColumn();
     }
-    return $resellerId > 0 ? subscription_plan_for_reseller($resellerId, true) : null;
+    $plan = $resellerId > 0 ? billing_plan_for_reseller_branch($resellerId) : null;
+    return $plan && (int)($plan['is_active'] ?? 0) === 1 ? $plan : null;
 }
 
 function ai_plan_for_client(array $user): ?array
@@ -69,7 +70,8 @@ function ai_plan_for_client(array $user): ?array
         $stmt->execute(['id' => (int)$user['manager_id']]);
         $resellerId = (int)$stmt->fetchColumn();
     }
-    return $resellerId > 0 ? subscription_plan_for_reseller($resellerId, true) : null;
+    $plan = $resellerId > 0 ? billing_plan_for_reseller_branch($resellerId) : null;
+    return $plan && (int)($plan['is_active'] ?? 0) === 1 ? $plan : null;
 }
 
 function ai_entitlements(?array $plan, bool $superadmin = false): array

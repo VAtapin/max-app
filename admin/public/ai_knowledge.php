@@ -5,7 +5,7 @@ require_once __DIR__ . '/../app/core/permissions.php';
 require_once __DIR__ . '/../app/core/ai_center.php';
 
 $admin = require_auth();
-if (!can_manage('ai_knowledge', $admin)) {
+if (($admin['role'] ?? '') !== 'superadmin' || !can_manage('ai_knowledge', $admin)) {
     http_response_code(403);
     exit('Access denied');
 }
