@@ -2,6 +2,7 @@ from bot.core.i18n import tr
 from bot.core.content_scope import user_content_scope
 from bot.db.mysql import cursor
 from bot.core.client_journey import set_client_stage
+from bot.core.recommendations import apply_signal_recommendations
 
 
 async def list_tests(user: dict | None = None) -> list[dict]:
@@ -384,6 +385,7 @@ async def complete_test_session(end_user_id: int, test_id: int, session_id: int)
         )
 
     await set_client_stage(end_user_id, "test_completed")
+    await apply_signal_recommendations(end_user_id, session_id)
 
     return {
         "session_id": session_id,
@@ -463,6 +465,7 @@ async def save_test_result(end_user_id: int, test_id: int, answers: list[dict]) 
         )
 
     await set_client_stage(end_user_id, "test_completed")
+    await apply_signal_recommendations(end_user_id, session_id)
 
     return {
         "session_id": session_id,

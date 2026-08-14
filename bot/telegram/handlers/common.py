@@ -32,7 +32,7 @@ from bot.core.consultant_replies import (
 )
 from bot.core.leads import create_lead
 from bot.core.materials import get_material, list_materials
-from bot.core.products import list_products
+from bot.core.products import get_product, get_product_variant, list_products, search_products
 from bot.core.recommendations import list_recommendations
 from bot.core.tests import (
     complete_test_session,
@@ -650,6 +650,40 @@ def format_recommendation(item: dict) -> str:
     return "\n".join(parts)
 
 
+def product_interest_keyboard(item: dict, recommendation_id: int | None = None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="Интересно - связаться с консультантом",
+            callback_data=(
+                f"product:interest:{int(item['id'] if item.get('id') else item['product_id'])}:"
+                f"{int(item.get('primary_variant_id') or 0)}:{int(recommendation_id or 0)}"
+            ),
+        )
+    ]])
+
+
+async def send_product_card(message: Message, item: dict, recommendation_id: int | None = None) -> None:
+    title = html.escape(str(item.get("title") or item.get("product_title") or "Продукт"))
+    sku = item.get("primary_sku") or item.get("catalog_sku")
+    parts = [f"<b>{title}</b>"]
+    if sku:
+        parts.append(f"Артикул: {html.escape(str(sku))}")
+    if item.get("short_description"):
+        parts.append(html.escape(str(item["short_description"]))[:650])
+    if item.get("reason_text"):
+        parts.append(html.escape(str(item["reason_text"]))[:300])
+    body = "\n".join(parts)
+    keyboard = product_interest_keyboard(item, recommendation_id)
+    image_url = public_url(item.get("image_path"))
+    if image_url:
+        try:
+            await message.answer_photo(image_url, caption=body[:1000], parse_mode="HTML", reply_markup=keyboard)
+            return
+        except Exception:
+            pass
+    await message.answer(body, parse_mode="HTML", reply_markup=keyboard)
+
+
 async def send_test_result_message(
     message: Message,
     user: dict,
@@ -1129,13 +1163,74 @@ async def products_command(message: Message) -> None:
         await message.answer(tr("products.empty"))
         return
 
-    lines = []
-    for item in products[:10]:
-        line = f"<b>{html.escape(str(item['title']))}</b>"
-        if item.get("short_description"):
-            line += f"\n{html.escape(str(item['short_description']))}"
-        lines.append(line)
-    await message.answer("\n\n".join(lines), parse_mode="HTML")
+    lines = [f"• {html.escape(str(item['title']))}" for item in products[:10]]
+    await message.answer(
+        "Первые товары каталога:\n\n" + "\n".join(lines)
+        + "\n\nДля поиска используйте команду:\n<code>/product название или артикул</code>",
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("product"))
+async def product_search_command(message: Message) -> None:
+    user = await resolve_user(message)
+    query = (message.text or "").partition(" ")[2].strip()
+    if not query:
+        await message.answer("Напишите название или артикул после команды, например: <code>/product магний</code>", parse_mode="HTML")
+        return
+    products = await search_products(query, user, limit=8)
+    if not products:
+        await message.answer("По этому названию или артикулу товары не найдены.")
+        return
+    for item in products:
+        await send_product_card(message, item)
+
+
+@router.callback_query(F.data.startswith("product:interest:"))
+async def product_interest_callback(callback: CallbackQuery) -> None:
+    parts = (callback.data or "").split(":")
+    if len(parts) != 5:
+        await callback.answer("Не удалось определить товар.", show_alert=True)
+        return
+    product_id, variant_id, recommendation_id = (int(parts[2]), int(parts[3]), int(parts[4]))
+    user = await resolve_telegram_user(callback.from_user)
+    if not has_consultant_binding(user):
+        await callback.answer("Сначала откройте персональную ссылку консультанта.", show_alert=True)
+        return
+    product = await get_product(product_id, user)
+    if not product:
+        await callback.answer("Товар больше недоступен.", show_alert=True)
+        return
+    variant = await get_product_variant(product_id, variant_id)
+    sku = (variant or {}).get("sku") or product.get("catalog_sku") or ""
+    text = f"Интересует товар: {product['title']}" + (f", артикул {sku}" if sku else "")
+    lead_id = await create_lead(
+        user,
+        text,
+        product_id=product_id,
+        product_variant_id=variant_id or None,
+        recommendation_id=recommendation_id or None,
+    )
+    client_name = " ".join(
+        part for part in [str(user.get("first_name") or "").strip(), str(user.get("last_name") or "").strip()] if part
+    ) or f"Клиент #{user['id']}"
+    await notify_manager_event(
+        callback.bot,
+        user,
+        notification_type="consultation_requested",
+        event_key=f"consultation_requested:{lead_id}",
+        title="Клиент заинтересовался продуктом",
+        message_text=(
+            f"Новая заявка #{lead_id}\n\nИсточник: Telegram\n\nКлиент: {client_name}\n\n"
+            f"Продукт: {product['title']}" + (f"\nАртикул: {sku}" if sku else "")
+            + "\n\nОтветьте на это сообщение, чтобы связаться с клиентом."
+        )[:3900],
+        lead_id=lead_id,
+        source_platform="telegram",
+    )
+    if callback.message:
+        await callback.message.answer("Заявка отправлена консультанту. Он сможет уточнить детали и оформить заказ.")
+    await callback.answer("Отправлено")
 
 
 @router.message(Command("materials"))
@@ -1168,8 +1263,8 @@ async def recommendations_command(message: Message) -> None:
     if not recommendations:
         await message.answer(tr("recommendations.empty"))
         return
-    text = "\n\n".join(format_recommendation(item) for item in recommendations[:10])
-    await message.answer(text, parse_mode="HTML")
+    for item in recommendations[:10]:
+        await send_product_card(message, item, int(item.get("id") or 0))
 
 
 @router.message(Command("profile"))

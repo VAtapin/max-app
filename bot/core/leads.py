@@ -9,6 +9,8 @@ async def create_lead(
     user: dict,
     message: str,
     product_id: int | None = None,
+    product_variant_id: int | None = None,
+    recommendation_id: int | None = None,
     request_type: str = "consultation",
 ) -> int:
     if product_id:
@@ -20,16 +22,18 @@ async def create_lead(
         await cur.execute(
             """
             INSERT INTO leads (
-                end_user_id, manager_id, reseller_id, product_id,
+                end_user_id, manager_id, reseller_id, product_id, product_variant_id, recommendation_id,
                 request_type, source_platform, message
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 user["id"],
                 user.get("manager_id"),
                 user.get("reseller_id"),
                 product_id,
+                product_variant_id,
+                recommendation_id,
                 request_type,
                 user.get("current_platform", user["platform"]),
                 message,

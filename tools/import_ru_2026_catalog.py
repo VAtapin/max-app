@@ -327,6 +327,34 @@ def export_packshot(cell: Cell, candidates: list[dict[str, Any]], output_dir: Pa
     return "/admin/uploads/products/catalog-2026/" + filename
 
 
+def export_cell_crop(
+    cell: Cell,
+    rendered_page: Image.Image,
+    page_width: float,
+    page_height: float,
+    output_dir: Path,
+    key: str,
+) -> str:
+    """Fallback for catalog cards whose packshot is merged into the page design."""
+    scale_x = rendered_page.width / page_width
+    scale_y = rendered_page.height / page_height
+    left, top, right, bottom = cell.bbox
+    padding_x = min(12.0, max(3.0, (right - left) * 0.025))
+    padding_y = min(12.0, max(3.0, (bottom - top) * 0.025))
+    crop_box = (
+        max(0, round((left + padding_x) * scale_x)),
+        max(0, round((top + padding_y) * scale_y)),
+        min(rendered_page.width, round((right - padding_x) * scale_x)),
+        min(rendered_page.height, round((bottom - padding_y) * scale_y)),
+    )
+    image = rendered_page.crop(crop_box).convert("RGB")
+    image.thumbnail((1100, 1100), Image.Resampling.LANCZOS)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{key}.webp"
+    image.save(output_dir / filename, "WEBP", quality=86, method=6)
+    return "/admin/uploads/products/catalog-2026/" + filename
+
+
 def export_named_packshot(reader_page: Any, image_name: str, output_dir: Path, key: str) -> str:
     image_file = next(item for item in reader_page.images if Path(item.name).stem == image_name)
     image = image_file.image.convert("RGBA")
@@ -370,6 +398,7 @@ def add_manual_products(products: list[dict[str, Any]], reader: PdfReader, image
             "title": item["title"], "slug": slug, "category_slug": item["category"], "kind": item["kind"],
             "catalog_sku": item["sku"], "catalog_page": item["page"], "short_description": item["description"],
             "full_description": item["description"], "composition": None, "price": item["price"], "image_path": image_path,
+            "image_source": "packshot",
             "image_review_status": "candidate", "safety_review_status": "catalog_only" if is_health else "not_required",
             "content_status": "review" if is_health else "approved", "ai_enabled": not is_health,
             "recommendation_notice": "Информация носит ознакомительный характер. Уточните способ применения и ограничения у консультанта или специалиста." if is_health else "Учитывайте индивидуальную чувствительность.",
@@ -386,6 +415,7 @@ def build_catalog(pdf_path: Path, image_dir: Path) -> list[dict[str, Any]]:
         for page_number in range(4, len(document.pages) + 1):
             plumber_page = document.pages[page_number - 1]
             candidates = image_candidates(reader.pages[page_number - 1], plumber_page)
+            rendered_page: Image.Image | None = None
             for cell in extract_cells(plumber_page, page_number):
                 title = TITLE_OVERRIDES.get(cell.codes[0], title_from_cell(cell))
                 category, kind = product_section(page_number)
@@ -393,6 +423,19 @@ def build_catalog(pdf_path: Path, image_dir: Path) -> list[dict[str, Any]]:
                 variants = [variant_data(cell, code) for code in cell.codes]
                 slug = f"ru-2026-{slugify(title)}-{cell.codes[0]}"
                 image_path = export_packshot(cell, candidates, image_dir, slug)
+                image_source = "packshot"
+                if not image_path:
+                    if rendered_page is None:
+                        rendered_page = plumber_page.to_image(resolution=180, antialias=True).original
+                    image_path = export_cell_crop(
+                        cell,
+                        rendered_page,
+                        plumber_page.width,
+                        plumber_page.height,
+                        image_dir,
+                        slug,
+                    )
+                    image_source = "catalog_crop"
                 is_health = kind in {"supplement", "food"}
                 products.append({
                     "title": title,
@@ -406,6 +449,7 @@ def build_catalog(pdf_path: Path, image_dir: Path) -> list[dict[str, Any]]:
                     "composition": composition,
                     "price": variants[0]["price"],
                     "image_path": image_path,
+                    "image_source": image_source,
                     "image_review_status": "candidate" if image_path else "missing",
                     "safety_review_status": "catalog_only" if is_health else "not_required",
                     "content_status": "review" if is_health else "approved",
@@ -481,11 +525,30 @@ def write_sql(products: list[dict[str, Any]], path: Path) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def write_image_backfill_sql(products: list[dict[str, Any]], path: Path) -> None:
+    lines = ["SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;", ""]
+    for product in products:
+        if product.get("image_source") != "catalog_crop" or not product.get("image_path"):
+            continue
+        lines.extend([
+            f"UPDATE products SET image_path = {sql(product['image_path'])}, image_review_status = IF(image_review_status = 'missing', 'candidate', image_review_status) WHERE slug = {sql(product['slug'])};",
+            "UPDATE product_variants pv JOIN products p ON p.id = pv.product_id "
+            f"SET pv.image_path = {sql(product['image_path'])} WHERE p.slug = {sql(product['slug'])};",
+            "INSERT INTO product_media (product_id, media_type, file_path, source_page, review_status, is_primary) VALUES "
+            f"((SELECT id FROM products WHERE slug = {sql(product['slug'])} LIMIT 1), 'catalog_crop', {sql(product['image_path'])}, {product['catalog_page']}, 'candidate', 1) "
+            "ON DUPLICATE KEY UPDATE product_id = VALUES(product_id), source_page = VALUES(source_page);",
+            "",
+        ])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("pdf", type=Path)
     parser.add_argument("--manifest", type=Path, default=Path("database/catalog/ru_2026_products.json"))
     parser.add_argument("--sql", type=Path, default=Path("database/migrations/20260814_21_import_ru_2026_catalog.sql"))
+    parser.add_argument("--image-backfill-sql", type=Path, default=Path("database/migrations/20260815_01_catalog_fallback_images.sql"))
     parser.add_argument("--images", type=Path, default=Path("admin/uploads/products/catalog-2026"))
     args = parser.parse_args()
     if not args.pdf.is_file():
@@ -494,6 +557,7 @@ def main() -> int:
     args.manifest.parent.mkdir(parents=True, exist_ok=True)
     args.manifest.write_text(json.dumps(products, ensure_ascii=False, indent=2), encoding="utf-8")
     write_sql(products, args.sql)
+    write_image_backfill_sql(products, args.image_backfill_sql)
     print(json.dumps({
         "products": len(products),
         "variants": sum(len(product["variants"]) for product in products),

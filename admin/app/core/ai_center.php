@@ -135,7 +135,9 @@ function ai_source_score(string $query, array $source, ?string $pageContext = nu
     $score = 0;
     foreach (ai_tokenize($query) as $token) {
         if (str_contains($haystack, $token)) {
-            $score += str_contains($title, $token) ? 3 : 1;
+            $score += preg_match('/^\d{5,}$/', $token)
+                ? 3
+                : (str_contains($title, $token) ? 3 : 1);
         }
     }
     if ($pageContext && !empty($source['page_context']) && basename($pageContext) === basename((string)$source['page_context'])) {
@@ -242,11 +244,12 @@ function ai_client_sources(array $user, array $owner): array
         ];
     }
 
-    foreach (db()->query('SELECT * FROM products WHERE is_active = 1 AND is_deleted = 0 AND ai_enabled = 1 AND content_status = "approved" AND (product_kind NOT IN ("supplement","food") OR (safety_review_status = "verified" AND NULLIF(composition, "") IS NOT NULL AND NULLIF(usage_text, "") IS NOT NULL AND NULLIF(warning_text, "") IS NOT NULL AND NULLIF(contraindications, "") IS NOT NULL AND NULLIF(allowed_claims, "") IS NOT NULL AND NULLIF(source_urls, "") IS NOT NULL)) ORDER BY updated_at DESC LIMIT 1000')->fetchAll() as $row) {
+    foreach (db()->query('SELECT p.*, (SELECT GROUP_CONCAT(pv.sku ORDER BY pv.sort_order, pv.id SEPARATOR " ") FROM product_variants pv WHERE pv.product_id = p.id AND pv.is_active = 1) variant_skus FROM products p WHERE p.is_active = 1 AND p.is_deleted = 0 AND p.ai_enabled = 1 AND p.content_status = "approved" AND (p.product_kind NOT IN ("supplement","food") OR (p.safety_review_status = "verified" AND NULLIF(p.composition, "") IS NOT NULL AND NULLIF(p.usage_text, "") IS NOT NULL AND NULLIF(p.warning_text, "") IS NOT NULL AND NULLIF(p.contraindications, "") IS NOT NULL AND NULLIF(p.allowed_claims, "") IS NOT NULL AND NULLIF(p.source_urls, "") IS NOT NULL)) ORDER BY p.updated_at DESC LIMIT 1000')->fetchAll() as $row) {
         if (!ai_owner_row_visible($row, $owner, $resellerId)) {
             continue;
         }
         $content = implode("\n", array_filter([
+            $row['variant_skus'] ? 'Артикулы: ' . $row['variant_skus'] : ($row['catalog_sku'] ? 'Артикул: ' . $row['catalog_sku'] : null),
             $row['short_description'], $row['full_description'],
             $row['composition'] ? 'Состав: ' . $row['composition'] : null,
             $row['usage_text'] ? 'Применение: ' . $row['usage_text'] : null,
@@ -255,7 +258,7 @@ function ai_client_sources(array $user, array $owner): array
             $row['allowed_claims'] ? 'Допустимые формулировки: ' . $row['allowed_claims'] : null,
         ]));
         if ($content !== '') {
-            $items[] = ['title' => 'Продукт: ' . $row['title'], 'content' => $content, 'keywords' => 'продукт состав применение противопоказания', 'source_key' => 'product:' . $row['id'], 'source_label' => 'Продукт: ' . $row['title'], 'version' => strtotime((string)$row['updated_at']) ?: 1];
+            $items[] = ['title' => 'Продукт: ' . $row['title'], 'content' => $content, 'keywords' => 'продукт товар артикул ' . ($row['variant_skus'] ?: $row['catalog_sku'] ?? ''), 'source_key' => 'product:' . $row['id'], 'source_label' => 'Продукт: ' . $row['title'], 'version' => strtotime((string)$row['updated_at']) ?: 1];
         }
     }
 
