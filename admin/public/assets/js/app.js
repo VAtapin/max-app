@@ -698,6 +698,82 @@ function initResponsiveTables(root = document) {
     });
 }
 
+function initAiChat(root = document) {
+    root.querySelectorAll('[data-ai-chat]').forEach((widget) => {
+        if (widget.dataset.aiChatBound === '1') return;
+        widget.dataset.aiChatBound = '1';
+        const toggle = widget.querySelector('[data-ai-chat-toggle]');
+        const close = widget.querySelector('[data-ai-chat-close]');
+        const panel = widget.querySelector('[data-ai-chat-panel]');
+        const form = widget.querySelector('[data-ai-chat-form]');
+        const messages = widget.querySelector('[data-ai-chat-messages]');
+        const input = form?.querySelector('textarea[name="message"]');
+        const submit = form?.querySelector('button[type="submit"]');
+        if (!toggle || !panel || !form || !messages || !input || !submit) return;
+
+        const setOpen = (open) => {
+            panel.hidden = !open;
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) window.setTimeout(() => input.focus(), 0);
+        };
+        toggle.addEventListener('click', () => setOpen(panel.hidden));
+        close?.addEventListener('click', () => setOpen(false));
+
+        const addMessage = (text, role, citations = []) => {
+            const node = document.createElement('div');
+            node.className = `ai-chat-message ${role}`;
+            const body = document.createElement('div');
+            body.textContent = text;
+            node.appendChild(body);
+            if (citations.length) {
+                const sourceList = document.createElement('small');
+                sourceList.className = 'ai-chat-sources';
+                sourceList.textContent = `Источники: ${citations.map((item) => item.label).join('; ')}`;
+                node.appendChild(sourceList);
+            }
+            messages.appendChild(node);
+            messages.scrollTop = messages.scrollHeight;
+        };
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const question = input.value.trim();
+            if (!question) return;
+            addMessage(question, 'user');
+            input.value = '';
+            input.disabled = true;
+            submit.disabled = true;
+            const pending = document.createElement('div');
+            pending.className = 'ai-chat-message assistant pending';
+            pending.textContent = 'Ищу ответ в материалах SWPro…';
+            messages.appendChild(pending);
+            messages.scrollTop = messages.scrollHeight;
+            try {
+                const payload = new FormData();
+                payload.set('csrf_token', widget.dataset.csrf || '');
+                payload.set('message', question);
+                payload.set('page_context', `${location.pathname}${location.search}`);
+                const response = await fetch(widget.dataset.endpoint || 'ai_chat.php', {
+                    method: 'POST',
+                    body: payload,
+                    headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+                });
+                const data = await response.json();
+                pending.remove();
+                if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+                addMessage(data.answer || 'Ответ не получен.', 'assistant', Array.isArray(data.citations) ? data.citations : []);
+            } catch (error) {
+                pending.remove();
+                addMessage(error.message || 'Помощник временно недоступен.', 'assistant error');
+            } finally {
+                input.disabled = false;
+                submit.disabled = false;
+                input.focus();
+            }
+        });
+    });
+}
+
 document.querySelectorAll('button[disabled]').forEach((button) => {
     button.title = '';
 });
@@ -710,3 +786,4 @@ initLimitChecks();
 initLeadMediaModal();
 initImagePreviewModal();
 initResponsiveTables();
+initAiChat();

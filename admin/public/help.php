@@ -28,6 +28,18 @@ function faq_items_to_text(?string $json): string
     return is_array($items) ? implode("\n", array_map('strval', $items)) : '';
 }
 
+function faq_roles_from_post(array $value): ?string
+{
+    $allowed = array_values(array_intersect(['superadmin', 'reseller', 'manager'], array_map('strval', $value)));
+    return $allowed ? json_encode($allowed, JSON_UNESCAPED_UNICODE) : null;
+}
+
+function faq_roles_from_json(?string $json): array
+{
+    $roles = json_decode((string)$json, true);
+    return is_array($roles) ? array_map('strval', $roles) : [];
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $action = $_POST['action'] ?? '';
@@ -38,6 +50,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'title' => trim((string)($_POST['title'] ?? '')),
                 'body' => trim((string)($_POST['body'] ?? '')),
                 'items_json' => faq_items_from_text((string)($_POST['items_text'] ?? '')),
+                'keywords' => trim((string)($_POST['keywords'] ?? '')),
+                'allowed_roles' => faq_roles_from_post((array)($_POST['allowed_roles'] ?? [])),
+                'page_context' => trim((string)($_POST['page_context'] ?? '')),
+                'ai_enabled' => isset($_POST['ai_enabled']) ? 1 : 0,
                 'is_featured' => isset($_POST['is_featured']) ? 1 : 0,
                 'is_active' => isset($_POST['is_active']) ? 1 : 0,
                 'sort_order' => (int)($_POST['sort_order'] ?? 100),
@@ -55,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = db()->prepare(
                         'UPDATE help_faq_sections
                          SET title = :title, body = :body, items_json = :items_json,
+                             keywords = :keywords, allowed_roles = :allowed_roles, page_context = :page_context, ai_enabled = :ai_enabled,
                              is_featured = :is_featured, is_active = :is_active, sort_order = :sort_order
                          WHERE id = :id'
                     );
@@ -62,9 +79,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $stmt = db()->prepare(
                         'INSERT INTO help_faq_sections
-                            (title, body, items_json, is_featured, is_active, sort_order)
+                            (title, body, items_json, keywords, allowed_roles, page_context, ai_enabled, is_featured, is_active, sort_order)
                          VALUES
-                            (:title, :body, :items_json, :is_featured, :is_active, :sort_order)'
+                            (:title, :body, :items_json, :keywords, :allowed_roles, :page_context, :ai_enabled, :is_featured, :is_active, :sort_order)'
                     );
                     $stmt->execute($payload);
                 }
@@ -92,7 +109,7 @@ $allSections = [];
 
 try {
     $stmt = db()->query(
-        'SELECT id, title, body, items_json, is_featured, is_active, sort_order
+        'SELECT id, title, body, items_json, keywords, allowed_roles, page_context, ai_enabled, is_featured, is_active, sort_order
          FROM help_faq_sections
          ORDER BY sort_order, id'
     );
@@ -183,6 +200,10 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <span><?= h(app_text('help.field_sort')) ?></span>
             <input type="number" name="sort_order" value="100">
         </label>
+        <label class="field"><span>Ключевые слова для ИИ</span><input name="keywords" placeholder="синонимы и частые формулировки"></label>
+        <label class="field"><span>Страница админки</span><input name="page_context" placeholder="products.php или пусто"></label>
+        <div class="field wide"><span>Кому доступен материал</span><div class="checkbox-list"><label><input type="checkbox" name="allowed_roles[]" value="superadmin" checked> Супер-админ</label><label><input type="checkbox" name="allowed_roles[]" value="reseller" checked> Лидер</label><label><input type="checkbox" name="allowed_roles[]" value="manager" checked> Консультант</label></div></div>
+        <label class="checkbox-line"><input type="checkbox" name="ai_enabled" value="1" checked> Разрешить помощнику использовать материал</label>
         <label class="checkbox-line">
             <input type="checkbox" name="is_featured" value="1">
             <?= h(app_text('help.field_featured')) ?>
@@ -229,6 +250,11 @@ require __DIR__ . '/../app/views/layouts/header.php';
                         <span><?= h(app_text('help.field_sort')) ?></span>
                         <input type="number" name="sort_order" value="<?= (int)$section['sort_order'] ?>">
                     </label>
+                    <label class="field"><span>Ключевые слова для ИИ</span><input name="keywords" value="<?= h((string)($section['keywords'] ?? '')) ?>"></label>
+                    <label class="field"><span>Страница админки</span><input name="page_context" value="<?= h((string)($section['page_context'] ?? '')) ?>"></label>
+                    <?php $sectionRoles = faq_roles_from_json((string)($section['allowed_roles'] ?? '')); ?>
+                    <div class="field wide"><span>Кому доступен материал</span><div class="checkbox-list"><?php foreach (['superadmin' => 'Супер-админ', 'reseller' => 'Лидер', 'manager' => 'Консультант'] as $roleKey => $roleLabel): ?><label><input type="checkbox" name="allowed_roles[]" value="<?= h($roleKey) ?>" <?= !$sectionRoles || in_array($roleKey, $sectionRoles, true) ? 'checked' : '' ?>> <?= h($roleLabel) ?></label><?php endforeach; ?></div></div>
+                    <label class="checkbox-line"><input type="checkbox" name="ai_enabled" value="1" <?= (int)($section['ai_enabled'] ?? 1) === 1 ? 'checked' : '' ?>> Разрешить помощнику использовать материал</label>
                     <label class="checkbox-line">
                         <input type="checkbox" name="is_featured" value="1" <?= (int)$section['is_featured'] === 1 ? 'checked' : '' ?>>
                         <?= h(app_text('help.field_featured')) ?>

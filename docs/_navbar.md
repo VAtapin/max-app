@@ -1,0 +1,4 @@
+- [Справочник](/)
+- [Быстрый старт](/start/overview.md)
+- [Подключить VK](/integrations/vk-connect.md)
+- [Админка](https://swpro.ru/admin/public/)

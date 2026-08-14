@@ -1,0 +1,27 @@
+- **НАЧАЛО РАБОТЫ**
+  - [О SWPro](/start/overview.md)
+  - [Роли и доступ](/start/roles.md)
+  - [Первый вход клиента](/start/onboarding.md)
+- **КЛИЕНТЫ**
+  - [Web и объединение аккаунтов](/clients/accounts.md)
+  - [Реферальные ссылки](/clients/referrals.md)
+  - [Перевод клиента в команду](/clients/promotion.md)
+- **МИНИ-САЙТ И КОНТЕНТ**
+  - [Настройка мини-сайта](/content/mini-site.md)
+  - [Шаблоны и наследование](/content/inheritance.md)
+- **РАБОТА С КЛИЕНТОМ**
+  - [Опросы и результаты](/work/surveys.md)
+  - [Обращения](/work/appeals.md)
+  - [Рассылки](/work/broadcasts.md)
+- **ПОДКЛЮЧЕНИЯ**
+  - [Разрешение сообщений VK](/integrations/vk-messages.md)
+  - [Подключение VK](/integrations/vk-connect.md)
+  - [Подключение OK](/integrations/ok-connect.md)
+- **ПОДПИСКА**
+  - [Рабочие места и тарифы](/billing/subscriptions.md)
+  - [Оплата](/billing/payments.md)
+- **БЕЗОПАСНОСТЬ**
+  - [Документы и данные](/security/legal.md)
+  - [Двухфакторная защита](/security/2fa.md)
+- **ОБСЛУЖИВАНИЕ**
+  - [Автоматические задачи](/operations/automation.md)

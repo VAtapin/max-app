@@ -4,6 +4,7 @@ require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/permissions.php';
 require_once __DIR__ . '/../app/core/client_journey.php';
 require_once __DIR__ . '/../app/core/workspace_billing.php';
+require_once __DIR__ . '/../app/core/ai_workflows.php';
 
 $admin = require_auth();
 $title = app_text('auto.dashboard');
@@ -209,6 +210,8 @@ $referralTitle = $dashboardManager ? app_text('referrals.dashboard_title') : 'Р
 $referralLinks = $referralOwner ? manager_referral_links($referralOwner) : [];
 $billingWorkspace = in_array($admin['role'] ?? '', ['reseller', 'manager'], true)
     ? billing_workspace_for_admin($admin) : null;
+$todayActions = in_array($admin['role'] ?? '', ['reseller', 'manager'], true)
+    ? array_slice(ai_workflow_refresh_actions($admin), 0, 5) : [];
 if ($billingWorkspace) {
     billing_refresh_statuses();
     $billingWorkspace = billing_workspace_for_admin($admin);
@@ -319,6 +322,15 @@ require __DIR__ . '/../app/views/layouts/header.php';
         <h2>Доступ лидера</h2>
         <p>Статус: <strong><?= h((string)$subscription['status']) ?></strong></p>
         <p class="cell-muted">Действует до: <?= h((string)($subscription['ends_at'] ?: 'без ограничения')) ?></p>
+    </section>
+<?php endif; ?>
+
+<?php if (in_array($admin['role'] ?? '', ['reseller', 'manager'], true)): ?>
+    <section class="panel dashboard-today-panel">
+        <div class="page-title-row"><div><span class="eyebrow">Ежедневный план</span><h2>Что сделать сегодня</h2><p class="cell-muted">Клиенты, которым сейчас особенно полезно ваше внимание.</p></div><a class="button secondary-button" href="ai_actions.php">Открыть весь список</a></div>
+        <?php if ($todayActions): ?><div class="dashboard-action-list">
+            <?php foreach ($todayActions as $action): ?><a href="ai_actions.php" class="dashboard-action-item"><span class="badge"><?= (int)$action['priority'] ?></span><span><strong><?= h(trim((string)$action['first_name'] . ' ' . (string)$action['last_name']) ?: 'Клиент') ?> — <?= h((string)$action['title']) ?></strong><small><?= h((string)$action['reason_text']) ?></small></span></a><?php endforeach; ?>
+        </div><?php else: ?><p class="empty-state">На сегодня срочных действий нет.</p><?php endif; ?>
     </section>
 <?php endif; ?>
 

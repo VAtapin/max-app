@@ -21,7 +21,7 @@ function render_vk_connection_help_link(): string
             <h2>Инструкция по подключению сообщества</h2>
             <p>Пошаговая настройка сообщений, ключа доступа и Callback API вынесена в раздел помощи.</p>
         </div>
-        <a class="button secondary-button" href="help.php#vk-connection-guide">Открыть инструкцию</a>
+        <a class="button secondary-button" href="/docs/#/integrations/vk-connect">Открыть инструкцию</a>
     </section>
     <?php
     return trim((string)ob_get_clean());

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Справочный центр SWPro для лидеров, консультантов и администраторов">
+  <meta name="theme-color" content="#0f6b70">
+  <title>Помощь SWPro</title>
+  <link rel="icon" href="/favicon.png">
+  <link rel="stylesheet" href="_assets/vue.css">
+  <link rel="stylesheet" href="_assets/swpro-docs.css">
+</head>
+<body>
+  <noscript>Для работы справочного центра необходимо включить JavaScript.</noscript>
+  <div id="app">Загружаем справочный центр…</div>
+  <script>
+    window.$docsify = {
+      name: 'SWPro',
+      nameLink: '#/',
+      homepage: 'README.md',
+      loadSidebar: true,
+      loadNavbar: true,
+      coverpage: true,
+      onlyCover: false,
+      auto2top: true,
+      subMaxLevel: 2,
+      maxLevel: 3,
+      notFoundPage: true,
+      alias: {
+        '/.*/_sidebar.md': '/_sidebar.md',
+        '/.*/_navbar.md': '/_navbar.md'
+      },
+      search: {
+        paths: 'auto',
+        maxAge: 0,
+        namespace: 'swpro-docs-v2',
+        placeholder: 'Поиск по справке',
+        noData: 'Ничего не найдено',
+        depth: 3,
+        hideOtherSidebarContent: false
+      }
+    };
+  </script>
+  <script src="_assets/docsify.min.js"></script>
+  <script src="_assets/search.min.js"></script>
+</body>
+</html>

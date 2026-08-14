@@ -20,6 +20,7 @@ const state = {
     messagingConfigPromise: null,
     onboarding: null,
     notifications: [],
+    today: null,
     accountSuggestions: null,
     webMergeLink: null,
     answerPending: false,
@@ -29,6 +30,12 @@ const page = document.querySelector('#page');
 const tabs = document.querySelectorAll('.tabs button');
 const homeLink = document.querySelector('#home-link');
 const staffPreviewBanner = document.querySelector('#staff-preview-banner');
+const clientAiChat = document.querySelector('#client-ai-chat');
+const clientAiToggle = document.querySelector('#client-ai-toggle');
+const clientAiPanel = document.querySelector('#client-ai-panel');
+const clientAiClose = document.querySelector('#client-ai-close');
+const clientAiForm = document.querySelector('#client-ai-form');
+const clientAiMessages = document.querySelector('#client-ai-messages');
 
 function decodeRouteValue(value) {
     let decoded = String(value || '').trim();
@@ -940,6 +947,41 @@ async function loadNotifications() {
     return state.notifications;
 }
 
+async function loadToday() {
+    if (!state.onboarding?.complete || isStaffPreview()) {
+        state.today = null;
+        return null;
+    }
+    try {
+        state.today = await api(`today.php?${userQuery()}`);
+    } catch (_) {
+        state.today = null;
+    }
+    return state.today;
+}
+
+function renderTodayForClient() {
+    const today = state.today;
+    if (!today) return '';
+    const plan = today.plan;
+    const items = Array.isArray(today.plan_items) ? today.plan_items : [];
+    const currentDay = Number(plan?.current_day || 1);
+    const currentItems = plan ? items
+        .filter((item) => Number(item.day_number) === currentDay || (Number(item.day_number) < currentDay && Number(item.is_completed) !== 1))
+        .sort((left, right) => Number(right.day_number) - Number(left.day_number))
+        .slice(0, 6) : [];
+    const comparison = today.comparison;
+    return `
+        <section class="client-today-section">
+            <div class="client-today-head"><div><span class="eyebrow">Сегодня для вас</span><h2>${escapeHtml(plan?.title || 'Ваш следующий полезный шаг')}</h2></div>${plan ? `<strong>${escapeHtml(plan.progress_percent)}%</strong>` : ''}</div>
+            ${plan ? `<div class="client-plan-progress"><span style="width:${Math.max(0, Math.min(100, Number(plan.progress_percent || 0)))}%"></span></div><p class="muted">День ${escapeHtml(plan.current_day)} из ${escapeHtml(plan.duration_days)} · выполнено ${escapeHtml(plan.completed_items)} из ${escapeHtml(plan.total_items)}</p>` : '<p class="muted">После завершения чек-апа здесь появится персональный информационный план.</p>'}
+            ${currentItems.length ? `<div class="client-plan-items">${currentItems.map((item) => `<label class="client-plan-item ${Number(item.is_completed) === 1 ? 'completed' : ''}"><input type="checkbox" data-action="toggle-plan-item" data-item-id="${Number(item.id)}" ${Number(item.is_completed) === 1 ? 'checked' : ''}><span><small>День ${escapeHtml(item.day_number)}</small><strong>${escapeHtml(item.title)}</strong>${item.instruction ? `<small>${escapeHtml(item.instruction)}</small>` : ''}</span></label>`).join('')}</div>` : ''}
+            ${today.retest_available ? `<button class="secondary" data-page-target="tests">Пора пройти повторный чек-ап</button>` : today.retest_due_on ? `<p class="muted">Следующее сравнение можно запланировать после ${escapeHtml(new Date(`${today.retest_due_on}T00:00:00`).toLocaleDateString('ru-RU'))}.</p>` : ''}
+        </section>
+        ${comparison ? `<section class="client-comparison"><div><span class="eyebrow">Было → стало</span><h2>${escapeHtml(comparison.test_title)}</h2><p class="muted">${escapeHtml(comparison.disclaimer)}</p></div><div class="comparison-grid">${comparison.scales.slice(0, 6).map((item) => `<article><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.previous.score)} → ${escapeHtml(item.current.score)}</span><small>Изменение: ${Number(item.delta) > 0 ? '+' : ''}${escapeHtml(item.delta)}</small></article>`).join('')}</div></section>` : ''}
+    `;
+}
+
 async function loadMessagingConfig() {
     if (!state.onboarding?.complete || !['VK', 'OK'].includes(state.platform)) {
         state.messagingConfig = {integrations: {}};
@@ -1498,6 +1540,8 @@ function renderHome() {
             ${profile.welcome_video_url ? renderVideoBlock(profile.welcome_video_url, 'Приветствие консультанта') : ''}
         </section>
 
+        ${renderTodayForClient()}
+
         ${unreadNotifications.length ? `
             <section class="notification-list">
                 ${unreadNotifications.slice(0, 3).map((item) => `
@@ -1724,7 +1768,7 @@ function renderCashback() {
 function renderCooperation() {
     const profile = state.consultantProfile?.profile || {};
     const title = profile.cooperation_title || 'Возможность сотрудничества';
-    const text = profile.cooperation_text || 'Узнайте о вариантах сотрудничества, обучении и поддержке команды. Подробности можно обсудить с консультантом.';
+    const text = profile.cooperation_text || 'Узнайте о вариантах сотрудничества и поддержке команды. Подробности можно обсудить с консультантом.';
     page.innerHTML = `
         <section class="panel feature-page">
             ${profile.cooperation_image_path ? `<img class="feature-image" src="${escapeHtml(profile.cooperation_image_path)}" alt="" ${lazyImageAttrs()}>` : ''}
@@ -2440,6 +2484,7 @@ async function answerCurrentQuestion(answerId = null, answerIds = [], textAnswer
         });
 
         if (result.done && result.session_id) {
+            await loadToday();
             renderTestResult(result);
             return;
         }
@@ -2537,6 +2582,7 @@ function renderResultMaterials(materials = []) {
 }
 
 function renderTestResult(result) {
+    const plan = state.today?.plan;
     page.innerHTML = `
         <section class="panel">
             <div class="result-card">
@@ -2545,6 +2591,7 @@ function renderTestResult(result) {
                 <div class="result-summary">${renderTextBlocks(result.summary)}</div>
             </div>
             ${renderScaleResults(result.scale_results || [])}
+            ${plan ? `<div class="result-card"><strong>Ваш план уже готов</strong><p>План на ${escapeHtml(plan.duration_days)} дней появился на странице «Сегодня для вас». Там можно отмечать выполненные шаги и видеть прогресс.</p><button class="secondary" data-page-target="home">Открыть план</button></div>` : ''}
             <div class="result-actions">
                 <button class="primary" data-action="contact-result">${escapeHtml(ui('result.contact_manager', 'Разобрать с консультантом'))}</button>
                 <button class="secondary" data-page-target="tests">Вернуться к чек-апу</button>
@@ -2579,6 +2626,7 @@ async function render() {
         renderWebMergeGate();
         return;
     }
+    if (clientAiChat) clientAiChat.hidden = isStaffPreview();
     document.body.classList.remove('auth-required', 'referral-required');
     tabs.forEach((tab) => {
         tab.disabled = false;
@@ -2631,6 +2679,57 @@ async function render() {
         page.innerHTML = `<div class="empty-card">${escapeHtml(friendlyError(error))}</div>`;
     }
 }
+
+function setClientAiOpen(open) {
+    if (!clientAiPanel || !clientAiToggle) return;
+    clientAiPanel.hidden = !open;
+    clientAiToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) window.setTimeout(() => clientAiForm?.querySelector('textarea')?.focus(), 0);
+}
+
+function addClientAiMessage(text, role, citations = []) {
+    if (!clientAiMessages) return null;
+    const node = document.createElement('div');
+    node.className = `client-ai-message ${role}`;
+    const body = document.createElement('div');
+    body.textContent = text;
+    node.appendChild(body);
+    if (citations.length) {
+        const sources = document.createElement('small');
+        sources.textContent = `Источники: ${citations.map((item) => item.label).join('; ')}`;
+        node.appendChild(sources);
+    }
+    clientAiMessages.appendChild(node);
+    clientAiMessages.scrollTop = clientAiMessages.scrollHeight;
+    return node;
+}
+
+clientAiToggle?.addEventListener('click', () => setClientAiOpen(clientAiPanel?.hidden !== false));
+clientAiClose?.addEventListener('click', () => setClientAiOpen(false));
+clientAiForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const input = clientAiForm.querySelector('textarea[name="message"]');
+    const button = clientAiForm.querySelector('button[type="submit"]');
+    const question = String(input?.value || '').trim();
+    if (!question || !input || !button) return;
+    addClientAiMessage(question, 'user');
+    input.value = '';
+    input.disabled = true;
+    button.disabled = true;
+    const pending = addClientAiMessage('Ищу ответ в материалах…', 'assistant pending');
+    try {
+        const result = await api('ai_chat.php', {method: 'POST', body: JSON.stringify({...userPayload(), message: question})});
+        pending?.remove();
+        addClientAiMessage(result.answer || 'Ответ не найден.', 'assistant', Array.isArray(result.citations) ? result.citations : []);
+    } catch (error) {
+        pending?.remove();
+        addClientAiMessage(friendlyError(error), 'assistant error');
+    } finally {
+        input.disabled = false;
+        button.disabled = false;
+        input.focus();
+    }
+});
 
 tabs.forEach((tab) => {
     tab.addEventListener('click', () => setPage(tab.dataset.page));
@@ -2711,6 +2810,20 @@ page.addEventListener('click', async (event) => {
             Number(item.id) === notificationId ? {...item, is_read: 1} : item
         ));
         renderHome();
+    }
+    if (target.dataset.action === 'toggle-plan-item') {
+        const input = target.matches('input') ? target : target.querySelector('input');
+        const itemId = Number(target.dataset.itemId || input?.dataset.itemId || 0);
+        if (itemId > 0 && input) {
+            input.disabled = true;
+            try {
+                state.today = await api('today.php', {method: 'POST', body: JSON.stringify({...userPayload(), item_id: itemId, completed: input.checked})});
+                renderHome();
+            } catch (error) {
+                input.checked = !input.checked;
+                input.disabled = false;
+            }
+        }
     }
     if (target.dataset.action === 'dismiss-account-suggestion') {
         const key = accountSuggestionDismissKey();
@@ -2955,7 +3068,7 @@ Promise.all([loadI18n(), authorize()])
         await loadOnboarding();
         await render();
 
-        const deferred = [loadNotifications(), loadMessagingConfig()];
+        const deferred = [loadNotifications(), loadMessagingConfig(), loadToday()];
         if (hasTeamAccess()) {
             deferred.push(loadConsultantProfile());
         }

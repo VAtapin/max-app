@@ -2,6 +2,7 @@
 
 require __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/../admin/app/core/client_journey.php';
+require_once __DIR__ . '/../admin/app/core/ai_workflows.php';
 
 function require_test_onboarding(array $user): void
 {
@@ -571,6 +572,7 @@ function finalize_test_journey(array $user, int $testId, int $sessionId): void
         return;
     }
     update_client_stage((int)$user['id'], 'test_completed');
+    ai_workflow_ensure_plan($user, $sessionId);
     $titleStmt = db()->prepare('SELECT title FROM tests WHERE id = :id LIMIT 1');
     $titleStmt->execute(['id' => $testId]);
     notify_consultant_about_test($user, $sessionId, (string)($titleStmt->fetchColumn() ?: 'Чек-ап организма'));

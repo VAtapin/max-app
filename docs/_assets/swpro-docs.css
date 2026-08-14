@@ -1,0 +1,17 @@
+:root { --theme-color: #0f6b70; --swpro-ink: #10243f; --swpro-muted: #64748b; --swpro-soft: #eef7f6; --swpro-line: #dbe7e8; }
+body { color: var(--swpro-ink); }
+.app-name-link { font-weight: 800; letter-spacing: -.02em; }
+.sidebar { border-right: 1px solid var(--swpro-line); }
+.sidebar-nav > ul > li > p { margin-top: 1.2rem; color: #718096; font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.sidebar ul li a { color: #334155; font-size: .93rem; }
+.sidebar ul li.active > a { color: var(--theme-color); font-weight: 700; }
+.markdown-section { max-width: 920px; padding-bottom: 90px; }
+.markdown-section h1, .markdown-section h2, .markdown-section h3 { color: var(--swpro-ink); letter-spacing: -.02em; }
+.markdown-section h1 { font-size: 2rem; }
+.markdown-section h2 { border-bottom: 1px solid var(--swpro-line); padding-bottom: .45rem; }
+.markdown-section blockquote { border-left: 4px solid var(--theme-color); background: var(--swpro-soft); color: #31565a; padding: .85rem 1rem; }
+.markdown-section img { border: 1px solid var(--swpro-line); border-radius: 14px; box-shadow: 0 12px 35px rgba(15, 35, 60, .08); }
+.markdown-section table { display: table; width: 100%; }
+.cover-main { background: linear-gradient(135deg, #edf8f7 0%, #f7f4f6 60%, #fff 100%); }
+.cover-main > p:last-child a { border-radius: 10px; }
+@media (max-width: 768px) { .markdown-section { padding: 28px 20px 70px; } .markdown-section h1 { font-size: 1.7rem; } .markdown-section table { display: block; overflow-x: auto; } }

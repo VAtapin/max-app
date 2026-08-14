@@ -24,6 +24,7 @@ set +a
 : "${DB_PASSWORD:?DB_PASSWORD is required}"
 : "${SWPRO_PUBLIC_URL:?SWPRO_PUBLIC_URL is required}"
 : "${SWPRO_MINI_APP_URL:?SWPRO_MINI_APP_URL is required}"
+: "${SWPRO_PRIVATE_STORAGE_PATH:?SWPRO_PRIVATE_STORAGE_PATH is required}"
 
 PHP_BIN="${PHP_BIN:-php}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
@@ -49,6 +50,9 @@ bot/.venv/bin/pip install -r bot/requirements.txt
 
 echo "Creating upload directories..."
 mkdir -p admin/uploads/products admin/uploads/content admin/uploads/tests admin/uploads/profiles admin/uploads/broadcasts admin/uploads/files admin/uploads/responses
+echo "Creating private AI media storage..."
+mkdir -p "$SWPRO_PRIVATE_STORAGE_PATH"
+chmod 750 "$SWPRO_PRIVATE_STORAGE_PATH" || true
 
 if [[ -d uploads ]]; then
   echo "Recovering misplaced uploaded files from ./uploads to ./admin/uploads..."
@@ -59,7 +63,7 @@ if [[ -n "${APP_USER:-}" ]]; then
   echo "Applying ownership to $APP_USER:${APP_GROUP:-psacln}..."
   chown "$APP_USER:${APP_GROUP:-psacln}" "$ENV_FILE" || true
   chmod 640 "$ENV_FILE" || true
-  chown -R "$APP_USER:${APP_GROUP:-psacln}" admin/uploads bot/.venv || true
+  chown -R "$APP_USER:${APP_GROUP:-psacln}" admin/uploads bot/.venv "$SWPRO_PRIVATE_STORAGE_PATH" || true
 fi
 
 echo "Checking PHP syntax..."

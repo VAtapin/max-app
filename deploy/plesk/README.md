@@ -66,7 +66,10 @@ cp deploy/plesk/env.example deploy/plesk/live.env
 nano deploy/plesk/live.env
 ```
 
-Fill DB credentials, Telegram token, public URLs and system user. This is the
+Fill DB credentials, Telegram token, public URLs, system user and
+`SWPRO_PRIVATE_STORAGE_PATH`. The private path should be outside `httpdocs`, for
+example `/var/www/vhosts/swpro.ru/private/swpro`; it stores avatar source media
+and generated previews that must not be publicly addressable. This is the
 only runtime configuration file used by the PHP application, bots, migrations
 and systemd service. Do not create `admin/app/config/local.php`, `bot/.env` or
 a root `.env`.
@@ -99,8 +102,8 @@ cd /var/www/vhosts/swpro.ru/httpdocs
 bash deploy/plesk/install.sh deploy/plesk/live.env
 ```
 
-This creates `bot/.venv` and upload folders, validates the database connection,
-and removes legacy configuration copies. Private `deploy/plesk/live.env` is
+This creates `bot/.venv`, public upload folders and the private AI media folder,
+validates the database connection, and removes legacy configuration copies. Private `deploy/plesk/live.env` is
 ignored by Git. Telegram Mini App reads its bot token from this file to verify
 `initData`.
 
@@ -135,6 +138,10 @@ The repository includes `.htaccess`. For Plesk/nginx, also paste:
 - `deploy/plesk/nginx-additional.conf` into Additional nginx directives
 
 Then reload Apache/nginx from Plesk.
+
+Avatar files are returned only by the authenticated owner-only PHP endpoint.
+The bundled web-server rules also deny `/storage/private` in case the fallback
+folder under the project root is ever used.
 
 ## 8. Telegram Bot Service
 
@@ -199,6 +206,7 @@ The second task sends unfinished check-up reminders after 24 hours, 3 days and 7
 https://swpro.ru/api/index.php
 https://swpro.ru/admin/public/login.php
 https://swpro.ru/vk-mini-app/
+https://swpro.ru/docs/
 https://swpro.ru/legal.php?type=privacy_policy
 ```
 

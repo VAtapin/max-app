@@ -9,8 +9,8 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="manifest" href="/site.webmanifest">
     <meta name="theme-color" content="#0b4f86">
-    <link rel="stylesheet" href="style.css?v=20260814-2">
-    <script defer src="app.js?v=20260814-2"></script>
+    <link rel="stylesheet" href="style.css?v=20260814-4">
+    <script defer src="app.js?v=20260814-4"></script>
 </head>
 <body>
     <main class="app">
@@ -47,5 +47,13 @@
             <a data-legal-type="privacy_policy" href="/legal.php?type=privacy_policy" target="_blank" rel="noopener">Политика SWPro</a>
         </div>
     </main>
+    <aside class="client-ai-chat" id="client-ai-chat" hidden>
+        <button type="button" class="client-ai-toggle" id="client-ai-toggle" aria-expanded="false"><span>AI</span><small>Спросить</small></button>
+        <section class="client-ai-panel" id="client-ai-panel" hidden>
+            <header><div><strong>Помощник консультанта</strong><small>Отвечает по материалам SWPro</small></div><button type="button" id="client-ai-close" aria-label="Закрыть">×</button></header>
+            <div class="client-ai-messages" id="client-ai-messages"><div class="client-ai-message assistant">Здравствуйте! Задайте вопрос о чек-апе, материале или продукте.</div></div>
+            <form id="client-ai-form"><textarea name="message" rows="2" maxlength="4000" placeholder="Ваш вопрос" required></textarea><button type="submit">Отправить</button></form>
+        </section>
+    </aside>
 </body>
 </html>

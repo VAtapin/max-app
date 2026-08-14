@@ -61,13 +61,18 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                     'broadcasts' => ['Рассылки', 'crud.php?module=broadcasts'],
                     'content' => ['Материалы сайта', 'crud.php?module=content'],
                     'site_templates' => ['Шаблоны мини-сайта', 'crud.php?module=site_templates'],
+                    'ai_knowledge' => ['База знаний ИИ', 'ai_knowledge.php'],
+                    'ai_actions' => ['Что сделать сегодня', 'ai_actions.php'],
+                    'ai_studio' => ['AI-студия', 'ai_studio.php'],
+                    'ai_avatar' => ['Мой AI-аватар', 'ai_avatar.php'],
                 ],
                 'Настройки' => [
                     'admin_accounts' => ['Пользователи админки', 'admin_accounts.php'],
                     'integrations' => ['Подключения', 'crud.php?module=integrations'],
                     'legal_documents' => ['Документы', 'crud.php?module=legal_documents'],
                     'legal_settings' => ['Реквизиты документов', 'legal_settings.php'],
-                    'help' => [app_text('help.menu'), 'help.php'],
+                    'ai_settings' => ['Настройки ИИ', 'ai_settings.php'],
+                    'help' => [app_text('help.menu'), '/docs/'],
                 ],
             ];
             $navIcons = [
@@ -89,6 +94,11 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                 'broadcasts' => '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
                 'content' => '<path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h6M9 17h6"/>',
                 'site_templates' => '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 9v12"/>',
+                'ai_knowledge' => '<path d="M4 5a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z"/><path d="M8 7h8M8 11h8M8 15h5"/>',
+                'ai_actions' => '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+                'ai_studio' => '<path d="m12 3 1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7z"/><path d="m5 16 .8 2.2L8 19l-2.2.8L5 22l-.8-2.2L2 19l2.2-.8z"/>',
+                'ai_avatar' => '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="m18 3 .7 1.5L20 5l-1.3.5L18 7l-.7-1.5L16 5l1.3-.5z"/>',
+                'ai_settings' => '<path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/><path d="m5.6 5.6 2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>',
                 'admin_accounts' => '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12h6M12 9v6"/>',
                 'integrations' => '<path d="M12 22v-5M9 8V2M15 8V2M6 8h12v3a6 6 0 0 1-12 0z"/>',
                 'legal_documents' => '<path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h6M9 17h4"/>',
@@ -101,6 +111,7 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                 $visibleItems = array_filter(
                     $navItems,
                     static fn($item, $module) => ($module !== 'billing_self' || ($admin['role'] ?? '') !== 'superadmin')
+                        && ($module !== 'ai_settings' || ($admin['role'] ?? '') === 'superadmin')
                         && ($module === 'help' || can_manage((string)$module, $admin)),
                     ARRAY_FILTER_USE_BOTH
                 );

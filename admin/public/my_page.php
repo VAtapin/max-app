@@ -256,6 +256,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  welcome_text = :welcome_text,
                  welcome_image_path = :welcome_image_path,
                  welcome_video_url = :welcome_video_url,
+                 ai_tone = :ai_tone,
+                 ai_address_form = :ai_address_form,
+                 ai_greeting_style = :ai_greeting_style,
+                 ai_persona_notes = :ai_persona_notes,
+                 ai_forbidden_phrases = :ai_forbidden_phrases,
+                 ai_handoff_rules = :ai_handoff_rules,
                  cashback_title = :cashback_title,
                  cashback_text = :cashback_text,
                  cashback_image_path = :cashback_image_path,
@@ -288,6 +294,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!array_key_exists($themeKey, consultant_theme_options())) {
             $themeKey = 'classic';
         }
+        $aiAddressForm = (string)($_POST['ai_address_form'] ?? 'formal');
+        if (!in_array($aiAddressForm, ['formal', 'informal', 'adaptive'], true)) {
+            $aiAddressForm = 'formal';
+        }
         $stmt->execute([
             'id' => $profileId,
             'slug' => $slug,
@@ -298,6 +308,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'welcome_text' => trim((string)($_POST['welcome_text'] ?? '')),
             'welcome_image_path' => $welcomeImagePath,
             'welcome_video_url' => trim((string)($_POST['welcome_video_url'] ?? '')),
+            'ai_tone' => trim((string)($_POST['ai_tone'] ?? 'friendly')) ?: 'friendly',
+            'ai_address_form' => $aiAddressForm,
+            'ai_greeting_style' => trim((string)($_POST['ai_greeting_style'] ?? '')),
+            'ai_persona_notes' => trim((string)($_POST['ai_persona_notes'] ?? '')),
+            'ai_forbidden_phrases' => trim((string)($_POST['ai_forbidden_phrases'] ?? '')),
+            'ai_handoff_rules' => trim((string)($_POST['ai_handoff_rules'] ?? '')),
             'cashback_title' => $primaryCashbackCard['title'],
             'cashback_text' => $primaryCashbackCard['description'],
             'cashback_image_path' => $primaryCashbackCard['image_path'],
@@ -562,6 +578,19 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <span>Ссылка на приветственное видео</span>
                 <input name="welcome_video_url" value="<?= h((string)$profile['welcome_video_url']) ?>" placeholder="https://...">
             </label>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>Стиль персонального AI-консультанта</h2>
+        <p class="cell-muted">Эти настройки помогают вести естественную беседу от вашего имени. Помощник использует данные клиента только уместно и в рамках его согласий.</p>
+        <div class="profile-form-grid">
+            <label class="field"><span>Тон общения</span><select name="ai_tone"><?php foreach (['friendly' => 'Дружелюбный', 'calm' => 'Спокойный', 'business' => 'Деловой', 'warm' => 'Тёплый и поддерживающий'] as $key => $label): ?><option value="<?= h($key) ?>" <?= ($profile['ai_tone'] ?? 'friendly') === $key ? 'selected' : '' ?>><?= h($label) ?></option><?php endforeach; ?></select></label>
+            <label class="field"><span>Форма обращения</span><select name="ai_address_form"><option value="formal" <?= ($profile['ai_address_form'] ?? 'formal') === 'formal' ? 'selected' : '' ?>>На «вы»</option><option value="informal" <?= ($profile['ai_address_form'] ?? '') === 'informal' ? 'selected' : '' ?>>На «ты»</option><option value="adaptive" <?= ($profile['ai_address_form'] ?? '') === 'adaptive' ? 'selected' : '' ?>>Подстраиваться под клиента</option></select></label>
+            <label class="field wide"><span>Как вы обычно приветствуете клиента</span><textarea name="ai_greeting_style" rows="3" placeholder="Примеры естественных приветствий и обращений"><?= h((string)($profile['ai_greeting_style'] ?? '')) ?></textarea></label>
+            <label class="field wide"><span>Особенности вашей манеры общения</span><textarea name="ai_persona_notes" rows="4" placeholder="Как объясняете сложное, насколько подробно отвечаете, какие слова часто используете"><?= h((string)($profile['ai_persona_notes'] ?? '')) ?></textarea></label>
+            <label class="field wide"><span>Запрещённые слова и обещания</span><textarea name="ai_forbidden_phrases" rows="3" placeholder="Фразы, которые помощник не должен использовать"><?= h((string)($profile['ai_forbidden_phrases'] ?? '')) ?></textarea></label>
+            <label class="field wide"><span>Когда передавать разговор вам</span><textarea name="ai_handoff_rules" rows="4" placeholder="Например: медицинские вопросы, недовольство, просьба о личной консультации"><?= h((string)($profile['ai_handoff_rules'] ?? '')) ?></textarea></label>
         </div>
     </section>
 
