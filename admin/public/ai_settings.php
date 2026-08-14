@@ -116,7 +116,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 
 <form method="post" class="panel form-panel crud-form">
     <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-    <label class="check-row wide"><input type="checkbox" name="ai_enabled" value="1" <?= $value('ai.enabled', '0') === '1' ? 'checked' : '' ?>><span><strong>Включить AI-центр</strong><small>Показывает помощника пользователям, у которых функция доступна по подписке.</small></span></label>
+    <label class="check-row wide"><input type="checkbox" name="ai_enabled" value="1" <?= $value('ai.enabled', '0') === '1' ? 'checked' : '' ?>><span><strong>Включить AI-центр</strong><small>Показывает текстового помощника всем пользователям админки. Видео, голос и другие дополнительные возможности регулируются тарифом.</small></span></label>
 
     <div class="<?= ai_openai_key_configured() ? 'notice success' : 'alert' ?> wide">
         <strong>Ключ OpenAI: <?= ai_openai_key_configured() ? 'найден на сервере' : 'не найден' ?>.</strong>

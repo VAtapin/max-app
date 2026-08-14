@@ -24,6 +24,73 @@ function ai_studio_owner_profile(array $owner): array
     return $profile + ($stmt->fetch() ?: []);
 }
 
+function ai_studio_photo_uri(string $photo, string $base): string
+{
+    $photo = trim($photo);
+    if ($photo === '' || str_starts_with($photo, 'data:image/')) {
+        return $photo;
+    }
+    if (str_starts_with($photo, '/admin/uploads/')) {
+        $uploadsRoot = realpath(dirname(__DIR__) . '/uploads');
+        $localPath = realpath(dirname(__DIR__) . substr($photo, strlen('/admin')));
+        if ($uploadsRoot && $localPath && is_file($localPath)
+            && str_starts_with($localPath, $uploadsRoot . DIRECTORY_SEPARATOR)) {
+            $mime = function_exists('mime_content_type') ? (string)mime_content_type($localPath) : '';
+            if ($mime === '' || $mime === 'application/octet-stream') {
+                $mime = match (strtolower((string)pathinfo($localPath, PATHINFO_EXTENSION))) {
+                    'jpg', 'jpeg' => 'image/jpeg',
+                    'png' => 'image/png',
+                    'gif' => 'image/gif',
+                    'webp' => 'image/webp',
+                    'avif' => 'image/avif',
+                    default => '',
+                };
+            }
+            if (in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif'], true)) {
+                $contents = file_get_contents($localPath);
+                if ($contents !== false) {
+                    return 'data:' . $mime . ';base64,' . base64_encode($contents);
+                }
+            }
+        }
+    }
+    return str_starts_with($photo, '/') ? $base . $photo : $photo;
+}
+
+function ai_studio_text_lines(string $text, int $maxChars, int $maxLines = 2): array
+{
+    $words = preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $lines = [];
+    $line = '';
+    $truncated = false;
+    foreach ($words as $word) {
+        $candidate = $line === '' ? $word : $line . ' ' . $word;
+        if (mb_strlen($candidate, 'UTF-8') <= $maxChars) {
+            $line = $candidate;
+            continue;
+        }
+        if ($line !== '') {
+            $lines[] = $line;
+        }
+        $line = $word;
+        if (count($lines) >= $maxLines) {
+            $truncated = true;
+            break;
+        }
+    }
+    if ($line !== '' && count($lines) < $maxLines) {
+        $lines[] = mb_substr($line, 0, $maxChars, 'UTF-8');
+        $truncated = $truncated || mb_strlen($line, 'UTF-8') > $maxChars;
+    } elseif ($line !== '') {
+        $truncated = true;
+    }
+    if ($truncated && $lines) {
+        $last = count($lines) - 1;
+        $lines[$last] = rtrim(mb_substr($lines[$last], 0, max(1, $maxChars - 1), 'UTF-8')) . '…';
+    }
+    return $lines ?: ['SWPro'];
+}
+
 function ai_studio_card_uri(array $profile, string $theme = 'ocean'): string
 {
     $name = trim((string)($profile['display_name'] ?? $profile['name'] ?? 'SWPro'));
@@ -32,28 +99,40 @@ function ai_studio_card_uri(array $profile, string $theme = 'ocean'): string
     $code = trim((string)($profile['referral_code'] ?? ''));
     $url = $base . ($code !== '' ? '/?ref=' . rawurlencode($code) : '');
     $qr = qr_code_svg_data_uri($url);
-    $photo = trim((string)($profile['photo_path'] ?? ''));
-    if ($photo !== '' && str_starts_with($photo, '/')) {
-        $photo = $base . $photo;
-    }
+    $photo = ai_studio_photo_uri((string)($profile['photo_path'] ?? ''), $base);
     [$from, $to, $accent] = match ($theme) {
         'warm' => ['#7b3156', '#e27a5f', '#ffe0b5'],
         'light' => ['#264653', '#68b0ab', '#e9fff9'],
         default => ['#083f69', '#19a0ae', '#b9f3ef'],
     };
     $xml = static fn(string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_XML1, 'UTF-8');
-    $textX = $photo !== '' ? 300 : 80;
-    $photoSvg = $photo !== '' ? '<defs><clipPath id="photo"><circle cx="170" cy="245" r="92"/></clipPath></defs><image x="78" y="153" width="184" height="184" preserveAspectRatio="xMidYMid slice" clip-path="url(#photo)" href="' . $xml($photo) . '"/><circle cx="170" cy="245" r="96" fill="none" stroke="#fff" stroke-width="7" opacity=".9"/>' : '';
+    $textX = $photo !== '' ? 310 : 80;
+    $nameLines = ai_studio_text_lines($name, $photo !== '' ? 27 : 38, 2);
+    $subtitleLines = ai_studio_text_lines($subtitle, $photo !== '' ? 42 : 55, 2);
+    $nameSize = count($nameLines) > 1 ? 43 : 54;
+    $nameY = count($nameLines) > 1 ? 180 : 215;
+    $nameSvg = '<text x="' . $textX . '" y="' . $nameY . '" fill="#fff" font-family="Arial, sans-serif" font-size="' . $nameSize . '" font-weight="700">';
+    foreach ($nameLines as $index => $line) {
+        $nameSvg .= '<tspan x="' . $textX . '" dy="' . ($index === 0 ? 0 : 54) . '">' . $xml($line) . '</tspan>';
+    }
+    $nameSvg .= '</text>';
+    $subtitleY = $nameY + (count($nameLines) * 54) + 18;
+    $subtitleSvg = '<text x="' . $textX . '" y="' . $subtitleY . '" fill="#e8fbfb" font-family="Arial, sans-serif" font-size="27">';
+    foreach ($subtitleLines as $index => $line) {
+        $subtitleSvg .= '<tspan x="' . $textX . '" dy="' . ($index === 0 ? 0 : 36) . '">' . $xml($line) . '</tspan>';
+    }
+    $subtitleSvg .= '</text>';
+    $photoSvg = $photo !== '' ? '<image x="82" y="150" width="176" height="176" preserveAspectRatio="xMidYMid slice" clip-path="url(#photo)" href="' . $xml($photo) . '"/><circle cx="170" cy="238" r="92" fill="none" stroke="#fff" stroke-width="7" opacity=".92"/>' : '';
     $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">'
-        . '<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="' . $from . '"/><stop offset="1" stop-color="' . $to . '"/></linearGradient></defs>'
-        . '<rect width="1200" height="630" rx="44" fill="url(#g)"/><circle cx="1030" cy="90" r="250" fill="#fff" opacity=".08"/>'
+        . '<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="' . $from . '"/><stop offset="1" stop-color="' . $to . '"/></linearGradient><clipPath id="photo"><circle cx="170" cy="238" r="88"/></clipPath></defs>'
+        . '<rect width="1200" height="630" rx="44" fill="url(#g)"/><circle cx="1050" cy="70" r="270" fill="#fff" opacity=".08"/>'
         . $photoSvg
-        . '<text x="80" y="105" fill="' . $accent . '" font-family="Arial" font-size="30" font-weight="700">SWPro</text>'
-        . '<text x="' . $textX . '" y="245" fill="#fff" font-family="Arial" font-size="58" font-weight="700">' . $xml($name) . '</text>'
-        . '<text x="' . $textX . '" y="305" fill="#e8fbfb" font-family="Arial" font-size="30">' . $xml($subtitle) . '</text>'
-        . '<text x="80" y="500" fill="#fff" font-family="Arial" font-size="27">Чек-ап · материалы · персональная поддержка</text>'
-        . '<text x="80" y="550" fill="#c8eeee" font-family="Arial" font-size="23">' . $xml($url) . '</text>'
-        . '<rect x="870" y="290" width="250" height="250" rx="26" fill="#fff"/><image x="885" y="305" width="220" height="220" href="' . $xml($qr) . '"/>'
+        . '<text x="80" y="95" fill="' . $accent . '" font-family="Arial, sans-serif" font-size="30" font-weight="700">SWPro</text>'
+        . $nameSvg . $subtitleSvg
+        . '<text x="80" y="500" fill="#fff" font-family="Arial, sans-serif" font-size="25" font-weight="700">Персональная страница</text>'
+        . '<text x="80" y="545" fill="#d8f5f3" font-family="Arial, sans-serif" font-size="22">' . $xml($url) . '</text>'
+        . '<rect x="915" y="330" width="225" height="225" rx="28" fill="#fff"/><image x="930" y="345" width="195" height="195" href="' . $xml($qr) . '"/>'
+        . '<text x="1027" y="585" text-anchor="middle" fill="#fff" font-family="Arial, sans-serif" font-size="20">Открыть мини-сайт</text>'
         . '</svg>';
     return 'data:image/svg+xml;base64,' . base64_encode($svg);
 }

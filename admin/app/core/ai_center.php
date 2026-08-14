@@ -92,7 +92,12 @@ function ai_entitlements(?array $plan, bool $superadmin = false): array
 
 function ai_entitlements_for_admin(array $admin): array
 {
-    return ai_entitlements(ai_plan_for_admin($admin), ($admin['role'] ?? '') === 'superadmin');
+    $entitlements = ai_entitlements(ai_plan_for_admin($admin), ($admin['role'] ?? '') === 'superadmin');
+    // The assistant inside the admin panel is a standard workspace feature.
+    // Subscription flags are reserved for optional AI media capabilities.
+    $entitlements['text'] = true;
+    $entitlements['text_limit'] = null;
+    return $entitlements;
 }
 
 function ai_entitlements_for_client(array $user): array

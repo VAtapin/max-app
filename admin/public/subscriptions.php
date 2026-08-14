@@ -38,7 +38,7 @@ function subscription_plan_defaults(): array
         'fixed_monthly_price' => null,
         'payment_terms' => 'Оплата подтверждается администратором вручную. Онлайн-касса на первом этапе не подключена.',
         'payment_grace_days' => 5,
-        'ai_text_enabled' => 0,
+        'ai_text_enabled' => 1,
         'ai_video_enabled' => 0,
         'ai_personal_video_enabled' => 0,
         'ai_voice_enabled' => 0,
@@ -78,10 +78,12 @@ function subscription_plan_payload_from_post(array $source, array $admin, ?array
     $payload['discount_12'] = max(0, min(100, (float)str_replace(',', '.', (string)($source['discount_12'] ?? 5))));
     $payload['sort_order'] = (int)($source['sort_order'] ?? 100);
     $payload['is_active'] = isset($source['is_active']) ? 1 : 0;
-    foreach (['ai_text_enabled', 'ai_video_enabled', 'ai_personal_video_enabled', 'ai_voice_enabled', 'ai_realtime_enabled'] as $field) {
+    $payload['ai_text_enabled'] = 1;
+    $payload['ai_text_monthly_limit'] = null;
+    foreach (['ai_video_enabled', 'ai_personal_video_enabled', 'ai_voice_enabled', 'ai_realtime_enabled'] as $field) {
         $payload[$field] = isset($source[$field]) ? 1 : 0;
     }
-    foreach (['ai_text_monthly_limit', 'ai_video_monthly_seconds', 'ai_personal_video_monthly_seconds', 'ai_voice_monthly_seconds'] as $field) {
+    foreach (['ai_video_monthly_seconds', 'ai_personal_video_monthly_seconds', 'ai_voice_monthly_seconds'] as $field) {
         $payload[$field] = subscription_parse_limit($source[$field] ?? '');
     }
     $payload['ai_max_video_seconds'] = max(5, min(300, (int)($source['ai_max_video_seconds'] ?? 30)));
@@ -92,7 +94,7 @@ function subscription_plan_payload_from_post(array $source, array $admin, ?array
     foreach (subscription_plan_price_fields() as $field) {
         $payload[$field] = subscription_parse_money($source[$field] ?? '');
     }
-    foreach (['ai_text_monthly_limit', 'ai_video_monthly_seconds', 'ai_personal_video_monthly_seconds', 'ai_voice_monthly_seconds'] as $field) {
+    foreach (['ai_video_monthly_seconds', 'ai_personal_video_monthly_seconds', 'ai_voice_monthly_seconds'] as $field) {
         if ($payload[$field] !== null && $payload[$field] < 0) {
             $errors[] = 'Лимиты ИИ должны быть целыми числами или пустыми.';
             break;
@@ -645,12 +647,10 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <div class="field"><span>Формула начисления</span><strong id="subscription-plan-preview">—</strong></div>
             <label class="field wide"><span>Условия</span><textarea name="payment_terms" rows="4"><?= h((string)($editPlan['payment_terms'] ?? '')) ?></textarea></label>
             <div class="field wide"><span><strong>Возможности ИИ</strong></span><small class="field-hint">Пустой месячный лимит означает отсутствие программного ограничения.</small></div>
-            <label class="check-row"><input type="checkbox" name="ai_text_enabled" value="1" <?= (int)($editPlan['ai_text_enabled'] ?? 0) === 1 ? 'checked' : '' ?>><span>Текстовый помощник</span></label>
             <label class="check-row"><input type="checkbox" name="ai_video_enabled" value="1" <?= (int)($editPlan['ai_video_enabled'] ?? 0) === 1 ? 'checked' : '' ?>><span>Общие видеоответы</span></label>
             <label class="check-row"><input type="checkbox" name="ai_personal_video_enabled" value="1" <?= (int)($editPlan['ai_personal_video_enabled'] ?? 0) === 1 ? 'checked' : '' ?>><span>Персональные видеоответы</span></label>
             <label class="check-row"><input type="checkbox" name="ai_voice_enabled" value="1" <?= (int)($editPlan['ai_voice_enabled'] ?? 0) === 1 ? 'checked' : '' ?>><span>Голосовые AI-сообщения</span></label>
             <label class="check-row"><input type="checkbox" name="ai_realtime_enabled" value="1" <?= (int)($editPlan['ai_realtime_enabled'] ?? 0) === 1 ? 'checked' : '' ?>><span>Живой видеоаватар</span></label>
-            <label class="field"><span>Текстовых ответов в месяц</span><input type="number" min="0" name="ai_text_monthly_limit" value="<?= h((string)($editPlan['ai_text_monthly_limit'] ?? '')) ?>" placeholder="без лимита"></label>
             <label class="field"><span>Общего видео в месяц, секунд</span><input type="number" min="0" name="ai_video_monthly_seconds" value="<?= h((string)($editPlan['ai_video_monthly_seconds'] ?? '')) ?>" placeholder="без лимита"></label>
             <label class="field"><span>Персонального видео в месяц, секунд</span><input type="number" min="0" name="ai_personal_video_monthly_seconds" value="<?= h((string)($editPlan['ai_personal_video_monthly_seconds'] ?? '')) ?>" placeholder="без лимита"></label>
             <label class="field"><span>Голосовых сообщений в месяц, секунд</span><input type="number" min="0" name="ai_voice_monthly_seconds" value="<?= h((string)($editPlan['ai_voice_monthly_seconds'] ?? '')) ?>" placeholder="без лимита"></label>
