@@ -274,6 +274,21 @@ function messaging_image_mime_type(string $url): ?string
     };
 }
 
+function messaging_audio_mime_type(string $url): ?string
+{
+    $path = (string)(parse_url($url, PHP_URL_PATH) ?: $url);
+    $extension = strtolower((string)pathinfo($path, PATHINFO_EXTENSION));
+    if ($extension === '' && str_contains($path, '/api/voice_media.php')) {
+        return 'audio/ogg';
+    }
+    return match ($extension) {
+        'ogg', 'oga' => 'audio/ogg',
+        'mp3' => 'audio/mpeg',
+        'm4a' => 'audio/mp4',
+        default => null,
+    };
+}
+
 function messaging_local_upload_path_from_url(string $url): ?string
 {
     $path = (string)(parse_url($url, PHP_URL_PATH) ?: $url);
@@ -337,6 +352,52 @@ function vk_upload_message_photo(array $integration, string $userId, string $url
         $attachment .= '_' . $photo['access_key'];
     }
 
+    return $attachment;
+}
+
+function vk_upload_message_audio(array $integration, string $userId, string $url): ?string
+{
+    $mimeType = messaging_audio_mime_type($url);
+    if (!$mimeType) {
+        return null;
+    }
+    $token = trim((string)($integration['access_token'] ?? ''));
+    $version = (string)(app_config()['integrations']['vk_api_version'] ?? '5.199');
+    $uploadServer = messaging_http_form_post('https://api.vk.com/method/docs.getMessagesUploadServer', [
+        'access_token' => $token,
+        'v' => $version,
+        'peer_id' => $userId,
+        'type' => 'audio_message',
+    ]);
+    $uploadUrl = (string)($uploadServer['response']['upload_url'] ?? '');
+    if ($uploadUrl === '') {
+        return null;
+    }
+    $contents = @file_get_contents($url);
+    if ($contents === false || $contents === '') {
+        return null;
+    }
+    $uploaded = messaging_http_multipart_file_post($uploadUrl, 'file', 'swpro-voice.ogg', $mimeType, $contents);
+    $file = trim((string)($uploaded['file'] ?? ''));
+    if ($file === '') {
+        return null;
+    }
+    $saved = messaging_http_form_post('https://api.vk.com/method/docs.save', [
+        'access_token' => $token,
+        'v' => $version,
+        'file' => $file,
+        'title' => 'Голосовое сообщение SWPro',
+    ]);
+    $response = (array)($saved['response'] ?? []);
+    $audio = $response['audio_message'] ?? $response['doc'] ?? ($response[0] ?? null);
+    if (!is_array($audio) || empty($audio['owner_id']) || empty($audio['id'])) {
+        return null;
+    }
+    $prefix = isset($response['audio_message']) ? 'audio_message' : 'doc';
+    $attachment = $prefix . $audio['owner_id'] . '_' . $audio['id'];
+    if (!empty($audio['access_key'])) {
+        $attachment .= '_' . $audio['access_key'];
+    }
     return $attachment;
 }
 
@@ -464,7 +525,10 @@ function send_social_platform_message(
             if ($mediaUrl === '') {
                 continue;
             }
-            $attachment = vk_upload_message_photo($integration, preg_replace('/\D+/', '', $platformUserId) ?: $platformUserId, $mediaUrl);
+            $vkUserId = preg_replace('/\D+/', '', $platformUserId) ?: $platformUserId;
+            $attachment = messaging_audio_mime_type($mediaUrl)
+                ? vk_upload_message_audio($integration, $vkUserId, $mediaUrl)
+                : vk_upload_message_photo($integration, $vkUserId, $mediaUrl);
             if ($attachment) {
                 $attachments[] = $attachment;
             } else {

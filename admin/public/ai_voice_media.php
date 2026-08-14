@@ -15,9 +15,11 @@ if (!$root || !$path || !str_starts_with($path, $root . DIRECTORY_SEPARATOR) || 
     http_response_code(404);
     exit;
 }
-header('Content-Type: audio/mpeg');
+$extension = strtolower((string)pathinfo($path, PATHINFO_EXTENSION));
+$mime = match ($extension) { 'ogg', 'oga' => 'audio/ogg', 'm4a' => 'audio/mp4', default => 'audio/mpeg' };
+header('Content-Type: ' . $mime);
 header('Content-Length: ' . filesize($path));
-header('Content-Disposition: inline; filename="swpro-ai-voice-' . $id . '.mp3"');
+header('Content-Disposition: inline; filename="swpro-ai-voice-' . $id . '.' . ($extension ?: 'mp3') . '"');
 header('Cache-Control: private, no-store, max-age=0');
 header('X-Content-Type-Options: nosniff');
 readfile($path);

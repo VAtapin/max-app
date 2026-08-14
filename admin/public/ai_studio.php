@@ -104,6 +104,51 @@ $clients = $clientStmt->fetchAll();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $action = (string)($_POST['action'] ?? 'create');
+    if ($action === 'send_voice') {
+        $voiceStmt = db()->prepare('SELECT * FROM ai_voice_jobs WHERE id = :id AND owner_type = :owner_type AND owner_id = :owner_id LIMIT 1');
+        $voiceStmt->execute(['id' => (int)($_POST['id'] ?? 0)] + $owner);
+        $voiceJob = $voiceStmt->fetch();
+        if (!$voiceJob || (string)$voiceJob['status'] !== 'ready') {
+            $errors[] = 'Голосовое сообщение ещё не готово.';
+        } elseif (empty($voiceJob['end_user_id'])) {
+            $errors[] = 'Голосовое сообщение не привязано к клиенту. Создайте персональный сценарий заново.';
+        } else {
+            try {
+                $deliveryUrl = ai_voice_delivery_url($voiceJob);
+                $result = live_chat_send_client(
+                    $admin,
+                    (int)$voiceJob['end_user_id'],
+                    'Для вас голосовое сообщение. Аудио создано с помощью ИИ.',
+                    (string)($_POST['channel'] ?? ''),
+                    [$deliveryUrl]
+                );
+                if (empty($result['ok'])) {
+                    ai_revoke_voice_delivery_url($deliveryUrl);
+                    db()->prepare('UPDATE ai_voice_jobs SET delivery_error = :error WHERE id = :id')->execute([
+                        'error' => mb_substr((string)($result['error'] ?? 'Не удалось отправить сообщение.'), 0, 1000, 'UTF-8'),
+                        'id' => (int)$voiceJob['id'],
+                    ]);
+                    $errors[] = (string)($result['error'] ?? 'Не удалось отправить голосовое сообщение.');
+                } else {
+                    db()->prepare('UPDATE ai_voice_jobs SET sent_at = NOW(), delivery_channel = :channel, delivery_error = NULL, chat_message_id = :message_id WHERE id = :id')->execute([
+                        'channel' => (string)($result['channel'] ?? 'web'),
+                        'message_id' => (int)($result['message_id'] ?? 0) ?: null,
+                        'id' => (int)$voiceJob['id'],
+                    ]);
+                    if (!empty($voiceJob['draft_id'])) {
+                        db()->prepare('UPDATE ai_content_drafts SET status = "used" WHERE id = :id')->execute(['id' => (int)$voiceJob['draft_id']]);
+                    }
+                    log_activity('admin', (int)$admin['id'], 'send_ai_voice', 'ai_voice_jobs', (int)$voiceJob['id'], [
+                        'end_user_id' => (int)$voiceJob['end_user_id'],
+                        'channel' => (string)($result['channel'] ?? 'web'),
+                    ]);
+                    redirect('ai_studio.php?success=voice_sent#voice-' . (int)$voiceJob['id']);
+                }
+            } catch (Throwable $error) {
+                $errors[] = 'Не удалось отправить голосовое сообщение: ' . $error->getMessage();
+            }
+        }
+    }
     if ($action === 'send_draft') {
         $draftStmt = db()->prepare('SELECT * FROM ai_content_drafts WHERE id = :id AND owner_type = :owner_type AND owner_id = :owner_id LIMIT 1');
         $draftStmt->execute(['id' => (int)($_POST['id'] ?? 0)] + $owner);
@@ -146,11 +191,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($access['voice_limit'] !== null && ai_monthly_usage($owner, 'voice') + $estimatedSeconds > (int)$access['voice_limit']) {
                 $errors[] = 'Месячный лимит голосовых сообщений исчерпан.';
             } else {
-                $stmt = db()->prepare('INSERT INTO ai_voice_jobs (owner_type, owner_id, voice_mode, voice_id, script_text, script_hash, provider, status) VALUES (:owner_type, :owner_id, :voice_mode, :voice_id, :script, :hash, :provider, "queued")');
-                $stmt->execute($owner + ['voice_mode' => $voiceMode, 'voice_id' => null, 'script' => (string)$draft['content'], 'hash' => hash('sha256', (string)$draft['content']), 'provider' => $provider]);
+                $stmt = db()->prepare('INSERT INTO ai_voice_jobs (owner_type, owner_id, end_user_id, draft_id, voice_mode, voice_id, script_text, script_hash, provider, status) VALUES (:owner_type, :owner_id, :end_user_id, :draft_id, :voice_mode, :voice_id, :script, :hash, :provider, "queued")');
+                $stmt->execute($owner + ['end_user_id' => !empty($draft['end_user_id']) ? (int)$draft['end_user_id'] : null, 'draft_id' => (int)$draft['id'], 'voice_mode' => $voiceMode, 'voice_id' => null, 'script' => (string)$draft['content'], 'hash' => hash('sha256', (string)$draft['content']), 'provider' => $provider]);
                 try {
-                    ai_process_voice_job((int)db()->lastInsertId(), $owner);
-                    redirect('ai_studio.php?success=voice_ready');
+                    $voiceJobId = (int)db()->lastInsertId();
+                    ai_process_voice_job($voiceJobId, $owner);
+                    redirect('ai_studio.php?success=voice_ready#voice-' . $voiceJobId);
                 } catch (Throwable $error) {
                     $errors[] = 'Не удалось создать голосовое сообщение: ' . $error->getMessage();
                 }
@@ -298,7 +344,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $stmt = db()->prepare('SELECT * FROM ai_content_drafts WHERE owner_type = :owner_type AND owner_id = :owner_id AND status <> "archived" ORDER BY updated_at DESC, id DESC LIMIT 100');
 $stmt->execute($owner);
 $drafts = $stmt->fetchAll();
-$voiceStmt = db()->prepare('SELECT id, model, duration_seconds, status, error_text, created_at FROM ai_voice_jobs WHERE owner_type = :owner_type AND owner_id = :owner_id ORDER BY id DESC LIMIT 20');
+$voiceStmt = db()->prepare('SELECT j.id, j.model, j.duration_seconds, j.status, j.error_text, j.output_path, j.script_text, j.end_user_id, j.sent_at, j.delivery_channel, j.delivery_error, j.created_at, CONCAT_WS(" ", NULLIF(eu.first_name,""), NULLIF(eu.last_name,"")) client_name FROM ai_voice_jobs j LEFT JOIN end_users eu ON eu.id = j.end_user_id WHERE j.owner_type = :owner_type AND j.owner_id = :owner_id ORDER BY j.id DESC LIMIT 20');
 $voiceStmt->execute($owner);
 $voiceJobs = $voiceStmt->fetchAll();
 $videoStmt = db()->prepare('SELECT j.id, j.duration_seconds, j.status, j.error_text, j.created_at, j.provider FROM ai_video_jobs j JOIN ai_avatars a ON a.id = j.avatar_id WHERE a.owner_type = :owner_type AND a.owner_id = :owner_id ORDER BY j.id DESC LIMIT 20');
@@ -319,7 +365,7 @@ $cardPayload = ai_studio_card_payload($profile);
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
 <div class="page-title-row"><div><h1>AI-студия</h1><p class="cell-muted">Черновики публикаций, сценариев, кампаний и персональные материалы на основе утверждённых данных.</p></div></div>
-<?php if (isset($_GET['success'])): ?><div class="notice success"><?= h(match ((string)$_GET['success']) { 'created' => 'OpenAI создал текст. Проверьте его ниже.', 'voice_ready' => 'Голосовое сообщение создано.', 'video_queued' => 'Видео поставлено в очередь.', 'sent' => 'Сообщение отправлено клиенту и появилось в живом чате.', default => 'Изменения сохранены.' }) ?></div><?php endif; ?>
+<?php if (isset($_GET['success'])): ?><div class="notice success"><?= h(match ((string)$_GET['success']) { 'created' => 'OpenAI создал текст. Проверьте его ниже.', 'voice_ready' => 'Голосовое сообщение создано. Прослушайте и отправьте его клиенту.', 'voice_sent' => 'Голосовое сообщение отправлено клиенту и появилось в живом чате.', 'video_queued' => 'Видео поставлено в очередь.', 'sent' => 'Сообщение отправлено клиенту и появилось в живом чате.', default => 'Изменения сохранены.' }) ?></div><?php endif; ?>
 <?php foreach ($errors as $error): ?><div class="alert"><?= h($error) ?></div><?php endforeach; ?>
 
 <section class="panel ai-studio-create"><div class="ai-studio-heading"><div><h2>Создать материал с OpenAI</h2><p class="cell-muted">Выберите формат, источник и при необходимости клиента — готовый текст откроется сразу под этой формой.</p></div><span class="ai-status <?= $openAiReady ? 'is-ready' : 'is-offline' ?>"><?= $openAiReady ? 'OpenAI подключён' : 'OpenAI выключен' ?></span></div>
@@ -328,7 +374,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <label class="field"><span>Формат</span><select name="draft_type" id="ai-draft-type"><option value="post">Пост для соцсетей</option><option value="campaign">Кампания/рассылка</option><option value="greeting">Поздравление</option><option value="video_script">Сценарий видео</option><option value="voice_script">Сценарий голосового сообщения</option><option value="product_description">Описание продукта</option></select></label>
     <label class="field"><span>Утверждённый источник</span><select name="source_key"><option value="">Без источника — только повод</option><?php foreach ($sources as $source): ?><option value="<?= h((string)$source['source_key']) ?>"><?= h((string)$source['title']) ?></option><?php endforeach; ?></select></label>
     <label class="field" id="ai-client-personalization"><span>Персонализация для клиента</span><select name="end_user_id"><option value="">Без персонализации</option><?php foreach ($clients as $client): ?><option value="<?= (int)$client['id'] ?>"><?= h(trim((string)$client['first_name'] . ' ' . (string)$client['last_name']) ?: 'Клиент #' . (int)$client['id']) ?></option><?php endforeach; ?></select><small class="field-hint">Для личных поздравлений и сценариев сведения помогают подобрать содержание, но не перечисляются в тексте. Контакты, точный адрес, ID аккаунтов, логины и токены не передаются.</small></label>
-    <label class="field wide"><span>Повод или тема</span><input name="occasion" value="<?= h($seasonal) ?>"></label>
+    <label class="field" id="ai-occasion-preset-wrap"><span>Готовый повод</span><select id="ai-occasion-preset"><option value="">Написать свой</option><option value="Приветствие нового клиента">Приветствие нового клиента</option><option value="Благодарность за прохождение чек-апа и предложение обсудить результат">После чек-апа</option><option value="Тёплое поздравление с днём рождения">День рождения</option><option value="Доброжелательное напоминание вернуться к плану">Напоминание о плане</option><option value="Приглашение пройти повторный чек-ап и сравнить изменения">Повторный чек-ап</option></select></label>
+    <label class="field wide"><span>Повод или тема</span><input name="occasion" id="ai-occasion" value="<?= h($seasonal) ?>"></label>
     <?php if ($openAiReady): ?><div class="notice wide">OpenAI получит тему, утверждённый материал и выбранные сведения для персонализации. Контакты, точный адрес, ID, логины и токены не передаются.</div><?php else: ?><div class="alert wide"><strong>Создание текста недоступно.</strong> Суперадминистратору нужно включить OpenAI для AI‑студии в настройках ИИ. Локальный текст вместо ИИ создаваться не будет.<?php if (($admin['role'] ?? '') === 'superadmin'): ?> <a href="ai_settings.php#openai-studio-access">Открыть настройку</a>.<?php endif; ?></div><?php endif; ?>
     <div class="form-actions"><button <?= $openAiReady ? '' : 'disabled' ?>>Создать текст с OpenAI</button><a class="button secondary-button" href="crud.php?module=broadcasts">Рассылки и сегменты</a></div>
 </form><p class="cell-muted">Ничего не публикуется и не рассылается автоматически.</p></section>
@@ -337,6 +384,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
     const type = document.getElementById('ai-draft-type');
     const field = document.getElementById('ai-client-personalization');
     const select = field?.querySelector('select');
+    const preset = document.getElementById('ai-occasion-preset');
+    const occasion = document.getElementById('ai-occasion');
     if (!type || !field || !select) return;
     const update = () => {
         const isPublic = type.value === 'post' || type.value === 'product_description';
@@ -345,6 +394,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
         if (isPublic) select.value = '';
     };
     type.addEventListener('change', update);
+    preset?.addEventListener('change', () => { if (preset.value && occasion) occasion.value = preset.value; });
     update();
 })();
 </script>
@@ -358,6 +408,26 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php if (in_array($draft['draft_type'], ['video_script','greeting'], true)): ?><form method="post"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="queue_video"><input type="hidden" name="id" value="<?= (int)$draft['id'] ?>"><label class="check-row"><input type="checkbox" name="external_video_confirm" value="1"><span>Я проверил сценарий и разрешаю отправить его подключённому видеопровайдеру</span></label><button>Создать видео</button></form><?php endif; ?>
 <form method="post"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="archive"><input type="hidden" name="id" value="<?= (int)$draft['id'] ?>"><button class="link-button danger">В архив</button></form></div>
 </details><?php endforeach; ?></section><?php endif; ?>
+
+<?php if ($voiceJobs): ?><section class="panel ai-voice-results"><div class="ai-studio-heading"><div><h2>Голосовые сообщения</h2><p class="cell-muted">Прослушайте результат и отправьте его выбранному клиенту. Файл также можно скачать.</p></div></div>
+<?php foreach ($voiceJobs as $job):
+    $voiceExtension = strtolower((string)pathinfo((string)($job['output_path'] ?? ''), PATHINFO_EXTENSION));
+    $voiceDownloadLabel = $voiceExtension === 'ogg' ? 'Скачать OGG' : 'Скачать MP3';
+    $clientLabel = trim((string)($job['client_name'] ?? '')) ?: (!empty($job['end_user_id']) ? 'Клиент #' . (int)$job['end_user_id'] : 'Клиент не выбран');
+?>
+<article id="voice-<?= (int)$job['id'] ?>" class="faq-manage-item ai-voice-item">
+    <div class="ai-voice-item-heading"><div><strong><?= h($clientLabel) ?></strong><small><?= h(date('d.m.Y H:i', strtotime((string)$job['created_at']))) ?> · <?= h((string)$job['status']) ?><?= !empty($job['duration_seconds']) ? ' · ' . h((string)$job['duration_seconds']) . ' сек.' : '' ?></small></div><?php if (!empty($job['sent_at'])): ?><span class="badge badge-sent">Отправлено <?= h(date('d.m.Y H:i', strtotime((string)$job['sent_at']))) ?> · <?= h((string)$job['delivery_channel']) ?></span><?php endif; ?></div>
+    <?php if ($job['status'] === 'ready'): ?>
+        <p><?= nl2br(h((string)$job['script_text'])) ?></p>
+        <audio controls preload="none" src="ai_voice_media.php?id=<?= (int)$job['id'] ?>"></audio>
+        <div class="form-actions ai-voice-actions">
+            <?php if (!empty($job['end_user_id'])): ?><form method="post" class="inline-form"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="send_voice"><input type="hidden" name="id" value="<?= (int)$job['id'] ?>"><label class="field"><span>Канал</span><select name="channel"><option value="">Автоматически</option><option value="telegram">Telegram</option><option value="VK">VK</option><option value="MAX">MAX</option><option value="web">Web-чат</option></select></label><button type="submit">Отправить клиенту</button></form><a class="button secondary-button" href="index.php?chat_user_id=<?= (int)$job['end_user_id'] ?>#live-chat">Открыть чат</a><?php else: ?><span class="notice">Чтобы отправить голос, сначала создайте персональный сценарий с выбранным клиентом.</span><?php endif; ?>
+            <a class="button secondary-button" href="ai_voice_media.php?id=<?= (int)$job['id'] ?>" download><?= h($voiceDownloadLabel) ?></a>
+        </div>
+        <?php if (!empty($job['delivery_error'])): ?><div class="alert"><?= h((string)$job['delivery_error']) ?></div><?php endif; ?>
+    <?php elseif (!empty($job['error_text'])): ?><div class="alert"><?= h((string)$job['error_text']) ?></div><?php endif; ?>
+</article>
+<?php endforeach; ?></section><?php endif; ?>
 
 <section class="panel ai-card-section"><div class="ai-studio-heading"><div><h2>Карточки для отправки</h2><p class="cell-muted">Готовые изображения с вашей ссылкой и QR‑кодом. Их можно скачать как PNG или сразу отправить с телефона.</p></div></div>
 <div class="ai-card-controls">
@@ -386,7 +456,6 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <article class="ai-card-item"><div><h3>Горизонтальная визитка</h3><p class="cell-muted">Для сообщений, публикаций и превью ссылки.</p></div><canvas id="ai-card-wide" data-variant="wide" aria-label="Горизонтальная персональная карточка"></canvas><div class="form-actions"><button type="button" class="secondary-button ai-card-download" data-canvas="ai-card-wide" data-name="swpro-card.png" disabled>Скачать PNG</button><button type="button" class="secondary-button ai-card-share" data-canvas="ai-card-wide" data-name="swpro-card.png" disabled>Поделиться</button></div></article>
     <article class="ai-card-item"><div><h3>Вертикальная карточка</h3><p class="cell-muted">Для историй и публикаций в мобильных соцсетях.</p></div><canvas id="ai-card-story" data-variant="story" aria-label="Вертикальная персональная карточка"></canvas><div class="form-actions"><button type="button" class="secondary-button ai-card-download" data-canvas="ai-card-story" data-name="swpro-story.png" disabled>Скачать PNG</button><button type="button" class="secondary-button ai-card-share" data-canvas="ai-card-story" data-name="swpro-story.png" disabled>Поделиться</button></div></article>
 </div></section>
-<?php if ($voiceJobs): ?><section class="panel"><h2>Голосовые сообщения</h2><p class="cell-muted">Голос создан искусственным интеллектом. При отправке обязательно сообщите это получателю.</p><?php foreach ($voiceJobs as $job): ?><div class="faq-manage-item"><strong><?= h(date('d.m.Y H:i', strtotime((string)$job['created_at']))) ?></strong> · <?= h((string)$job['status']) ?><?php if ($job['status'] === 'ready'): ?> · <?= h((string)$job['duration_seconds']) ?> сек.<div><audio controls preload="none" src="ai_voice_media.php?id=<?= (int)$job['id'] ?>"></audio> <a class="button secondary-button" href="ai_voice_media.php?id=<?= (int)$job['id'] ?>" download>Скачать MP3</a></div><?php elseif (!empty($job['error_text'])): ?><div class="alert"><?= h((string)$job['error_text']) ?></div><?php endif; ?></div><?php endforeach; ?></section><?php endif; ?>
 <?php if ($videoJobs): ?><section class="panel"><h2>AI-видео</h2><p class="cell-muted">Видео создано искусственным интеллектом. Обработка у провайдера может занять несколько минут.</p><?php foreach ($videoJobs as $job): ?><div class="faq-manage-item"><strong><?= h(date('d.m.Y H:i', strtotime((string)$job['created_at']))) ?></strong> · <?= h((string)$job['provider']) ?> · <?= h((string)$job['status']) ?><?php if ($job['status'] === 'ready'): ?><div><video controls preload="metadata" style="max-width:640px;width:100%" src="ai_video_media.php?id=<?= (int)$job['id'] ?>"></video><br><a class="button secondary-button" href="ai_video_media.php?id=<?= (int)$job['id'] ?>" download>Скачать MP4</a></div><?php elseif (!empty($job['error_text'])): ?><div class="alert"><?= h((string)$job['error_text']) ?></div><?php endif; ?></div><?php endforeach; ?></section><?php endif; ?>
 <script>
 (() => {

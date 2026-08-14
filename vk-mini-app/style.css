@@ -2024,6 +2024,7 @@ button.secondary,
 .client-live-chat-bubble { max-width: 84%; padding: 10px 12px; border-radius: 15px 15px 15px 4px; background: #fff; box-shadow: 0 3px 12px rgba(22, 39, 54, .07); overflow-wrap: anywhere; }
 .client-live-chat-message.is-own .client-live-chat-bubble { color: #fff; border-radius: 15px 15px 4px 15px; background: var(--accent); }
 .client-live-chat-bubble a { display: block; margin-top: 6px; color: inherit; font-weight: 700; }
+.client-live-chat-bubble audio { display: block; width: min(100%, 320px); margin-top: 8px; }
 .client-live-chat-bubble small { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; }
 .client-live-chat-message.is-own small { color: rgba(255,255,255,.74); }
 .client-live-chat-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }

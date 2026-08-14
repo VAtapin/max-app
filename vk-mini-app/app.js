@@ -1798,10 +1798,18 @@ function clientLiveChatMarkup(messages) {
     return messages.map((message) => {
         const own = message.sender_type === 'client';
         const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+        const attachmentMarkup = (path) => {
+            const safePath = escapeHtml(path);
+            const pathname = String(path).split('?')[0].toLowerCase();
+            const isAudio = /\.(mp3|m4a|ogg|oga|webm)$/.test(pathname) || pathname.includes('/api/voice_media.php');
+            return isAudio
+                ? `<audio controls preload="none" src="${safePath}"></audio>`
+                : `<a href="${safePath}" target="_blank" rel="noopener">Вложение</a>`;
+        };
         return `<div class="client-live-chat-message ${own ? 'is-own' : 'is-consultant'}">
             <div class="client-live-chat-bubble">
                 ${message.message_text ? `<div>${escapeHtml(message.message_text).replace(/\n/g, '<br>')}</div>` : ''}
-                ${attachments.map((path) => `<a href="${escapeHtml(path)}" target="_blank" rel="noopener">Вложение</a>`).join('')}
+                ${attachments.map(attachmentMarkup).join('')}
                 <small>${escapeHtml(formatRuDateTime(message.created_at))}${message.status === 'failed' ? ' · не отправлено' : ''}</small>
             </div>
         </div>`;

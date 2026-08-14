@@ -1626,6 +1626,14 @@ button:disabled {
 .dashboard-chat-message > div:first-child strong { color: #25434a; font-size: 11px; }
 .dashboard-chat-message p { margin: 5px 0 0; line-height: 1.45; overflow-wrap: anywhere; }
 .dashboard-chat-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ai-voice-results { display: grid; gap: 14px; }
+.ai-voice-item { display: grid; gap: 12px; }
+.ai-voice-item-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ai-voice-item-heading > div { display: grid; gap: 3px; }
+.ai-voice-item audio { width: min(100%, 520px); }
+.ai-voice-actions { align-items: end; }
+.ai-voice-actions .inline-form { align-items: end; }
+.ai-voice-actions .field { min-width: 180px; margin: 0; }
 .chat-message-error { display: block; margin-top: 5px; color: #b32929; }
 .dashboard-chat-compose { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; padding: 12px; border-top: 1px solid #dce6e9; background: #fff; }
 .dashboard-chat-compose textarea { min-height: 46px; max-height: 130px; resize: vertical; }

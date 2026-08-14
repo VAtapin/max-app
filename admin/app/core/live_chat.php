@@ -154,7 +154,8 @@ function live_chat_send_client(array $admin, int $endUserId, string $text, ?stri
     } elseif ($channel === 'MAX') {
         $result = ['ok' => false, 'error' => 'Отправка в MAX пока не подключена. Выберите другой доступный канал.'];
     } elseif ($channel === 'web') {
-        $result = ['ok' => false, 'error' => 'У клиента доступен только Web-профиль. Для отправки по email или телефону сначала подключите почтовый или SMS-сервис.'];
+        // Web clients read the same thread through api/chat.php.
+        $result = ['ok' => true, 'error' => null];
     }
     $status = !empty($result['ok']) ? 'sent' : 'failed';
     db()->prepare('UPDATE chat_messages SET status = :status, error_text = :error, delivered_at = :delivered WHERE id = :id')->execute(['status' => $status, 'error' => $result['error'] ?? null, 'delivered' => $status === 'sent' ? date('Y-m-d H:i:s') : null, 'id' => $messageId]);

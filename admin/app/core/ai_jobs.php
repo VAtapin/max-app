@@ -40,7 +40,8 @@ function ai_openai_speech(string $text): array
         'voice' => $voice,
         'input' => $text,
         'instructions' => trim((string)ai_setting('ai.openai_voice_instructions', 'Говори по-русски тепло, естественно и спокойно.')),
-        'response_format' => 'mp3',
+        // Ogg/Opus is delivered by Telegram as a native voice message.
+        'response_format' => 'opus',
     ];
     $curl = curl_init('https://api.openai.com/v1/audio/speech');
     curl_setopt_array($curl, [
@@ -51,7 +52,7 @@ function ai_openai_speech(string $text): array
         CURLOPT_HTTPHEADER => [
             'Authorization: Bearer ' . ai_openai_api_key(),
             'Content-Type: application/json',
-            'Accept: audio/mpeg',
+            'Accept: audio/ogg',
             'User-Agent: SWPro-AI/1.0',
         ],
         CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
@@ -71,7 +72,7 @@ function ai_openai_speech(string $text): array
     if (strlen((string)$raw) < 100) {
         throw new RuntimeException('OpenAI вернул пустой аудиофайл.');
     }
-    return ['audio' => (string)$raw, 'model' => $model, 'voice' => $voice];
+    return ['audio' => (string)$raw, 'model' => $model, 'voice' => $voice, 'extension' => 'ogg'];
 }
 
 function ai_process_voice_job(int $id, array $owner): array
@@ -93,7 +94,10 @@ function ai_process_voice_job(int $id, array $owner): array
         if (!is_dir($absoluteDir) && !mkdir($absoluteDir, 0770, true) && !is_dir($absoluteDir)) {
             throw new RuntimeException('Не удалось создать закрытый каталог для аудио.');
         }
-        $relativePath = $relativeDir . '/job-' . $id . '.mp3';
+        $extension = in_array((string)($speech['extension'] ?? ''), ['ogg', 'mp3'], true)
+            ? (string)$speech['extension']
+            : 'ogg';
+        $relativePath = $relativeDir . '/job-' . $id . '.' . $extension;
         if (file_put_contents(ai_private_storage_root() . '/' . $relativePath, $speech['audio'], LOCK_EX) === false) {
             throw new RuntimeException('Не удалось сохранить созданное аудио.');
         }
@@ -111,6 +115,32 @@ function ai_process_voice_job(int $id, array $owner): array
             'error' => mb_substr($error->getMessage(), 0, 1000, 'UTF-8'), 'id' => $id,
         ]);
         throw $error;
+    }
+}
+
+function ai_voice_delivery_url(array $job): string
+{
+    if ((string)($job['status'] ?? '') !== 'ready' || empty($job['end_user_id'])) {
+        throw new RuntimeException('Голосовое сообщение не готово или не привязано к клиенту.');
+    }
+    $token = bin2hex(random_bytes(32));
+    db()->prepare('INSERT INTO ai_voice_delivery_links (voice_job_id, end_user_id, token_hash) VALUES (:job_id, :user_id, :token_hash)')->execute([
+        'job_id' => (int)$job['id'],
+        'user_id' => (int)$job['end_user_id'],
+        'token_hash' => hash('sha256', $token),
+    ]);
+    $base = rtrim((string)(getenv('SWPRO_PUBLIC_URL') ?: 'https://swpro.ru'), '/');
+    return $base . '/api/voice_media.php?token=' . rawurlencode($token);
+}
+
+function ai_revoke_voice_delivery_url(string $url): void
+{
+    parse_str((string)parse_url($url, PHP_URL_QUERY), $query);
+    $token = trim((string)($query['token'] ?? ''));
+    if (preg_match('/^[a-f0-9]{64}$/', $token)) {
+        db()->prepare('UPDATE ai_voice_delivery_links SET revoked_at = NOW() WHERE token_hash = :token_hash')->execute([
+            'token_hash' => hash('sha256', $token),
+        ]);
     }
 }
 

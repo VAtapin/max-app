@@ -539,6 +539,9 @@ function send_telegram_text(string $chatId, string $text, array $buttons = []): 
 
 function telegram_media_method(string $path): ?array
 {
+    if (str_contains((string)(parse_url($path, PHP_URL_PATH) ?: $path), '/api/voice_media.php')) {
+        return ['method' => 'sendVoice', 'field' => 'voice'];
+    }
     $extension = strtolower(pathinfo(parse_url($path, PHP_URL_PATH) ?: $path, PATHINFO_EXTENSION));
     return match ($extension) {
         'jpg', 'jpeg', 'png', 'webp' => ['method' => 'sendPhoto', 'field' => 'photo'],
