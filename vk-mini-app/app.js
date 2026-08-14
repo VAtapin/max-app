@@ -109,12 +109,27 @@ function getReferralCode() {
     const params = launchParams();
     const startApp = normalizeReferralCodeInput(params.get('startapp') || '');
     const vkRef = normalizeReferralCodeInput(params.get('vk_ref') || '');
-    return params.get('ref') || (startApp && !startApp.includes('=') ? startApp : null) || (vkRef.startsWith('SWPRO_') ? vkRef : null);
+    const routeCode = params.get('ref') || (startApp && !startApp.includes('=') ? startApp : null) || (vkRef.startsWith('SWPRO_') ? vkRef : null);
+    return normalizeReferralCodeInput(state.user?.referral_code_used || routeCode);
 }
 
 function normalizeReferralCodeInput(value) {
     const code = String(value || '').trim();
     return code.startsWith('ref_') ? code.slice(4).trim() : code;
+}
+
+function rememberCurrentReferralCode(fallbackCode = '') {
+    const currentCode = normalizeReferralCodeInput(state.user?.referral_code_used || fallbackCode);
+    if (!currentCode || !hasTeamAccess()) {
+        return;
+    }
+    localStorage.setItem('swpro_last_referral_code', currentCode);
+    localStorage.removeItem('swpro_pending_referral_code');
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has('ref') && normalizeReferralCodeInput(currentUrl.searchParams.get('ref')) !== currentCode) {
+        currentUrl.searchParams.set('ref', currentCode);
+        window.history.replaceState({}, '', `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+    }
 }
 
 function applyInitialRoute() {
@@ -338,6 +353,7 @@ async function initTelegram() {
     state.platform = result.auth.platform;
     state.platformUserId = result.auth.platform_user_id;
     state.user = result.user;
+    rememberCurrentReferralCode(getReferralCode());
     return result.user;
 }
 
@@ -458,10 +474,7 @@ async function initWebUser(referralCodeOverride = null) {
     state.platformUserId = webUserId;
     state.auth = {platform: 'web', platform_user_id: webUserId};
     state.user = result.user;
-    if (referralCode && hasTeamAccess()) {
-        localStorage.setItem('swpro_last_referral_code', referralCode);
-        localStorage.removeItem('swpro_pending_referral_code');
-    }
+    rememberCurrentReferralCode(referralCode);
     return result.user;
 }
 
@@ -481,6 +494,7 @@ async function consumeTelegramOidc() {
     search.delete('oidc');
     const nextUrl = `${window.location.pathname}${search.toString() ? `?${search}` : ''}${window.location.hash}`;
     window.history.replaceState({}, '', nextUrl);
+    rememberCurrentReferralCode(getReferralCode());
     return result.user;
 }
 
@@ -533,6 +547,7 @@ async function authorize() {
             body: JSON.stringify(payload),
         });
         state.user = result.user;
+        rememberCurrentReferralCode(getReferralCode());
         return state.user;
     }
 
@@ -2751,8 +2766,7 @@ page.addEventListener('submit', async (event) => {
             if (!hasTeamAccess()) {
                 throw new Error(ui('referral.invalid_code'));
             }
-            localStorage.setItem('swpro_last_referral_code', referralCode);
-            localStorage.removeItem('swpro_pending_referral_code');
+            rememberCurrentReferralCode(referralCode);
             await loadOnboarding();
             await loadConsultantProfile();
             state.page = 'home';

@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../core/referral_codes.php';
+
 function user_promotion_allowed(array $admin): bool
 {
     return in_array((string)$admin['role'], ['superadmin', 'reseller'], true);
@@ -76,6 +78,10 @@ function user_promotion_referral_code_exists(string $code): bool
         if ($stmt->fetchColumn()) {
             return true;
         }
+    }
+
+    if (referral_code_alias_conflict($code)) {
+        return true;
     }
 
     return false;

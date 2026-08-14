@@ -45,6 +45,7 @@ DROP TABLE IF EXISTS product_categories;
 DROP TABLE IF EXISTS admin_web_accounts;
 DROP TABLE IF EXISTS platform_accounts;
 DROP TABLE IF EXISTS referral_links;
+DROP TABLE IF EXISTS referral_code_aliases;
 DROP TABLE IF EXISTS end_users;
 DROP TABLE IF EXISTS admin_users;
 DROP TABLE IF EXISTS profile_reviews;
@@ -407,6 +408,16 @@ CREATE TABLE product_categories (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_product_categories_source_category_id (source_category_id),
   UNIQUE KEY uq_product_categories_owner_source_clone (owner_type, owner_id, source_category_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE referral_code_aliases (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  owner_type ENUM('reseller', 'manager') NOT NULL,
+  owner_id BIGINT UNSIGNED NOT NULL,
+  referral_code VARCHAR(64) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_referral_code_alias (referral_code),
+  INDEX idx_referral_alias_owner (owner_type, owner_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE admin_web_accounts (
@@ -1332,9 +1343,10 @@ CREATE TRIGGER trg_resellers_referral_code_unique_insert
 BEFORE INSERT ON resellers
 FOR EACH ROW
 BEGIN
-  IF EXISTS (SELECT 1 FROM managers WHERE referral_code = NEW.referral_code) THEN
+  IF EXISTS (SELECT 1 FROM managers WHERE referral_code = NEW.referral_code)
+     OR EXISTS (SELECT 1 FROM referral_code_aliases WHERE referral_code = NEW.referral_code) THEN
     SIGNAL SQLSTATE '45000'
-      SET MESSAGE_TEXT = 'Referral code is already used by a manager';
+      SET MESSAGE_TEXT = 'Referral code is already reserved';
   END IF;
 END//
 
@@ -1343,9 +1355,10 @@ BEFORE UPDATE ON resellers
 FOR EACH ROW
 BEGIN
   IF NOT (NEW.referral_code <=> OLD.referral_code)
-     AND EXISTS (SELECT 1 FROM managers WHERE referral_code = NEW.referral_code) THEN
+     AND (EXISTS (SELECT 1 FROM managers WHERE referral_code = NEW.referral_code)
+          OR EXISTS (SELECT 1 FROM referral_code_aliases WHERE referral_code = NEW.referral_code)) THEN
     SIGNAL SQLSTATE '45000'
-      SET MESSAGE_TEXT = 'Referral code is already used by a manager';
+      SET MESSAGE_TEXT = 'Referral code is already reserved';
   END IF;
 END//
 
@@ -1353,9 +1366,10 @@ CREATE TRIGGER trg_managers_referral_code_unique_insert
 BEFORE INSERT ON managers
 FOR EACH ROW
 BEGIN
-  IF EXISTS (SELECT 1 FROM resellers WHERE referral_code = NEW.referral_code) THEN
+  IF EXISTS (SELECT 1 FROM resellers WHERE referral_code = NEW.referral_code)
+     OR EXISTS (SELECT 1 FROM referral_code_aliases WHERE referral_code = NEW.referral_code) THEN
     SIGNAL SQLSTATE '45000'
-      SET MESSAGE_TEXT = 'Referral code is already used by a reseller';
+      SET MESSAGE_TEXT = 'Referral code is already reserved';
   END IF;
 END//
 
@@ -1364,9 +1378,32 @@ BEFORE UPDATE ON managers
 FOR EACH ROW
 BEGIN
   IF NOT (NEW.referral_code <=> OLD.referral_code)
-     AND EXISTS (SELECT 1 FROM resellers WHERE referral_code = NEW.referral_code) THEN
+     AND (EXISTS (SELECT 1 FROM resellers WHERE referral_code = NEW.referral_code)
+          OR EXISTS (SELECT 1 FROM referral_code_aliases WHERE referral_code = NEW.referral_code)) THEN
     SIGNAL SQLSTATE '45000'
-      SET MESSAGE_TEXT = 'Referral code is already used by a reseller';
+      SET MESSAGE_TEXT = 'Referral code is already reserved';
+  END IF;
+END//
+
+CREATE TRIGGER trg_referral_alias_unique_insert
+BEFORE INSERT ON referral_code_aliases
+FOR EACH ROW
+BEGIN
+  IF EXISTS (SELECT 1 FROM resellers WHERE referral_code = NEW.referral_code)
+     OR EXISTS (SELECT 1 FROM managers WHERE referral_code = NEW.referral_code) THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Referral alias conflicts with a current code';
+  END IF;
+END//
+
+CREATE TRIGGER trg_referral_alias_unique_update
+BEFORE UPDATE ON referral_code_aliases
+FOR EACH ROW
+BEGIN
+  IF EXISTS (SELECT 1 FROM resellers WHERE referral_code = NEW.referral_code)
+     OR EXISTS (SELECT 1 FROM managers WHERE referral_code = NEW.referral_code) THEN
+    SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Referral alias conflicts with a current code';
   END IF;
 END//
 

@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../core/referral_codes.php';
+
 function validate_payload(array $fields, array $payload): array
 {
     $errors = [];
@@ -92,12 +94,24 @@ function staff_referral_code_conflict(string $code, ?string $exceptTable = null,
         }
     }
 
+    $ownerType = $exceptTable === 'managers' ? 'manager' : ($exceptTable === 'resellers' ? 'reseller' : null);
+    $aliasConflict = referral_code_alias_conflict($code, $ownerType, $exceptId);
+    if ($aliasConflict) {
+        return $aliasConflict;
+    }
+
     return null;
 }
 
 function friendly_save_error(Throwable $e, array $payload): string
 {
     $message = $e->getMessage();
+    if (stripos($message, 'Referral code') !== false || stripos($message, 'Referral alias') !== false) {
+        $code = trim((string)($payload['referral_code'] ?? ''));
+        return $code !== ''
+            ? 'Реферальный код "' . $code . '" уже использовался. Укажите другой код.'
+            : 'Такой реферальный код уже использовался. Укажите другой код.';
+    }
     $isDuplicate = ($e instanceof PDOException && (int)($e->errorInfo[1] ?? 0) === 1062)
         || stripos($message, 'Duplicate entry') !== false;
 

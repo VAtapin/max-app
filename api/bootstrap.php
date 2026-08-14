@@ -4,6 +4,7 @@ require_once __DIR__ . '/../admin/app/core/db.php';
 require_once __DIR__ . '/../admin/app/core/helpers.php';
 require_once __DIR__ . '/../admin/app/core/content_ownership.php';
 require_once __DIR__ . '/../admin/app/core/workspace_billing.php';
+require_once __DIR__ . '/../admin/app/core/referral_codes.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -187,53 +188,12 @@ function enforce_workspace_access(array $user): void
 
 function referral_binding(?string $referralCode): ?array
 {
-    $referralCode = normalize_referral_code($referralCode);
-    if (!$referralCode) {
-        return null;
-    }
-
-    $managerStmt = db()->prepare('SELECT id, reseller_id FROM managers WHERE referral_code = :code AND is_active = 1 LIMIT 1');
-    $managerStmt->execute(['code' => $referralCode]);
-    $manager = $managerStmt->fetch();
-
-    if ($manager) {
-        return [
-            'manager_id' => (int)$manager['id'],
-            'reseller_id' => $manager['reseller_id'] ? (int)$manager['reseller_id'] : null,
-        ];
-    }
-
-    $resellerStmt = db()->prepare('SELECT id FROM resellers WHERE referral_code = :code AND is_active = 1 LIMIT 1');
-    $resellerStmt->execute(['code' => $referralCode]);
-    $reseller = $resellerStmt->fetch();
-
-    if ($reseller) {
-        return [
-            'manager_id' => null,
-            'reseller_id' => (int)$reseller['id'],
-        ];
-    }
-
-    return null;
+    return referral_code_binding($referralCode);
 }
 
 function normalize_referral_code(?string $referralCode): ?string
 {
-    $referralCode = strtoupper(trim((string)$referralCode));
-    if ($referralCode === '') {
-        return null;
-    }
-
-    if (str_starts_with(strtolower($referralCode), 'ref_')) {
-        $referralCode = substr($referralCode, 4);
-    }
-
-    $referralCode = preg_replace('/\s+/', '-', $referralCode) ?? '';
-    $referralCode = preg_replace('/[^A-Z0-9_-]/', '', $referralCode) ?? '';
-    $referralCode = preg_replace('/[-_]{2,}/', '-', $referralCode) ?? '';
-    $referralCode = trim($referralCode, '-_');
-
-    return trim($referralCode) !== '' ? trim($referralCode) : null;
+    return referral_code_normalize($referralCode);
 }
 
 function normalize_external_platform_id(?string $value): string
@@ -416,7 +376,7 @@ function attach_referral_if_missing(array $user, ?string $referralCode): array
     $stmt->execute([
         'reseller_id' => $binding['reseller_id'],
         'manager_id' => $binding['manager_id'],
-        'referral_code' => $referralCode,
+        'referral_code' => (string)$binding['current_referral_code'],
         'id' => $user['id'],
     ]);
 
@@ -857,6 +817,7 @@ function create_or_get_user(array $data): array
     if ($binding) {
         $managerId = $binding['manager_id'];
         $resellerId = $binding['reseller_id'];
+        $referralCode = (string)$binding['current_referral_code'];
     } else {
         $referralCode = null;
     }

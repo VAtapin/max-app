@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/content_ownership.php';
 require_once __DIR__ . '/site_templates.php';
+require_once __DIR__ . '/referral_codes.php';
 
 function consultant_owner_from_admin(array $admin): ?array
 {
@@ -112,21 +113,10 @@ function consultant_profile_by_referral_code(?string $referralCode): ?array
         return null;
     }
 
-    $manager = db()->prepare('SELECT id FROM managers WHERE referral_code = :code AND is_active = 1 LIMIT 1');
-    $manager->execute(['code' => $referralCode]);
-    $managerRow = $manager->fetch();
-    if ($managerRow) {
-        return ensure_consultant_profile('manager', (int)$managerRow['id']);
-    }
-
-    $reseller = db()->prepare('SELECT id FROM resellers WHERE referral_code = :code AND is_active = 1 LIMIT 1');
-    $reseller->execute(['code' => $referralCode]);
-    $resellerRow = $reseller->fetch();
-    if ($resellerRow) {
-        return ensure_consultant_profile('reseller', (int)$resellerRow['id']);
-    }
-
-    return null;
+    $binding = referral_code_binding($referralCode);
+    return $binding
+        ? ensure_consultant_profile((string)$binding['owner_type'], (int)$binding['owner_id'])
+        : null;
 }
 
 function ensure_consultant_profile(string $ownerType, int $ownerId, array $seen = []): array

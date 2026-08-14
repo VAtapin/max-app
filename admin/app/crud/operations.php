@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../core/referral_codes.php';
+
 function normalize_merge_text(?string $value): string
 {
     $value = trim((string)$value);
@@ -170,6 +172,12 @@ function save_record(string $moduleKey, array $module, array $payload, ?int $id,
 
     if ($id) {
         $before = null;
+        $referralCodeBefore = null;
+        if (in_array($moduleKey, ['managers', 'resellers'], true)) {
+            $referralStmt = db()->prepare("SELECT referral_code FROM {$module['table']} WHERE id = :id LIMIT 1");
+            $referralStmt->execute(['id' => $id]);
+            $referralCodeBefore = trim((string)$referralStmt->fetchColumn());
+        }
         if ($moduleKey === 'users') {
             $beforeStmt = db()->prepare('SELECT reseller_id, manager_id, client_stage FROM end_users WHERE id = :id LIMIT 1');
             $beforeStmt->execute(['id' => $id]);
@@ -183,7 +191,38 @@ function save_record(string $moduleKey, array $module, array $payload, ?int $id,
         $assignments = implode(', ', array_map(static fn($column) => "`$column` = :$column", $columns));
         $payload['id'] = $id;
         $stmt = db()->prepare("UPDATE {$module['table']} SET $assignments WHERE id = :id");
-        $stmt->execute($payload);
+        $referralCodeAfter = trim((string)($payload['referral_code'] ?? $referralCodeBefore));
+        $renamingReferral = $referralCodeBefore !== null
+            && $referralCodeBefore !== ''
+            && $referralCodeAfter !== ''
+            && $referralCodeBefore !== $referralCodeAfter;
+        if ($renamingReferral) {
+            db()->beginTransaction();
+        }
+        try {
+            if ($renamingReferral) {
+                referral_code_prepare_rename(
+                    $moduleKey === 'managers' ? 'manager' : 'reseller',
+                    $id,
+                    $referralCodeAfter
+                );
+            }
+            $stmt->execute($payload);
+            if ($renamingReferral) {
+                referral_code_sync_rename(
+                    $moduleKey === 'managers' ? 'manager' : 'reseller',
+                    $id,
+                    $referralCodeBefore,
+                    $referralCodeAfter
+                );
+                db()->commit();
+            }
+        } catch (Throwable $e) {
+            if ($renamingReferral && db()->inTransaction()) {
+                db()->rollBack();
+            }
+            throw $e;
+        }
         log_activity('admin', (int)$admin['id'], 'update_' . $module['table'], $module['table'], $id);
 
         if ($moduleKey === 'users' && $before) {
