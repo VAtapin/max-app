@@ -22,6 +22,9 @@
         return result;
     };
     const unreadBadge = (count) => Number(count) > 0 ? `<b>${Number(count)}</b>` : '';
+    const replyAttention = (item) => Number(item.needs_reply) > 0
+        ? '<em class="dashboard-chat-reply-needed"><i aria-hidden="true">!</i> Нужно ответить</em>'
+        : '';
     const selectedKey = (item) => state.kind === 'team' ? 'team' : `client:${item.end_user_id}`;
     const currentKey = () => state.selected ? selectedKey(state.selected) : '';
     const renderThreads = () => {
@@ -31,7 +34,8 @@
         elements.threads.innerHTML = items.map(item => {
             const name = state.kind === 'team' ? (item.title || 'Чат команды') : (item.client_name || `Клиент #${item.end_user_id}`);
             const active = currentKey() === selectedKey(item);
-            return `<button type="button" class="dashboard-chat-thread${active ? ' is-active' : ''}" data-thread-key="${escapeHtml(selectedKey(item))}"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(item.last_message || (state.kind === 'team' ? 'Общий чат ветки' : 'Начните диалог'))}</small></span><span>${unreadBadge(item.unread_count)}<small>${escapeHtml(dateLabel(item.last_message_at))}</small></span></button>`;
+            const needsReply = state.kind === 'client' && Number(item.needs_reply) > 0;
+            return `<button type="button" class="dashboard-chat-thread${active ? ' is-active' : ''}${needsReply ? ' needs-reply' : ''}" data-thread-key="${escapeHtml(selectedKey(item))}"><span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(item.last_message || (state.kind === 'team' ? 'Общий чат ветки' : 'Начните диалог'))}</small>${replyAttention(item)}</span><span>${unreadBadge(item.unread_count)}<small>${escapeHtml(dateLabel(item.last_message_at))}</small></span></button>`;
         }).join('');
         elements.threads.querySelectorAll('[data-thread-key]').forEach(button => button.addEventListener('click', () => {
             state.selected = items.find(item => selectedKey(item) === button.dataset.threadKey) || null;

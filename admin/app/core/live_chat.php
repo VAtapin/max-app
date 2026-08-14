@@ -228,7 +228,24 @@ function live_chat_client_threads(array $admin): array
     $where = $where !== '' ? $where . ' AND eu.merged_into_user_id IS NULL' : 'WHERE eu.merged_into_user_id IS NULL';
     $where = str_replace(['WHERE reseller_id','WHERE manager_id','AND reseller_id','AND manager_id'], ['WHERE eu.reseller_id','WHERE eu.manager_id','AND eu.reseller_id','AND eu.manager_id'], $where);
     $params['reader_id'] = (int)$admin['id'];
-    $stmt = db()->prepare('SELECT eu.id end_user_id, CONCAT_WS(" ", NULLIF(eu.first_name,""), NULLIF(eu.last_name,"")) client_name, eu.platform, ct.id thread_id, ct.last_message_at, (SELECT message_text FROM chat_messages WHERE thread_id = ct.id ORDER BY id DESC LIMIT 1) last_message, (SELECT COUNT(*) FROM chat_messages cm WHERE cm.thread_id = ct.id AND cm.sender_type = "client" AND cm.id > COALESCE((SELECT cr.last_message_id FROM chat_reads cr WHERE cr.thread_id = ct.id AND cr.admin_user_id = :reader_id), 0)) unread_count FROM end_users eu LEFT JOIN chat_threads ct ON ct.end_user_id = eu.id AND ct.thread_type = "client" ' . $where . ' ORDER BY COALESCE(ct.last_message_at, eu.last_activity_at, eu.created_at) DESC LIMIT 150');
+    $stmt = db()->prepare(
+        'SELECT eu.id end_user_id,
+                CONCAT_WS(" ", NULLIF(eu.first_name,""), NULLIF(eu.last_name,"")) client_name,
+                eu.platform,
+                ct.id thread_id,
+                ct.last_message_at,
+                (SELECT message_text FROM chat_messages WHERE thread_id = ct.id ORDER BY id DESC LIMIT 1) last_message,
+                (SELECT sender_type FROM chat_messages WHERE thread_id = ct.id ORDER BY id DESC LIMIT 1) last_sender_type,
+                CASE WHEN (SELECT sender_type FROM chat_messages WHERE thread_id = ct.id ORDER BY id DESC LIMIT 1) = "client" THEN 1 ELSE 0 END needs_reply,
+                (SELECT COUNT(*) FROM chat_messages cm
+                 WHERE cm.thread_id = ct.id
+                   AND cm.sender_type = "client"
+                   AND cm.id > COALESCE((SELECT cr.last_message_id FROM chat_reads cr WHERE cr.thread_id = ct.id AND cr.admin_user_id = :reader_id), 0)) unread_count
+         FROM end_users eu
+         LEFT JOIN chat_threads ct ON ct.end_user_id = eu.id AND ct.thread_type = "client" '
+        . $where
+        . ' ORDER BY needs_reply DESC, COALESCE(ct.last_message_at, eu.last_activity_at, eu.created_at) DESC LIMIT 150'
+    );
     $stmt->execute($params);
     return $stmt->fetchAll();
 }
