@@ -345,6 +345,11 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <button type="button" class="ai-card-theme" data-card-theme="pearl" aria-pressed="false"><span class="ai-theme-preview theme-pearl"></span><span><strong>Жемчуг</strong><small>Светлый и спокойный</small></span></button>
     <button type="button" class="ai-card-theme" data-card-theme="botanical" aria-pressed="false"><span class="ai-theme-preview theme-botanical"></span><span><strong>Ботаника</strong><small>Натуральный зелёный</small></span></button>
     <button type="button" class="ai-card-theme" data-card-theme="berry" aria-pressed="false"><span class="ai-theme-preview theme-berry"></span><span><strong>Ягода</strong><small>Тёплый выразительный</small></span></button>
+    <button type="button" class="ai-card-theme" data-card-theme="wellness" aria-pressed="false"><span class="ai-theme-preview theme-wellness"></span><span><strong>Свежесть</strong><small>Светлый wellness</small></span></button>
+    <button type="button" class="ai-card-theme" data-card-theme="alpine" aria-pressed="false"><span class="ai-theme-preview theme-alpine"></span><span><strong>Алтай</strong><small>Горы и золото</small></span></button>
+    <button type="button" class="ai-card-theme" data-card-theme="technology" aria-pressed="false"><span class="ai-theme-preview theme-technology"></span><span><strong>Технологии</strong><small>Синий 3D-стиль</small></span></button>
+    <button type="button" class="ai-card-theme" data-card-theme="herbarium" aria-pressed="false"><span class="ai-theme-preview theme-herbarium"></span><span><strong>Гербарий</strong><small>Зелень и золото</small></span></button>
+    <button type="button" class="ai-card-theme" data-card-theme="sunlight" aria-pressed="false"><span class="ai-theme-preview theme-sunlight"></span><span><strong>Солнечный</strong><small>Тёплый светлый</small></span></button>
 </div>
 <div class="ai-card-grid">
     <article class="ai-card-item"><div><h3>Горизонтальная визитка</h3><p class="cell-muted">Для сообщений, публикаций и превью ссылки.</p></div><canvas id="ai-card-wide" data-variant="wide" aria-label="Горизонтальная персональная карточка"></canvas><div class="form-actions"><button type="button" class="secondary-button ai-card-download" data-canvas="ai-card-wide" data-name="swpro-card.png" disabled>Скачать PNG</button><button type="button" class="secondary-button ai-card-share" data-canvas="ai-card-wide" data-name="swpro-card.png" disabled>Поделиться</button></div></article>
@@ -402,12 +407,22 @@ require __DIR__ . '/../app/views/layouts/header.php';
         pearl: {text: '#172a39', muted: '#526872', accent: '#9b365e', dark: '#792747', panel: '#ffffff', stops: ['#fffaf2', '#f5eadb', '#e9d5cb']},
         botanical: {text: '#fffdf5', muted: '#dcebd9', accent: '#f4d79b', dark: '#244b37', panel: '#fffdf8', stops: ['#173e35', '#356c4d', '#78966b']},
         berry: {text: '#ffffff', muted: '#ffe5ec', accent: '#ffd5a7', dark: '#742b4a', panel: '#fffafc', stops: ['#672340', '#9d3d63', '#d16d72']},
+        wellness: {text: '#1d392d', muted: '#4e685d', accent: '#4f8e25', dark: '#315d26', panel: '#ffffff', image: 'assets/img/cards/wellness-light.webp', overlay: 'rgba(255,255,255,.72)'},
+        alpine: {text: '#fff9e8', muted: '#eadbb8', accent: '#e4b84f', dark: '#214735', panel: '#fffdf5', image: 'assets/img/cards/alpine-gold.webp', overlay: 'rgba(5,45,35,.76)'},
+        technology: {text: '#ffffff', muted: '#cceaff', accent: '#9df14d', dark: '#073f82', panel: '#ffffff', image: 'assets/img/cards/tech-blue.webp', overlay: 'rgba(3,38,96,.72)'},
+        herbarium: {text: '#234233', muted: '#52685d', accent: '#a97422', dark: '#31523f', panel: '#fffdf7', image: 'assets/img/cards/botanical-gold.webp', overlay: 'rgba(255,252,242,.76)'},
+        sunlight: {text: '#623b34', muted: '#865f55', accent: '#bf654d', dark: '#914a3d', panel: '#fffdf9', image: 'assets/img/cards/warm-glow.webp', overlay: 'rgba(255,250,243,.72)'},
     };
+    const themeBackgrounds = {};
     let selectedTheme = localStorage.getItem('swpro.cardTheme');
     if (!themes[selectedTheme]) selectedTheme = 'ocean';
     const theme = () => themes[selectedTheme];
     const drawBackground = (ctx, width, height) => {
         const colors = theme();
+        if (colors.image && themeBackgrounds[selectedTheme]) {
+            coverImage(ctx, themeBackgrounds[selectedTheme], 0, 0, width, height);
+            return;
+        }
         const gradient = ctx.createLinearGradient(0, 0, width, height);
         gradient.addColorStop(0, colors.stops[0]);
         gradient.addColorStop(.58, colors.stops[1]);
@@ -458,11 +473,20 @@ require __DIR__ . '/../app/views/layouts/header.php';
         ctx.fillStyle = colors.dark; ctx.font = `700 ${Math.max(18, Math.round(width * .075))}px Arial, sans-serif`; ctx.textAlign = 'center';
         ctx.fillText(label, x + width / 2, y + height - 26); ctx.textAlign = 'left';
     };
+    const drawContentPanel = (ctx, x, y, width, height, radius = 28) => {
+        const colors = theme();
+        if (!colors.image) return;
+        roundRect(ctx, x, y, width, height, radius);
+        ctx.fillStyle = colors.overlay;
+        ctx.fill();
+    };
     const renderWide = (canvas, photo, qr) => {
         canvas.width = 1200; canvas.height = 630;
         const ctx = canvas.getContext('2d');
         drawBackground(ctx, canvas.width, canvas.height);
         const colors = theme();
+        drawContentPanel(ctx, 45, 105, 800, 300);
+        drawContentPanel(ctx, 45, 450, 800, 125, 24);
         ctx.fillStyle = colors.accent; ctx.font = '700 30px Arial, sans-serif'; ctx.fillText('SWPro', 70, 72);
         let textX = 70;
         if (photo) {
@@ -485,6 +509,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
         const ctx = canvas.getContext('2d');
         drawBackground(ctx, canvas.width, canvas.height);
         const colors = theme();
+        drawContentPanel(ctx, 45, 115, 990, 300);
+        drawContentPanel(ctx, 50, 465, 480, 435);
         ctx.fillStyle = colors.accent; ctx.font = '700 42px Arial, sans-serif'; ctx.fillText('SWPro', 80, 92);
         if (photo) {
             ctx.save(); ctx.beginPath(); ctx.arc(185, 260, 105, 0, Math.PI * 2); ctx.clip(); coverImage(ctx, photo, 80, 155, 210, 210); ctx.restore();
@@ -524,7 +550,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
     };
     document.querySelectorAll('.ai-card-theme').forEach(button => button.addEventListener('click', () => selectTheme(button.dataset.cardTheme)));
     selectTheme(selectedTheme);
-    Promise.all([loadImage(profile.photo), loadImage(profile.qr)]).then(([photo, qr]) => {
+    const imageThemeEntries = Object.entries(themes).filter(([, value]) => value.image);
+    Promise.all([loadImage(profile.photo), loadImage(profile.qr), ...imageThemeEntries.map(([, value]) => loadImage(value.image))]).then(([photo, qr, ...backgrounds]) => {
+        imageThemeEntries.forEach(([name], index) => { themeBackgrounds[name] = backgrounds[index]; });
         loadedPhoto = photo; loadedQr = qr; renderCards();
         document.querySelectorAll('.ai-card-download, .ai-card-share').forEach(button => button.disabled = false);
     });

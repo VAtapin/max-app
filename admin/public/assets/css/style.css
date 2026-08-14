@@ -1420,6 +1420,11 @@ button:disabled {
 .theme-pearl { background: linear-gradient(135deg, #fffaf2, #f5eadb 58%, #e9d5cb); }
 .theme-botanical { background: linear-gradient(135deg, #173e35, #356c4d 58%, #78966b); }
 .theme-berry { background: linear-gradient(135deg, #672340, #9d3d63 58%, #d16d72); }
+.theme-wellness { background: url('../img/cards/wellness-light.webp') center/cover; }
+.theme-alpine { background: url('../img/cards/alpine-gold.webp') center/cover; }
+.theme-technology { background: url('../img/cards/tech-blue.webp') center/cover; }
+.theme-herbarium { background: url('../img/cards/botanical-gold.webp') center/cover; }
+.theme-sunlight { background: url('../img/cards/warm-glow.webp') center/cover; }
 .ai-card-item {
     display: flex;
     min-width: 0;
