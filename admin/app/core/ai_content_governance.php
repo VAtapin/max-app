@@ -18,7 +18,7 @@ function ai_docs_parse(string $markdown, string $fallbackTitle): array
         }
         $markdown = substr($markdown, strlen($match[0]));
     }
-    preg_match('/^#\s+(.+)$/m', $markdown, $heading);
+    preg_match('/^#{1,6}\s+(.+)$/m', $markdown, $heading);
     $title = trim((string)($meta['ai_title'] ?? ($heading[1] ?? $fallbackTitle)));
     $content = preg_replace('/```.*?```/s', ' ', $markdown) ?? $markdown;
     $content = preg_replace('/!\[[^\]]*\]\([^)]*\)/', ' ', $content) ?? $content;
@@ -36,6 +36,39 @@ function ai_docs_parse(string $markdown, string $fallbackTitle): array
         'page_context' => (string)($meta['ai_page_context'] ?? ''),
         'enabled' => !in_array(strtolower((string)($meta['ai_enabled'] ?? 'true')), ['0', 'false', 'no', 'off'], true),
     ];
+}
+
+function ai_docs_file_entries(array $file): array
+{
+    $markdown = file_get_contents((string)$file['path']);
+    if ($markdown === false) {
+        return [];
+    }
+    if (($file['key'] ?? '') !== 'project/README.md') {
+        return [[
+            'key' => (string)$file['key'],
+            'url' => (string)$file['url'],
+            'parsed' => ai_docs_parse($markdown, (string)$file['fallback']),
+        ]];
+    }
+
+    // README is intentionally indexed by sections. Search can then send the
+    // relevant excerpt to the model instead of truncating one very large file.
+    $chunks = preg_split('/(?=^#{2,3}\s+)/m', $markdown, -1, PREG_SPLIT_NO_EMPTY) ?: [$markdown];
+    $entries = [];
+    foreach ($chunks as $index => $chunk) {
+        $parsed = ai_docs_parse($chunk, $index === 0 ? (string)$file['fallback'] : 'Раздел README SWPro');
+        if ($parsed['content'] === '') {
+            continue;
+        }
+        $sectionKey = substr(hash('sha256', strtolower($parsed['title'])), 0, 16);
+        $entries[] = [
+            'key' => (string)$file['key'] . '#' . $sectionKey,
+            'url' => (string)$file['url'],
+            'parsed' => $parsed,
+        ];
+    }
+    return $entries;
 }
 
 function ai_docs_sync(?int $adminId = null): array
@@ -58,6 +91,16 @@ function ai_docs_sync(?int $adminId = null): array
     $touch = db()->prepare('UPDATE ai_knowledge_entries SET last_synced_at = NOW(), is_active = :is_active WHERE id = :id');
     db()->beginTransaction();
     try {
+        $files = [];
+        $projectReadme = dirname($root) . DIRECTORY_SEPARATOR . 'README.md';
+        if (is_file($projectReadme)) {
+            $files[] = [
+                'path' => $projectReadme,
+                'key' => 'project/README.md',
+                'url' => '/docs/#/',
+                'fallback' => 'Полное описание SWPro',
+            ];
+        }
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
         foreach ($iterator as $file) {
             if (!$file->isFile() || strtolower($file->getExtension()) !== 'md') {
@@ -67,42 +110,48 @@ function ai_docs_sync(?int $adminId = null): array
             if (str_starts_with($relative, '_assets/') || str_starts_with(basename($relative), '_') || $relative === 'AI_CONTENT_CHECKLIST.md') {
                 continue;
             }
-            $markdown = file_get_contents($file->getPathname());
-            if ($markdown === false) {
-                continue;
-            }
-            $parsed = ai_docs_parse($markdown, pathinfo($relative, PATHINFO_FILENAME));
-            if ($parsed['content'] === '') {
-                continue;
-            }
-            $hash = hash('sha256', json_encode($parsed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-            $sourceUrl = '/docs/#/' . preg_replace('/(?:\/README)?\.md$/', '', $relative);
-            $select->execute(['source_key' => $relative]);
-            $existing = $select->fetch() ?: null;
-            $contentPayload = [
-                'audience' => $parsed['audience'],
-                'source_url' => $sourceUrl,
-                'title' => $parsed['title'],
-                'content' => $parsed['content'],
-                'content_hash' => $hash,
-                'keywords' => $parsed['keywords'],
-                'page_context' => $parsed['page_context'],
-                'is_active' => $parsed['enabled'] ? 1 : 0,
-                'approved_by' => $adminId,
+            $files[] = [
+                'path' => $file->getPathname(),
+                'key' => $relative,
+                'url' => '/docs/#/' . preg_replace('/(?:\/README)?\.md$/', '', $relative),
+                'fallback' => pathinfo($relative, PATHINFO_FILENAME),
             ];
-            $seen[] = $relative;
-            if (!$existing) {
-                $insert->execute($contentPayload + [
-                    'source_key' => $relative,
-                    'created_by' => $adminId,
-                ]);
-                $created++;
-            } elseif (hash_equals((string)$existing['content_hash'], $hash)) {
-                $touch->execute(['id' => (int)$existing['id'], 'is_active' => $contentPayload['is_active']]);
-                $unchanged++;
-            } else {
-                $update->execute($contentPayload + ['id' => (int)$existing['id']]);
-                $updated++;
+        }
+        foreach ($files as $file) {
+            foreach (ai_docs_file_entries($file) as $entry) {
+                $relative = (string)$entry['key'];
+                $parsed = $entry['parsed'];
+                if ($parsed['content'] === '') {
+                    continue;
+                }
+                $hash = hash('sha256', json_encode($parsed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+                $select->execute(['source_key' => $relative]);
+                $existing = $select->fetch() ?: null;
+                $contentPayload = [
+                    'audience' => $parsed['audience'],
+                    'source_url' => (string)$entry['url'],
+                    'title' => $parsed['title'],
+                    'content' => $parsed['content'],
+                    'content_hash' => $hash,
+                    'keywords' => $parsed['keywords'],
+                    'page_context' => $parsed['page_context'],
+                    'is_active' => $parsed['enabled'] ? 1 : 0,
+                    'approved_by' => $adminId,
+                ];
+                $seen[] = $relative;
+                if (!$existing) {
+                    $insert->execute($contentPayload + [
+                        'source_key' => $relative,
+                        'created_by' => $adminId,
+                    ]);
+                    $created++;
+                } elseif (hash_equals((string)$existing['content_hash'], $hash)) {
+                    $touch->execute(['id' => (int)$existing['id'], 'is_active' => $contentPayload['is_active']]);
+                    $unchanged++;
+                } else {
+                    $update->execute($contentPayload + ['id' => (int)$existing['id']]);
+                    $updated++;
+                }
             }
         }
         $all = db()->query('SELECT id, source_key FROM ai_knowledge_entries WHERE owner_type = "superadmin" AND owner_id = 0 AND source_type = "docsify" AND is_active = 1')->fetchAll();
@@ -160,6 +209,16 @@ function ai_docs_pending_summary(): array
     }
     $seen = [];
     $changed = 0;
+    $files = [];
+    $projectReadme = dirname($root) . DIRECTORY_SEPARATOR . 'README.md';
+    if (is_file($projectReadme)) {
+        $files[] = [
+            'path' => $projectReadme,
+            'key' => 'project/README.md',
+            'url' => '/docs/#/',
+            'fallback' => 'Полное описание SWPro',
+        ];
+    }
     $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
     foreach ($iterator as $file) {
         if (!$file->isFile() || strtolower($file->getExtension()) !== 'md') {
@@ -169,18 +228,25 @@ function ai_docs_pending_summary(): array
         if (str_starts_with($relative, '_assets/') || str_starts_with(basename($relative), '_') || $relative === 'AI_CONTENT_CHECKLIST.md') {
             continue;
         }
-        $markdown = file_get_contents($file->getPathname());
-        if ($markdown === false) {
-            continue;
-        }
-        $parsed = ai_docs_parse($markdown, pathinfo($relative, PATHINFO_FILENAME));
-        if ($parsed['content'] === '') {
-            continue;
-        }
-        $seen[$relative] = true;
-        $hash = hash('sha256', json_encode($parsed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-        if (!isset($stored[$relative]) || !hash_equals($stored[$relative], $hash)) {
-            $changed++;
+        $files[] = [
+            'path' => $file->getPathname(),
+            'key' => $relative,
+            'url' => '/docs/#/' . preg_replace('/(?:\/README)?\.md$/', '', $relative),
+            'fallback' => pathinfo($relative, PATHINFO_FILENAME),
+        ];
+    }
+    foreach ($files as $file) {
+        foreach (ai_docs_file_entries($file) as $entry) {
+            $relative = (string)$entry['key'];
+            $parsed = $entry['parsed'];
+            if ($parsed['content'] === '') {
+                continue;
+            }
+            $seen[$relative] = true;
+            $hash = hash('sha256', json_encode($parsed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            if (!isset($stored[$relative]) || !hash_equals($stored[$relative], $hash)) {
+                $changed++;
+            }
         }
     }
     return ['changed' => $changed, 'missing' => count(array_diff_key($stored, $seen)), 'error' => null];
