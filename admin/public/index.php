@@ -219,7 +219,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php if ($billingWorkspace): ?>
     <section class="panel dashboard-billing-card <?= in_array($billingWorkspace['status'], ['overdue','suspended'], true) ? 'billing-overdue' : '' ?>">
         <div><span class="eyebrow">Подписка рабочего места</span><h2><?= h(subscription_money_text((float)$billingWorkspace['monthly_price'])) ?> в месяц</h2>
-        <?php if ($billingWorkspace['billing_mode'] === 'prepaid'): ?><p>Оплачено до: <strong><?= h((string)($billingWorkspace['paid_until'] ?: 'нет оплаты')) ?></strong></p>
+        <?php if ($billingWorkspace['billing_mode'] === 'prepaid'): ?><p>Оплачено до: <strong><?= h(!empty($billingWorkspace['paid_until']) ? app_date_ru($billingWorkspace['paid_until']) : 'нет оплаты') ?></strong></p>
         <?php else: ?><p>Расчёт по факту за календарный месяц. Просрочка учитывается только за завершённый месяц.</p><?php endif; ?></div>
         <div><strong><?= $billingWorkspace['status'] === 'overdue' ? 'Есть задолженность' : ($billingWorkspace['status'] === 'due' ? 'Ожидается оплата' : 'Доступ активен') ?></strong><br><a class="button" href="billing.php">Открыть и оплатить</a></div>
     </section>
@@ -345,7 +345,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <td><?= (int)$user['id'] ?></td>
                     <td><?= h($user['platform']) ?></td>
                     <td><?= h($user['username'] ?: $user['first_name']) ?></td>
-                    <td><?= h($user['created_at']) ?></td>
+                    <td><?= h(app_date_ru($user['created_at'], true)) ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>

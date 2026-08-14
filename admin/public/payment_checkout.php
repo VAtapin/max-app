@@ -55,7 +55,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php foreach ($errors as $error): ?><div class="alert"><?= h($error) ?></div><?php endforeach; ?>
 <section class="panel payment-invoice-summary">
     <h2><?= h((string)$invoice['invoice_number']) ?></h2>
-    <p>Период: <?= h((string)$invoice['period_start']) ?> — <?= h((string)$invoice['period_end']) ?></p>
+    <p>Период: <?= h(app_date_ru($invoice['period_start'])) ?> — <?= h(app_date_ru($invoice['period_end'])) ?></p>
     <?php if ((float)$invoice['discount_amount'] > 0): ?><p class="notice success">Ваша скидка <?= h((string)$invoice['discount_percent']) ?>%: экономия <?= h(subscription_money_text((float)$invoice['discount_amount'])) ?></p><?php endif; ?>
     <strong class="payment-total">К оплате: <?= h(subscription_money_text((float)$invoice['amount_due'])) ?></strong>
 </section>

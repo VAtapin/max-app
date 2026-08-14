@@ -222,3 +222,21 @@ button:hover,
         width: 100%;
     }
 }
+.legal-links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px 18px;
+    padding: 18px 20px 28px;
+    font-size: 13px;
+}
+
+.legal-links a {
+    color: #667085;
+    text-decoration: none;
+}
+
+.legal-links a:hover {
+    color: #0b6a75;
+    text-decoration: underline;
+}

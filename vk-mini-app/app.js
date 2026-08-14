@@ -1060,9 +1060,57 @@ function onboardingDocuments() {
     return Array.isArray(documents) ? documents : Object.values(documents);
 }
 
+function formatRuDateTime(value) {
+    if (!value) {
+        return '';
+    }
+    const normalized = String(value).replace(' ', 'T');
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) {
+        return String(value);
+    }
+    return new Intl.DateTimeFormat('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    }).format(date);
+}
+
 function legalDocumentLink(type, fallback) {
     const document = onboardingDocuments().find((item) => item.type === type);
     return `<a href="${escapeHtml(document?.url || `/legal.php?type=${type}`)}" target="_blank" rel="noopener">${escapeHtml(document?.title || fallback)}</a>`;
+}
+
+function updateLegalFooterLinks() {
+    const documents = onboardingDocuments();
+    const leaderScoped = new Set([
+        'leader_privacy_policy',
+        'personal_data_consent',
+        'health_data_consent',
+        'marketing_consent',
+    ]);
+    const referralCode = getReferralCode();
+    document.querySelectorAll('[data-legal-type]').forEach((link) => {
+        const type = link.dataset.legalType || '';
+        const document = documents.find((item) => item.type === type);
+        if (document?.url) {
+            link.href = document.url;
+            link.hidden = false;
+            return;
+        }
+        if (type === 'leader_privacy_policy') {
+            link.hidden = true;
+            return;
+        }
+        const params = new URLSearchParams({type});
+        if (leaderScoped.has(type) && referralCode) {
+            params.set('ref', referralCode);
+        }
+        link.href = `/legal.php?${params.toString()}`;
+        link.hidden = false;
+    });
 }
 
 function notificationAction(item) {
@@ -1939,7 +1987,7 @@ function leadListMarkup(leads) {
                 <div class="lead-chat-head">
                     <div>
                         <strong>${escapeHtml(leadTitle(lead))}</strong>
-                        <span class="muted">${escapeHtml(platformLabel(lead.source_platform))} · ${escapeHtml(lead.created_at || '')}</span>
+                        <span class="muted">${escapeHtml(platformLabel(lead.source_platform))} · ${escapeHtml(formatRuDateTime(lead.created_at))}</span>
                     </div>
                     <span class="status-pill">${escapeHtml(leadStatusLabel(lead.status))}</span>
                 </div>
@@ -1957,7 +2005,7 @@ function leadListMarkup(leads) {
                         ${renderResponseMaterial(response)}
                         ${renderResponseTest(response)}
                         ${renderResponseFiles(response)}
-                        <small class="muted">${escapeHtml(response.sent_at || response.created_at || '')}</small>
+                        <small class="muted">${escapeHtml(formatRuDateTime(response.sent_at || response.created_at))}</small>
                     </div>
                 `).join('')}
             </article>
@@ -2391,6 +2439,7 @@ function renderTestResult(result) {
 }
 
 async function render() {
+    updateLegalFooterLinks();
     updateStaffPreviewBanner();
     if (state.authBlocked === 'staff') {
         renderStaffGate();

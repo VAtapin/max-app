@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/legal_documents.php';
 
 function client_stage_labels(): array
 {
@@ -30,31 +31,7 @@ function client_gender_labels(): array
 
 function active_legal_documents(): array
 {
-    $stmt = db()->query(
-        'SELECT ld.*
-         FROM legal_documents ld
-         INNER JOIN (
-             SELECT document_type, MAX(id) AS max_id
-             FROM legal_documents
-             WHERE is_active = 1
-             GROUP BY document_type
-         ) latest ON latest.max_id = ld.id
-         ORDER BY FIELD(
-             ld.document_type,
-             "privacy_policy",
-             "personal_data_consent",
-             "health_data_consent",
-             "marketing_consent",
-             "user_agreement",
-             "leader_offer"
-         )'
-    );
-
-    $documents = [];
-    foreach ($stmt->fetchAll() as $row) {
-        $documents[(string)$row['document_type']] = $row;
-    }
-    return $documents;
+    return legal_active_documents();
 }
 
 function latest_user_consents(int $endUserId): array
@@ -78,25 +55,40 @@ function latest_user_consents(int $endUserId): array
     return $consents;
 }
 
-function client_consent_granted(array $consents, string $documentType, ?string $requiredVersion = null): bool
+function client_consent_granted(
+    array $consents,
+    string $documentType,
+    ?string $requiredVersion = null,
+    ?int $requiredOperatorResellerId = null
+): bool
 {
     $consent = $consents[$documentType] ?? null;
     if (!$consent || !empty($consent['revoked_at'])) {
         return false;
     }
-    return $requiredVersion === null || hash_equals($requiredVersion, (string)$consent['document_version']);
+    if ($requiredVersion !== null && !hash_equals($requiredVersion, (string)$consent['document_version'])) {
+        return false;
+    }
+    if (legal_document_is_leader_scoped($documentType)
+        && $requiredOperatorResellerId !== null
+        && (int)($consent['operator_reseller_id'] ?? 0) !== $requiredOperatorResellerId) {
+        return false;
+    }
+    return true;
 }
 
 function client_onboarding_status(array $user): array
 {
     $documents = active_legal_documents();
     $consents = latest_user_consents((int)$user['id']);
+    $operatorResellerId = legal_reseller_id_for_user($user);
+    $legalReferralCode = legal_referral_code_for_user($user);
     $requiredTypes = ['personal_data_consent', 'health_data_consent', 'user_agreement'];
     $missing = [];
 
     foreach ($requiredTypes as $type) {
         $version = isset($documents[$type]) ? (string)$documents[$type]['version'] : null;
-        if (!client_consent_granted($consents, $type, $version)) {
+        if (!client_consent_granted($consents, $type, $version, $operatorResellerId)) {
             $missing[] = $type;
         }
     }
@@ -141,7 +133,8 @@ function client_onboarding_status(array $user): array
         'marketing_consent' => client_consent_granted(
             $consents,
             'marketing_consent',
-            isset($documents['marketing_consent']) ? (string)$documents['marketing_consent']['version'] : null
+            isset($documents['marketing_consent']) ? (string)$documents['marketing_consent']['version'] : null,
+            $operatorResellerId
         ),
         'notifications_enabled' => (int)($user['notifications_enabled'] ?? 1) === 1,
         'has_confirmed_platform' => $hasConfirmedPlatform,
@@ -153,7 +146,7 @@ function client_onboarding_status(array $user): array
                 'title' => (string)$document['title'],
                 'version' => (string)$document['version'],
                 'is_required' => (bool)$document['is_required'],
-                'url' => '/legal.php?type=' . rawurlencode((string)$document['document_type']),
+                'url' => legal_document_url((string)$document['document_type'], $legalReferralCode),
             ],
             $documents
         ),
@@ -212,24 +205,39 @@ function grant_user_consent(
         throw new RuntimeException('Active legal document is missing');
     }
 
+    $userStmt = db()->prepare('SELECT * FROM end_users WHERE id = :id LIMIT 1');
+    $userStmt->execute(['id' => $endUserId]);
+    $user = $userStmt->fetch();
+    if (!$user) {
+        throw new RuntimeException('User is missing');
+    }
+    $operatorResellerId = legal_reseller_id_for_user($user);
+    $rendered = legal_render_document($document, $operatorResellerId);
     $existing = latest_user_consents($endUserId)[$documentType] ?? null;
     if ($existing
         && empty($existing['revoked_at'])
-        && hash_equals((string)$document['version'], (string)$existing['document_version'])) {
+        && hash_equals((string)$document['version'], (string)$existing['document_version'])
+        && hash_equals((string)$rendered['hash'], (string)($existing['document_hash'] ?? ''))
+        && (int)($rendered['operator_reseller_id'] ?? 0) === (int)($existing['operator_reseller_id'] ?? 0)) {
         return;
     }
 
     $stmt = db()->prepare(
         'INSERT INTO user_consents (
-            end_user_id, document_type, document_version, platform, metadata_json
+            end_user_id, document_type, document_version, operator_reseller_id,
+            document_snapshot, document_hash, platform, metadata_json
          ) VALUES (
-            :end_user_id, :document_type, :document_version, :platform, :metadata_json
+            :end_user_id, :document_type, :document_version, :operator_reseller_id,
+            :document_snapshot, :document_hash, :platform, :metadata_json
          )'
     );
     $stmt->execute([
         'end_user_id' => $endUserId,
         'document_type' => $documentType,
         'document_version' => $document['version'],
+        'operator_reseller_id' => $rendered['operator_reseller_id'],
+        'document_snapshot' => $rendered['body'],
+        'document_hash' => $rendered['hash'],
         'platform' => normalize_platform($platform),
         'metadata_json' => $metadata ? json_encode($metadata, JSON_UNESCAPED_UNICODE) : null,
     ]);

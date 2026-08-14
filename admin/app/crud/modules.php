@@ -4,7 +4,7 @@ return [
     'resellers' => [
         'title' => app_text('auto.k_32cea47742bf'),
         'table' => 'resellers',
-        'columns' => ['id', 'parent_reseller_id', 'subscription_plan_id', 'name', 'email', 'phone', 'billing_name', 'billing_inn', 'billing_email', 'billing_comment', 'referral_code', 'manager_limit', 'direct_leader_limit', 'branch_leader_limit', 'direct_manager_limit', 'branch_manager_limit', 'per_child_manager_limit', 'price_per_leader', 'price_per_consultant', 'is_active'],
+        'columns' => ['id', 'parent_reseller_id', 'subscription_plan_id', 'name', 'email', 'phone', 'legal_name', 'legal_status', 'legal_inn', 'legal_address', 'legal_email', 'legal_phone', 'billing_name', 'billing_inn', 'billing_email', 'billing_comment', 'referral_code', 'manager_limit', 'direct_leader_limit', 'branch_leader_limit', 'direct_manager_limit', 'branch_manager_limit', 'per_child_manager_limit', 'price_per_leader', 'price_per_consultant', 'is_active'],
         'fields' => [
             'parent_reseller_id' => ['label' => 'Вышестоящий лидер', 'type' => 'select', 'source' => 'resellers', 'nullable' => true],
             'template_id' => [
@@ -19,6 +19,12 @@ return [
             'name' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
             'email' => ['label' => 'Email', 'type' => 'email'],
             'phone' => ['label' => app_text('auto.k_87ec4b495b56')],
+            'legal_name' => ['label' => 'ФИО / наименование оператора данных', 'hint' => 'Указывается в юридических документах мини-сайта.'],
+            'legal_status' => ['label' => 'Правовой статус', 'hint' => 'Например: плательщик налога на профессиональный доход или индивидуальный предприниматель.'],
+            'legal_inn' => ['label' => 'ИНН оператора данных'],
+            'legal_address' => ['label' => 'Адрес оператора данных'],
+            'legal_email' => ['label' => 'Email по персональным данным', 'type' => 'email'],
+            'legal_phone' => ['label' => 'Телефон оператора данных'],
             'billing_name' => ['label' => 'Плательщик / юр. лицо'],
             'billing_inn' => ['label' => 'ИНН плательщика'],
             'billing_email' => ['label' => 'Email для счетов', 'type' => 'email'],
@@ -301,12 +307,17 @@ return [
             'document_type' => [
                 'label' => 'Тип документа',
                 'type' => 'select',
-                'options' => ['privacy_policy', 'personal_data_consent', 'health_data_consent', 'marketing_consent', 'user_agreement', 'leader_offer'],
+                'options' => legal_document_types(),
                 'required' => true,
             ],
             'title' => ['label' => 'Название', 'required' => true],
-            'version' => ['label' => 'Версия', 'required' => true],
-            'body' => ['label' => 'Текст документа', 'type' => 'textarea', 'required' => true],
+            'version' => ['label' => 'Версия', 'required' => true, 'default' => date('d.m.Y'), 'hint' => 'Русский формат даты: ДД.ММ.ГГГГ'],
+            'body' => [
+                'label' => 'Текст документа',
+                'type' => 'textarea',
+                'required' => true,
+                'hint' => 'SWPro: [SWPRO_NAME], [SWPRO_STATUS], [SWPRO_INN], [SWPRO_ADDRESS], [SWPRO_EMAIL], [SWPRO_PHONE], [SWPRO_SITE]. Лидер: [OPERATOR_NAME], [OPERATOR_STATUS], [OPERATOR_INN], [OPERATOR_ADDRESS], [OPERATOR_EMAIL], [OPERATOR_PHONE], [OPERATOR_SITE].',
+            ],
             'is_required' => ['label' => 'Обязательный', 'type' => 'checkbox', 'default' => 1],
             'is_active' => ['label' => 'Активен', 'type' => 'checkbox', 'default' => 1],
         ],

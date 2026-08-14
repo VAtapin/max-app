@@ -5,6 +5,20 @@ function h(?string $value): string
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
+function app_date_ru(mixed $value, bool $withTime = false, string $empty = '—'): string
+{
+    $raw = trim((string)$value);
+    if ($raw === '') {
+        return $empty;
+    }
+
+    try {
+        return (new DateTimeImmutable($raw))->format($withTime ? 'd.m.Y H:i' : 'd.m.Y');
+    } catch (Throwable) {
+        return $raw;
+    }
+}
+
 function redirect(string $path): never
 {
     header('Location: ' . $path);

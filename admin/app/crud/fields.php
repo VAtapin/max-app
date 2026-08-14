@@ -82,6 +82,10 @@ function safe_select_options(string $source, array $admin, array &$errors): arra
 
 function form_option_label(string $fieldName, string $option): string
 {
+    if ($fieldName === 'document_type') {
+        return legal_document_type_labels()[$option] ?? $option;
+    }
+
     if ($fieldName === 'status') {
         return status_label($option);
     }

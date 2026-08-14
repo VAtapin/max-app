@@ -12,9 +12,11 @@ if ($admin['role'] !== 'superadmin') {
 $title = 'Реквизиты документов';
 $fields = [
     'legal_operator_name' => 'Наименование организации или ФИО оператора',
+    'legal_operator_status' => 'Правовой статус',
     'legal_operator_inn' => 'ИНН',
     'legal_operator_address' => 'Адрес',
     'legal_operator_email' => 'Email для обращений по персональным данным',
+    'legal_operator_phone' => 'Телефон',
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

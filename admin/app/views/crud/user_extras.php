@@ -203,7 +203,7 @@
                             <td><?= h((string)$account['platform_user_id']) ?></td>
                             <td><?= h(crud_cell_value('platform_accounts', 'platform_profile', $account)) ?></td>
                             <td><?= h((string)($account['username'] ?? '')) ?></td>
-                            <td><?= h((string)$account['created_at']) ?></td>
+                            <td><?= h(app_date_ru($account['created_at'], true)) ?></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>

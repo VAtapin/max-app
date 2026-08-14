@@ -9,8 +9,8 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="manifest" href="/site.webmanifest">
     <meta name="theme-color" content="#0b4f86">
-    <link rel="stylesheet" href="style.css?v=20260811-1">
-    <script defer src="app.js?v=20260811-1"></script>
+    <link rel="stylesheet" href="style.css?v=20260814-2">
+    <script defer src="app.js?v=20260814-2"></script>
 </head>
 <body>
     <main class="app">
@@ -40,8 +40,12 @@
         </section>
 
         <div class="legal-links">
-            <a href="/legal.php?type=privacy_policy" target="_blank" rel="noopener">Политика данных</a>
-            <a href="/legal.php?type=user_agreement" target="_blank" rel="noopener">Соглашение</a>
+            <a data-legal-type="leader_privacy_policy" href="/legal.php?type=leader_privacy_policy" target="_blank" rel="noopener" hidden>Политика лидера</a>
+            <a data-legal-type="personal_data_consent" href="/legal.php?type=personal_data_consent" target="_blank" rel="noopener">Обработка данных</a>
+            <a data-legal-type="health_data_consent" href="/legal.php?type=health_data_consent" target="_blank" rel="noopener">Ответы чек-апа</a>
+            <a data-legal-type="marketing_consent" href="/legal.php?type=marketing_consent" target="_blank" rel="noopener">Рассылки</a>
+            <a data-legal-type="user_agreement" href="/legal.php?type=user_agreement" target="_blank" rel="noopener">Соглашение</a>
+            <a data-legal-type="privacy_policy" href="/legal.php?type=privacy_policy" target="_blank" rel="noopener">Политика SWPro</a>
         </div>
     </main>
 </body>

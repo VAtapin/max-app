@@ -75,7 +75,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <div class="billing-status-card">
         <strong><?= h($statusLabels[$workspace['status']] ?? $workspace['status']) ?></strong>
         <?php if ($workspace['billing_mode'] === 'prepaid'): ?>
-            <span>Оплачено до: <?= h((string)($workspace['paid_until'] ?: 'нет оплаты')) ?></span>
+            <span>Оплачено до: <?= h(!empty($workspace['paid_until']) ? app_date_ru($workspace['paid_until']) : 'нет оплаты') ?></span>
         <?php else: ?>
             <span>Расчёт по факту за календарный месяц</span>
             <small>Счёт формируется 1-го числа. Срок оплаты: <?= (int)($plan['payment_grace_days'] ?? 5) ?> дней.</small>
@@ -124,10 +124,10 @@ require __DIR__ . '/../app/views/layouts/header.php';
         <?php foreach ($invoices as $invoice): ?>
             <tr>
                 <td><?= h((string)$invoice['invoice_number']) ?></td>
-                <td><?= h((string)$invoice['period_start']) ?> — <?= h((string)$invoice['period_end']) ?></td>
+                <td><?= h(app_date_ru($invoice['period_start'])) ?> — <?= h(app_date_ru($invoice['period_end'])) ?></td>
                 <td><?= $invoice['invoice_type'] === 'actual' ? 'По факту' : 'Предоплата' ?><?php if ((float)$invoice['discount_amount'] > 0): ?><br><span class="cell-muted">Скидка <?= h((string)$invoice['discount_percent']) ?>%</span><?php endif; ?></td>
                 <td><strong><?= h(subscription_money_text((float)$invoice['amount_due'])) ?></strong></td>
-                <td><span class="badge <?= $invoice['status'] === 'paid' ? 'badge-active' : ($invoice['status'] === 'overdue' ? 'badge-danger' : 'badge-pending') ?>"><?= h((string)$invoice['status']) ?></span><?php if ($invoice['due_at']): ?><br><span class="cell-muted">до <?= h((string)$invoice['due_at']) ?></span><?php endif; ?></td>
+                <td><span class="badge <?= $invoice['status'] === 'paid' ? 'badge-active' : ($invoice['status'] === 'overdue' ? 'badge-danger' : 'badge-pending') ?>"><?= h((string)$invoice['status']) ?></span><?php if ($invoice['due_at']): ?><br><span class="cell-muted">до <?= h(app_date_ru($invoice['due_at'], true)) ?></span><?php endif; ?></td>
                 <td><?php if ($invoice['status'] !== 'paid' && $invoice['status'] !== 'canceled'): ?><a class="button" href="payment_checkout.php?invoice_id=<?= (int)$invoice['id'] ?>">Оплатить</a><?php endif; ?></td>
             </tr>
         <?php endforeach; ?>
@@ -143,7 +143,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <table class="data-table responsive-table"><thead><tr><th>Участник</th><th>Период</th><th>Сумма</th><th>Статус</th><th></th></tr></thead><tbody>
     <?php foreach ($branchInvoices as $invoice): ?><tr>
         <td><strong><?= h((string)$invoice['subject_name']) ?></strong><br><span class="cell-muted"><?= $invoice['unit_type'] === 'leader' ? 'Лидер' : 'Консультант' ?></span></td>
-        <td><?= h((string)$invoice['period_start']) ?> — <?= h((string)$invoice['period_end']) ?></td>
+        <td><?= h(app_date_ru($invoice['period_start'])) ?> — <?= h(app_date_ru($invoice['period_end'])) ?></td>
         <td><?= h(subscription_money_text((float)$invoice['amount_due'])) ?></td><td><?= h((string)$invoice['status']) ?></td>
         <td><a class="button" href="payment_checkout.php?invoice_id=<?= (int)$invoice['id'] ?>">Оплатить</a></td>
     </tr><?php endforeach; ?></tbody></table>

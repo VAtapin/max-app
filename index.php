@@ -4,10 +4,12 @@ require_once __DIR__ . '/admin/app/core/db.php';
 require_once __DIR__ . '/admin/app/core/helpers.php';
 require_once __DIR__ . '/admin/app/core/consultant_profiles.php';
 require_once __DIR__ . '/admin/app/core/workspace_billing.php';
+require_once __DIR__ . '/admin/app/core/legal_documents.php';
 
 $slug = trim((string)($_GET['m'] ?? ''));
 $referralCode = consultant_referral_code($_GET['ref'] ?? $_POST['ref'] ?? null);
 $profile = null;
+$profileReferralCode = null;
 
 if ($slug !== '') {
     $stmt = db()->prepare('SELECT * FROM consultant_profiles WHERE slug = :slug AND is_public = 1 LIMIT 1');
@@ -488,6 +490,36 @@ function public_mini_app_url(?string $referralCode = null, string $page = ''): s
             </div>
         </section>
     </main>
+<?php endif; ?>
+<?php
+$legalRef = $profileReferralCode ?: ($profile ? $referralCode : null);
+$activeLegalDocuments = legal_active_documents();
+$footerDocuments = $profile
+    ? [
+        'leader_privacy_policy' => 'Политика лидера',
+        'personal_data_consent' => 'Обработка данных',
+        'health_data_consent' => 'Ответы чек-апа',
+        'marketing_consent' => 'Рассылки',
+        'user_agreement' => 'Соглашение',
+        'privacy_policy' => 'Политика SWPro',
+    ]
+    : [
+        'privacy_policy' => 'Политика данных',
+        'user_agreement' => 'Пользовательское соглашение',
+        'leader_offer' => 'Публичная оферта',
+    ];
+$footerDocuments = array_filter(
+    $footerDocuments,
+    static fn(string $label, string $documentType): bool => isset($activeLegalDocuments[$documentType]),
+    ARRAY_FILTER_USE_BOTH
+);
+?>
+<?php if ($footerDocuments): ?>
+<footer class="legal-footer" aria-label="Юридические документы">
+    <?php foreach ($footerDocuments as $documentType => $label): ?>
+        <a href="<?= h(legal_document_url($documentType, $legalRef)) ?>" target="_blank" rel="noopener"><?= h($label) ?></a>
+    <?php endforeach; ?>
+</footer>
 <?php endif; ?>
 </body>
 </html>

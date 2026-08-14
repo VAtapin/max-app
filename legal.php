@@ -2,17 +2,10 @@
 
 require_once __DIR__ . '/admin/app/core/db.php';
 require_once __DIR__ . '/admin/app/core/helpers.php';
+require_once __DIR__ . '/admin/app/core/legal_documents.php';
 
 $type = (string)($_GET['type'] ?? 'privacy_policy');
-$allowed = [
-    'privacy_policy',
-    'personal_data_consent',
-    'health_data_consent',
-    'marketing_consent',
-    'user_agreement',
-    'leader_offer',
-];
-if (!in_array($type, $allowed, true)) {
+if (!in_array($type, legal_document_types(), true)) {
     http_response_code(404);
     exit('Документ не найден');
 }
@@ -31,32 +24,13 @@ if (!$document) {
     exit('Документ не опубликован');
 }
 
-$settingsStmt = db()->query(
-    'SELECT setting_key, setting_value
-     FROM settings
-     WHERE setting_key IN (
-        "legal_operator_name",
-        "legal_operator_inn",
-        "legal_operator_address",
-        "legal_operator_email",
-        "leader_monthly_price"
-     )'
-);
-$settings = [];
-foreach ($settingsStmt->fetchAll() as $row) {
-    $settings[(string)$row['setting_key']] = (string)($row['setting_value'] ?? '');
-}
-
-$replacements = [
-    '[ОПЕРАТОР]' => $settings['legal_operator_name'] ?: '[ОПЕРАТОР]',
-    '[УКАЖИТЕ НАИМЕНОВАНИЕ ИЛИ ФИО ОПЕРАТОРА]' => $settings['legal_operator_name'] ?: '[ОПЕРАТОР]',
-    '[ИНН]' => $settings['legal_operator_inn'] ?: '[ИНН]',
-    '[АДРЕС]' => $settings['legal_operator_address'] ?: '[АДРЕС]',
-    '[EMAIL]' => $settings['legal_operator_email'] ?: '[EMAIL]',
-    '[ИСПОЛНИТЕЛЬ]' => $settings['legal_operator_name'] ?: '[ИСПОЛНИТЕЛЬ]',
-    '[СТОИМОСТЬ]' => $settings['leader_monthly_price'] ?: '[СТОИМОСТЬ]',
-];
-$body = strtr((string)$document['body'], $replacements);
+$referralCode = trim((string)($_GET['ref'] ?? ''));
+$resellerId = legal_document_is_leader_scoped($type)
+    ? legal_reseller_id_from_referral($referralCode)
+    : null;
+$rendered = legal_render_document($document, $resellerId);
+$body = $rendered['body'];
+$backUrl = $referralCode !== '' ? '/?ref=' . rawurlencode($referralCode) : '/';
 ?>
 <!doctype html>
 <html lang="ru">
@@ -81,10 +55,10 @@ $body = strtr((string)$document['body'], $replacements);
 </head>
 <body>
 <main>
-    <p><a href="/">← SWPro</a></p>
+    <p><a href="<?= h($backUrl) ?>">← SWPro</a></p>
     <article>
         <h1><?= h((string)$document['title']) ?></h1>
-        <p class="meta">Версия: <?= h((string)$document['version']) ?> · Обновлено: <?= h((string)$document['updated_at']) ?></p>
+        <p class="meta">Версия: <?= h((string)$document['version']) ?> · Обновлено: <?= h(legal_date_ru((string)$document['updated_at'])) ?></p>
         <div><?= nl2br(h($body)) ?></div>
     </article>
 </main>

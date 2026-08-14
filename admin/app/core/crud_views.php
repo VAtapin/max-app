@@ -668,20 +668,24 @@ function is_technical_client_name(string $name): bool
 
 function crud_format_ru_datetime(mixed $value): string
 {
-    $raw = trim((string)$value);
-    if ($raw === '') {
-        return app_text('auto.k_1b93795b9768');
-    }
-
-    try {
-        return (new DateTimeImmutable($raw))->format('d.m.Y H:i');
-    } catch (Throwable) {
-        return $raw;
-    }
+    return app_date_ru($value, true, app_text('auto.k_1b93795b9768'));
 }
 
 function crud_cell_value(string $moduleKey, string $column, array $row): string
 {
+    if ($moduleKey === 'legal_documents' && $column === 'document_type') {
+        $type = (string)($row[$column] ?? '');
+        return legal_document_type_labels()[$type] ?? $type;
+    }
+
+    if (preg_match('/(?:_at|created_at|updated_at)$/', $column)) {
+        return app_date_ru($row[$column] ?? null, true, app_text('auto.k_1b93795b9768'));
+    }
+
+    if (preg_match('/(?:_date|_until|period_start|period_end)$/', $column)) {
+        return app_date_ru($row[$column] ?? null, false, app_text('auto.k_1b93795b9768'));
+    }
+
     if ($column === 'contacts') {
         return trim(($row['email'] ?? '') . "\n" . ($row['phone'] ?? '')) ?: app_text('auto.k_1b93795b9768');
     }
@@ -1705,7 +1709,7 @@ function render_lead_conversation(int $endUserId): string
                     <strong><?= h($isOutgoing ? (string)$item['actor_name'] : 'Клиент') ?></strong>
                     <?= render_platform_badge((string)$item['platform']) ?>
                     <span class="<?= h(status_badge_class($status)) ?>"><?= h($status) ?></span>
-                    <span class="cell-muted"><?= h((string)$item['created_at']) ?></span>
+                    <span class="cell-muted"><?= h(app_date_ru($item['created_at'], true)) ?></span>
                 </div>
                 <?php if ($message !== ''): ?>
                     <div class="lead-response-message"><?= nl2br(h($message)) ?></div>
@@ -1758,7 +1762,7 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
                             <?= render_platform_badge((string)$platform) ?>
                         <?php endforeach; ?>
                         <span class="badge"><?= h(lead_request_type_label((string)($row['request_type'] ?? 'consultation'))) ?></span>
-                        <span class="cell-muted">Последнее: #<?= (int)$row['id'] ?> · <?= h((string)($row['created_at'] ?? '')) ?></span>
+                        <span class="cell-muted">Последнее: #<?= (int)$row['id'] ?> · <?= h(app_date_ru($row['created_at'] ?? null, true)) ?></span>
                     </div>
                     <h3><?= h($user) ?></h3>
                     <div class="lead-chat-preview">
@@ -1770,7 +1774,7 @@ function render_lead_cards(array $rows, bool $canEdit, bool $canDelete): string
                             ?>
                             <div class="lead-chat-row">
                                 <div class="lead-chat-row-head">
-                                    <span class="cell-muted">#<?= (int)$item['id'] ?> · <?= h((string)($item['created_at'] ?? '')) ?></span>
+                                    <span class="cell-muted">#<?= (int)$item['id'] ?> · <?= h(app_date_ru($item['created_at'] ?? null, true)) ?></span>
                                     <span class="<?= h(status_badge_class($itemStatus)) ?>"><?= h($itemStatus) ?></span>
                                 </div>
                                 <p class="lead-card-message"><?= nl2br(h($message)) ?></p>

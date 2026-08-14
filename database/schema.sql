@@ -101,6 +101,12 @@ CREATE TABLE resellers (
   billing_inn VARCHAR(20) NULL,
   billing_email VARCHAR(190) NULL,
   billing_comment VARCHAR(500) NULL,
+  legal_name VARCHAR(190) NULL,
+  legal_status VARCHAR(100) NULL,
+  legal_inn VARCHAR(20) NULL,
+  legal_address VARCHAR(500) NULL,
+  legal_email VARCHAR(190) NULL,
+  legal_phone VARCHAR(50) NULL,
   referral_code VARCHAR(64) NOT NULL UNIQUE,
   manager_limit INT UNSIGNED NULL,
   direct_leader_limit INT UNSIGNED NULL,
@@ -984,7 +990,7 @@ CREATE TABLE broadcast_logs (
 
 CREATE TABLE legal_documents (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  document_type ENUM('privacy_policy', 'personal_data_consent', 'health_data_consent', 'marketing_consent', 'user_agreement', 'leader_offer') NOT NULL,
+  document_type ENUM('privacy_policy', 'leader_privacy_policy', 'personal_data_consent', 'health_data_consent', 'marketing_consent', 'user_agreement', 'leader_offer') NOT NULL,
   title VARCHAR(255) NOT NULL,
   version VARCHAR(50) NOT NULL,
   body MEDIUMTEXT NOT NULL,
@@ -1001,12 +1007,16 @@ CREATE TABLE user_consents (
   end_user_id BIGINT UNSIGNED NOT NULL,
   document_type ENUM('personal_data_consent', 'health_data_consent', 'marketing_consent', 'user_agreement') NOT NULL,
   document_version VARCHAR(50) NOT NULL,
+  operator_reseller_id BIGINT UNSIGNED NULL,
+  document_snapshot MEDIUMTEXT NULL,
+  document_hash CHAR(64) NULL,
   platform ENUM('telegram', 'VK', 'OK', 'MAX', 'web') NOT NULL,
   granted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   revoked_at DATETIME NULL,
   metadata_json JSON NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_user_consents_user_type (end_user_id, document_type, revoked_at),
+  INDEX idx_user_consents_operator (operator_reseller_id),
   CONSTRAINT fk_user_consents_user
     FOREIGN KEY (end_user_id) REFERENCES end_users(id)
     ON DELETE CASCADE ON UPDATE CASCADE

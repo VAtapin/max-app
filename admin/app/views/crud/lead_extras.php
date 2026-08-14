@@ -90,7 +90,7 @@
                                             ? 'Ответ из Telegram'
                                             : ($response['admin_name'] ?? app_text('auto.k_1b93795b9768'))
                                     ) ?></strong>
-                                    <span><?= h($response['created_at']) ?></span>
+                                    <span><?= h(app_date_ru($response['created_at'], true)) ?></span>
                                 </div>
                                 <span class="<?= h(status_badge_class($status)) ?>"><?= h($status) ?></span>
                             </div>

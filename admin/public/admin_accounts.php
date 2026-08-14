@@ -601,7 +601,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                             <?= (int)$account['is_active'] === 1 ? 'Активен' : 'Отключён' ?>
                         </span>
                     </td>
-                    <td data-label="Создан"><?= h((string)$account['created_at']) ?></td>
+                    <td data-label="Создан"><?= h(app_date_ru($account['created_at'], true)) ?></td>
                     <td data-label="Действия" class="row-actions">
                         <a class="link-button" href="admin_accounts.php?action=edit&id=<?= (int)$account['id'] ?>">Редактировать</a>
                         <form method="post" class="inline-form" onsubmit="return confirm('Удалить эту учётную запись?');">

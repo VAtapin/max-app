@@ -96,7 +96,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <td><strong><?= h((string)$workspace['subject_name']) ?></strong><br><span class="cell-muted"><?= h((string)$workspace['plan_title']) ?></span></td>
 <td><?= h(['base'=>'База','leader'=>'Лидер','consultant'=>'Консультант'][$workspace['unit_type']] ?? $workspace['unit_type']) ?></td>
 <td><?= $workspace['billing_mode'] === 'actual' ? 'По факту' : 'Предоплата' ?></td><td><?= h(subscription_money_text((float)$workspace['monthly_price'])) ?></td>
-<td><?= h((string)($workspace['paid_until'] ?: '—')) ?></td><td><?= h((string)$workspace['status']) ?></td>
+<td><?= h(app_date_ru($workspace['paid_until'] ?? null)) ?></td><td><?= h((string)$workspace['status']) ?></td>
 <td><details><summary>Изменить</summary>
 <form method="post" class="compact-form"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="root_id" value="<?= $rootId ?>"><input type="hidden" name="workspace_id" value="<?= (int)$workspace['id'] ?>"><input type="hidden" name="action" value="extend"><input type="number" min="1" name="days" value="30"><input name="note" placeholder="Причина" required><button>Продлить</button></form>
 <form method="post" class="compact-form" onsubmit="return confirm('Списать все открытые счета этого рабочего места?')"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="root_id" value="<?= $rootId ?>"><input type="hidden" name="workspace_id" value="<?= (int)$workspace['id'] ?>"><input type="hidden" name="action" value="writeoff"><input name="note" placeholder="Причина" required><button class="danger-button">Списать долг</button></form>
