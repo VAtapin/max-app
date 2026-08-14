@@ -306,13 +306,29 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <section class="panel ai-studio-create"><div class="ai-studio-heading"><div><h2>Создать материал с OpenAI</h2><p class="cell-muted">Выберите формат, источник и при необходимости клиента — готовый текст откроется сразу под этой формой.</p></div><span class="ai-status <?= $openAiReady ? 'is-ready' : 'is-offline' ?>"><?= $openAiReady ? 'OpenAI подключён' : 'OpenAI выключен' ?></span></div>
 <div class="ai-studio-steps"><span><b>1</b> Выберите формат</span><span><b>2</b> Укажите тему</span><span><b>3</b> Получите и проверьте текст</span></div>
 <form method="post" class="crud-form"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="create">
-    <label class="field"><span>Формат</span><select name="draft_type"><option value="post">Пост для соцсетей</option><option value="campaign">Кампания/рассылка</option><option value="greeting">Поздравление</option><option value="video_script">Сценарий видео</option><option value="voice_script">Сценарий голосового сообщения</option><option value="product_description">Описание продукта</option></select></label>
+    <label class="field"><span>Формат</span><select name="draft_type" id="ai-draft-type"><option value="post">Пост для соцсетей</option><option value="campaign">Кампания/рассылка</option><option value="greeting">Поздравление</option><option value="video_script">Сценарий видео</option><option value="voice_script">Сценарий голосового сообщения</option><option value="product_description">Описание продукта</option></select></label>
     <label class="field"><span>Утверждённый источник</span><select name="source_key"><option value="">Без источника — только повод</option><?php foreach ($sources as $source): ?><option value="<?= h((string)$source['source_key']) ?>"><?= h((string)$source['title']) ?></option><?php endforeach; ?></select></label>
-    <label class="field"><span>Персонализация для клиента</span><select name="end_user_id"><option value="">Без персонализации</option><?php foreach ($clients as $client): ?><option value="<?= (int)$client['id'] ?>"><?= h(trim((string)$client['first_name'] . ' ' . (string)$client['last_name']) ?: 'Клиент #' . (int)$client['id']) ?></option><?php endforeach; ?></select><small class="field-hint">Для личных поздравлений и сценариев сведения помогают подобрать содержание, но не перечисляются в тексте. В публичных постах данные клиента не используются. Контакты, точный адрес, ID аккаунтов, логины и токены не передаются.</small></label>
+    <label class="field" id="ai-client-personalization"><span>Персонализация для клиента</span><select name="end_user_id"><option value="">Без персонализации</option><?php foreach ($clients as $client): ?><option value="<?= (int)$client['id'] ?>"><?= h(trim((string)$client['first_name'] . ' ' . (string)$client['last_name']) ?: 'Клиент #' . (int)$client['id']) ?></option><?php endforeach; ?></select><small class="field-hint">Для личных поздравлений и сценариев сведения помогают подобрать содержание, но не перечисляются в тексте. Контакты, точный адрес, ID аккаунтов, логины и токены не передаются.</small></label>
     <label class="field wide"><span>Повод или тема</span><input name="occasion" value="<?= h($seasonal) ?>"></label>
     <?php if ($openAiReady): ?><div class="notice wide">OpenAI получит тему, утверждённый материал и выбранные сведения для персонализации. Контакты, точный адрес, ID, логины и токены не передаются.</div><?php else: ?><div class="alert wide"><strong>Создание текста недоступно.</strong> Суперадминистратору нужно включить OpenAI для AI‑студии в настройках ИИ. Локальный текст вместо ИИ создаваться не будет.<?php if (($admin['role'] ?? '') === 'superadmin'): ?> <a href="ai_settings.php#openai-studio-access">Открыть настройку</a>.<?php endif; ?></div><?php endif; ?>
     <div class="form-actions"><button <?= $openAiReady ? '' : 'disabled' ?>>Создать текст с OpenAI</button><a class="button secondary-button" href="crud.php?module=broadcasts">Рассылки и сегменты</a></div>
 </form><p class="cell-muted">Ничего не публикуется и не рассылается автоматически.</p></section>
+<script>
+(() => {
+    const type = document.getElementById('ai-draft-type');
+    const field = document.getElementById('ai-client-personalization');
+    const select = field?.querySelector('select');
+    if (!type || !field || !select) return;
+    const update = () => {
+        const isPublic = type.value === 'post' || type.value === 'product_description';
+        field.hidden = isPublic;
+        select.disabled = isPublic;
+        if (isPublic) select.value = '';
+    };
+    type.addEventListener('change', update);
+    update();
+})();
+</script>
 
 <?php if ($drafts): ?><section class="panel ai-studio-results"><h2><?= $selectedDraftId > 0 ? 'Готовый текст' : 'Созданные тексты' ?></h2><p class="cell-muted">Проверьте текст, при необходимости исправьте его и сохраните. Последний созданный материал открыт автоматически.</p>
 <?php foreach ($drafts as $draft): $draftOpen = $selectedDraftId > 0 ? (int)$draft['id'] === $selectedDraftId : $draft === $drafts[0]; ?><details id="draft-<?= (int)$draft['id'] ?>" class="faq-manage-item ai-draft-item" <?= $draftOpen ? 'open' : '' ?>><summary><strong><?= h((string)$draft['title']) ?></strong><span class="cell-muted"><?= h((string)$draft['draft_type']) ?> · <?= h((string)$draft['status']) ?> · <?= h((string)($draft['provider'] ?? 'swpro')) ?><?= !empty($draft['model']) ? ' · ' . h((string)$draft['model']) : '' ?></span></summary>
