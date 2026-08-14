@@ -13,6 +13,8 @@ if (($admin['role'] ?? '') !== 'superadmin') {
 $title = 'Настройки ИИ';
 $errors = [];
 $success = (string)($_GET['success'] ?? '');
+$testMessage = '';
+$submittedValues = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -31,6 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'ai.admin_system_prompt' => trim((string)($_POST['admin_system_prompt'] ?? '')),
         'ai.client_system_prompt' => trim((string)($_POST['client_system_prompt'] ?? '')),
     ];
+    $submittedValues = $values;
     if (!in_array($values['ai.text_provider'], ['swpro', 'openai'], true)) {
         $errors[] = 'Выберите корректного текстового провайдера.';
     }
@@ -40,7 +43,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!in_array($values['ai.voice_provider'], ['openai', 'elevenlabs', 'disabled'], true)) {
         $errors[] = 'Выберите корректного голосового провайдера.';
     }
-    if (!$errors) {
+    if (!preg_match('/^[a-zA-Z0-9._:-]{1,100}$/', $values['ai.text_model'])) {
+        $errors[] = 'Укажите корректное название основной модели.';
+    }
+    if (!preg_match('/^[a-zA-Z0-9._:-]{1,100}$/', $values['ai.complex_model'])) {
+        $errors[] = 'Укажите корректное название модели сложных ответов.';
+    }
+    $action = (string)($_POST['action'] ?? 'save');
+    if ($action === 'save' && $values['ai.text_provider'] === 'openai' && !ai_openai_key_configured()) {
+        $errors[] = 'OpenAI нельзя включить: OPENAI_API_KEY не найден на сервере.';
+    }
+    if ($action === 'save' && $values['ai.text_provider'] === 'openai' && $values['ai.external_processing_enabled'] !== '1') {
+        $errors[] = 'Для OpenAI подтвердите разрешение внешней обработки обезличенных материалов.';
+    }
+    if (!$errors && $action === 'test_openai') {
+        try {
+            $test = ai_openai_test($values['ai.text_model']);
+            $testMessage = 'OpenAI подключён. Модель ' . $test['model'] . ' ответила, использовано токенов: ' . $test['total_tokens'] . '.';
+        } catch (Throwable $error) {
+            $errors[] = $error->getMessage();
+        }
+    } elseif (!$errors) {
         $stmt = db()->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (:key, :value) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)');
         foreach ($values as $key => $value) {
             $stmt->execute(['key' => $key, 'value' => $value]);
@@ -56,6 +79,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $settings = ai_settings(true);
+if ($submittedValues !== null && (string)($_POST['action'] ?? '') === 'test_openai') {
+    $settings = array_merge($settings, $submittedValues);
+}
 $value = static fn(string $key, string $default = ''): string => (string)($settings[$key] ?? $default);
 $usage = [];
 try {
@@ -75,6 +101,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 </div>
 
 <?php if ($success === 'saved'): ?><div class="notice success">Настройки ИИ сохранены.</div><?php endif; ?>
+<?php if ($testMessage !== ''): ?><div class="notice success"><?= h($testMessage) ?></div><?php endif; ?>
 <?php foreach ($errors as $error): ?><div class="alert"><?= h($error) ?></div><?php endforeach; ?>
 
 <section class="grid stats-grid">
@@ -90,6 +117,11 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <form method="post" class="panel form-panel crud-form">
     <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
     <label class="check-row wide"><input type="checkbox" name="ai_enabled" value="1" <?= $value('ai.enabled', '0') === '1' ? 'checked' : '' ?>><span><strong>Включить AI-центр</strong><small>Показывает помощника пользователям, у которых функция доступна по подписке.</small></span></label>
+
+    <div class="<?= ai_openai_key_configured() ? 'notice success' : 'alert' ?> wide">
+        <strong>Ключ OpenAI: <?= ai_openai_key_configured() ? 'найден на сервере' : 'не найден' ?>.</strong>
+        <?= ai_openai_key_configured() ? 'Можно выполнить безопасную тестовую проверку.' : 'Добавьте OPENAI_API_KEY в deploy/plesk/live.env.' ?>
+    </div>
 
     <label class="field">
         <span>Текстовый провайдер</span>
@@ -116,12 +148,15 @@ require __DIR__ . '/../app/views/layouts/header.php';
 
     <div class="alert wide">
         <strong>Внешняя обработка данных по умолчанию выключена.</strong><br>
-        SWPro не должен передавать внешнему провайдеру анкеты, результаты чек-апов, историю клиента и закрытые материалы без утверждённых согласий и перечня разрешённых данных.
+        На первом этапе OpenAI используется только помощником админки. Клиентские вопросы, анкеты, результаты опросов, история клиента и профиль во внешний сервис не передаются.
     </div>
     <label class="check-row wide"><input type="checkbox" name="external_processing_enabled" value="1" <?= $value('ai.external_processing_enabled', '0') === '1' ? 'checked' : '' ?>><span>Разрешить внешний провайдер для отдельно утверждённых обезличенных материалов</span></label>
 
     <label class="field wide"><span>Правила помощника админки</span><textarea name="admin_system_prompt" rows="5"><?= h($value('ai.admin_system_prompt')) ?></textarea></label>
     <label class="field wide"><span>Правила помощника клиентов</span><textarea name="client_system_prompt" rows="5"><?= h($value('ai.client_system_prompt')) ?></textarea></label>
-    <div class="form-actions"><button type="submit">Сохранить</button></div>
+    <div class="form-actions">
+        <button type="submit" name="action" value="save">Сохранить</button>
+        <button type="submit" name="action" value="test_openai" class="secondary-button">Проверить OpenAI</button>
+    </div>
 </form>
 <?php require __DIR__ . '/../app/views/layouts/footer.php'; ?>
