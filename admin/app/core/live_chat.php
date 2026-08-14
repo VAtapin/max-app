@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/permissions.php';
 require_once __DIR__ . '/lead_responses.php';
+require_once __DIR__ . '/ai_center.php';
 
 function live_chat_client_row(int $endUserId): ?array
 {
@@ -67,6 +68,7 @@ function live_chat_admin_can_access_thread(array $admin, array $thread): bool
 function live_chat_insert_message(int $threadId, string $senderType, ?int $adminId, ?int $endUserId, string $channel, string $text, array $attachments = [], string $status = 'sent', ?string $dedupeKey = null): int
 {
     $text = mb_substr(trim($text), 0, 8000, 'UTF-8');
+    $senderType = in_array($senderType, ['admin', 'client', 'system', 'ai'], true) ? $senderType : 'system';
     $stmt = db()->prepare('INSERT INTO chat_messages (thread_id, sender_type, sender_admin_user_id, sender_end_user_id, channel, message_text, attachments_json, status, dedupe_key) VALUES (:thread_id, :sender_type, :admin_id, :user_id, :channel, :message_text, :attachments, :status, :dedupe_key) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)');
     $stmt->execute([
         'thread_id' => $threadId,
@@ -158,14 +160,37 @@ function live_chat_send_client(array $admin, int $endUserId, string $text, ?stri
     return ['ok' => $status === 'sent', 'error' => $result['error'] ?? null, 'thread_id' => $threadId, 'message_id' => $messageId, 'channel' => $channel];
 }
 
-function live_chat_send_team(array $admin, string $text, array $attachments = []): array
+function live_chat_send_team(array $admin, string $text, array $attachments = [], bool $includeAi = false): array
 {
     $threadId = live_chat_ensure_team_thread($admin);
     $text = mb_substr(trim($text), 0, 8000, 'UTF-8');
+    $aiQuestion = $text;
     if ($text === '' && $attachments) $text = 'Вложение';
     if (!$threadId || $text === '') return ['ok' => false, 'error' => 'Введите сообщение.'];
     $messageId = live_chat_insert_message($threadId, 'admin', (int)$admin['id'], null, 'internal', $text, $attachments, 'sent');
-    return ['ok' => true, 'thread_id' => $threadId, 'message_id' => $messageId, 'channel' => 'internal'];
+    $aiMessageId = null;
+    $aiError = null;
+    if ($includeAi) {
+        if ($aiQuestion === '') {
+            $aiError = 'Для ответа ИИ добавьте текст к сообщению.';
+        } else {
+            $answer = ai_answer($aiQuestion, 'admin', $admin, 'admin', 'team-chat');
+            $answerText = trim((string)($answer['answer'] ?? ''));
+            if (!empty($answer['ok']) && $answerText !== '') {
+                $aiMessageId = live_chat_insert_message($threadId, 'ai', null, null, 'internal', $answerText, [], 'sent');
+            } else {
+                $aiError = (string)($answer['error'] ?? 'ИИ не смог подготовить ответ.');
+            }
+        }
+    }
+    return [
+        'ok' => true,
+        'thread_id' => $threadId,
+        'message_id' => $messageId,
+        'ai_message_id' => $aiMessageId,
+        'ai_error' => $aiError,
+        'channel' => 'internal',
+    ];
 }
 
 function live_chat_mark_read(int $threadId, int $adminId): void
@@ -186,7 +211,12 @@ function live_chat_message_rows(int $threadId, int $afterId = 0): array
     foreach ($rows as &$row) {
         $row['attachments'] = $row['attachments_json'] ? (json_decode((string)$row['attachments_json'], true) ?: []) : [];
         unset($row['attachments_json'], $row['error_text'], $row['thread_id'], $row['sender_admin_user_id'], $row['sender_end_user_id'], $row['dedupe_key']);
-        $row['sender_name'] = $row['sender_type'] === 'client' ? trim((string)$row['first_name'] . ' ' . (string)$row['last_name']) : (string)($row['admin_name'] ?: 'SWPro');
+        $row['sender_name'] = match ((string)$row['sender_type']) {
+            'client' => trim((string)$row['first_name'] . ' ' . (string)$row['last_name']),
+            'ai' => 'ИИ SWPro',
+            'system' => 'SWPro',
+            default => (string)($row['admin_name'] ?: 'Команда'),
+        };
     }
     unset($row);
     return $rows;

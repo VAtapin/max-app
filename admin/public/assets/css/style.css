@@ -1592,6 +1592,7 @@ button:disabled {
 .dashboard-chat-layout { display: grid; grid-template-columns: minmax(230px, 30%) minmax(0, 1fr); min-height: 540px; }
 .dashboard-chat-sidebar { border-right: 1px solid #dce6e9; background: #f8fbfb; }
 .dashboard-chat-search { display: block; padding: 12px; }
+.dashboard-chat-search[hidden] { display: none; }
 .dashboard-chat-search input { width: 100%; }
 .dashboard-chat-threads { max-height: 500px; overflow-y: auto; }
 .dashboard-chat-thread { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; gap: 10px; padding: 12px 14px; color: #243843; text-align: left; border: 0; border-top: 1px solid #e5edef; border-radius: 0; background: transparent; box-shadow: none; }
@@ -1612,6 +1613,8 @@ button:disabled {
 .dashboard-chat-messages { display: flex; flex-direction: column; gap: 10px; max-height: 450px; padding: 18px; overflow-y: auto; background: #f2f6f7; }
 .dashboard-chat-message { align-self: flex-end; width: min(76%, 680px); padding: 10px 13px; border-radius: 15px 15px 4px 15px; background: #d9efec; box-shadow: 0 2px 8px rgba(20,60,70,.06); }
 .dashboard-chat-message.is-client { align-self: flex-start; border-radius: 15px 15px 15px 4px; background: #fff; }
+.dashboard-chat-message.is-ai { align-self: flex-start; border: 1px solid #9bd5e8; border-radius: 15px 15px 15px 4px; background: #edf9fd; }
+.dashboard-chat-message.is-ai > div:first-child strong { color: #087a9c; }
 .dashboard-chat-message > div:first-child { display: flex; justify-content: space-between; gap: 8px; color: #657981; font-size: 10px; }
 .dashboard-chat-message > div:first-child strong { color: #25434a; font-size: 11px; }
 .dashboard-chat-message p { margin: 5px 0 0; line-height: 1.45; overflow-wrap: anywhere; }
@@ -1621,6 +1624,10 @@ button:disabled {
 .dashboard-chat-compose textarea { min-height: 46px; max-height: 130px; resize: vertical; }
 .dashboard-chat-compose > small,
 .dashboard-chat-compose .form-error { grid-column: 2 / -1; }
+.dashboard-chat-ai-toggle { grid-column: 2 / -1; display: flex; align-items: center; gap: 7px; margin: 0; }
+.dashboard-chat-ai-toggle[hidden] { display: none; }
+.dashboard-chat-ai-toggle small { color: #71858d; font-weight: 400; }
+.dashboard-chat-internal-channel { color: #63777f; font-size: 12px; }
 .dashboard-chat-attach { width: 44px; padding: 0; font-size: 22px; }
 @media (max-width: 760px) {
     .dashboard-chat-layout { grid-template-columns: 1fr; }

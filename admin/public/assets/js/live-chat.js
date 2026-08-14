@@ -8,6 +8,7 @@
         title: root.querySelector('[data-chat-title]'), subtitle: root.querySelector('[data-chat-subtitle]'), messages: root.querySelector('[data-chat-messages]'),
         form: root.querySelector('[data-chat-form]'), input: root.querySelector('[data-chat-input]'), send: root.querySelector('[data-chat-send]'), error: root.querySelector('[data-chat-error]'),
         connection: root.querySelector('[data-chat-connection]'), channelWrap: root.querySelector('[data-chat-channel-wrap]'), channel: root.querySelector('[data-chat-channel]'),
+        teamChannel: root.querySelector('[data-chat-team-channel]'), aiWrap: root.querySelector('[data-chat-ai-wrap]'), ai: root.querySelector('[data-chat-ai]'),
         attach: root.querySelector('[data-chat-attach]'), file: root.querySelector('[data-chat-file]'), fileName: root.querySelector('[data-chat-file-name]'),
         clientUnread: root.querySelector('[data-client-unread]'), teamUnread: root.querySelector('[data-team-unread]'),
     };
@@ -42,7 +43,8 @@
         elements.messages.innerHTML = messages.map(message => {
             const attachments = (message.attachments || []).map(path => typeof path === 'string' ? `<a href="${escapeHtml(path)}" target="_blank" rel="noopener">Вложение</a>` : '').join('');
             const status = message.status === 'failed' ? `<small class="chat-message-error">Ошибка отправки</small>` : '';
-            return `<article class="dashboard-chat-message ${message.sender_type === 'client' ? 'is-client' : 'is-admin'}"><div><strong>${escapeHtml(message.sender_name || (message.sender_type === 'admin' ? 'Команда' : 'Клиент'))}</strong><span>${escapeHtml(message.channel === 'internal' ? '' : message.channel)} ${escapeHtml(dateLabel(message.created_at))}</span></div><p>${escapeHtml(message.message_text).replace(/\n/g, '<br>')}</p>${attachments ? `<div class="dashboard-chat-attachments">${attachments}</div>` : ''}${status}</article>`;
+            const senderClass = message.sender_type === 'client' ? 'is-client' : (message.sender_type === 'ai' ? 'is-ai' : 'is-admin');
+            return `<article class="dashboard-chat-message ${senderClass}"><div><strong>${escapeHtml(message.sender_name || (message.sender_type === 'admin' ? 'Команда' : 'Клиент'))}</strong><span>${escapeHtml(message.channel === 'internal' ? '' : message.channel)} ${escapeHtml(dateLabel(message.created_at))}</span></div><p>${escapeHtml(message.message_text).replace(/\n/g, '<br>')}</p>${attachments ? `<div class="dashboard-chat-attachments">${attachments}</div>` : ''}${status}</article>`;
         }).join('');
         state.lastMessageId = Math.max(...messages.map(message => Number(message.id) || 0));
         elements.messages.scrollTop = elements.messages.scrollHeight;
@@ -58,6 +60,9 @@
             elements.title.textContent = title;
             elements.subtitle.textContent = isTeam ? 'Все лидеры и консультанты ветки' : 'Личный диалог с клиентом';
             elements.channelWrap.hidden = isTeam;
+            elements.teamChannel.hidden = !isTeam;
+            elements.aiWrap.hidden = !isTeam;
+            elements.input.placeholder = isTeam ? 'Напишите сообщение команде…' : 'Напишите сообщение клиенту…';
             elements.input.disabled = false; elements.send.disabled = false;
         } catch (error) { elements.error.textContent = error.message; }
     };
@@ -96,9 +101,15 @@
         const text = elements.input.value.trim(); if (!text && !elements.file.files.length) return;
         const body = new FormData(); body.set('csrf_token', csrf); body.set('action', 'send'); body.set('kind', state.kind); body.set('message', text);
         if (state.kind === 'client') { body.set('end_user_id', state.selected.end_user_id); body.set('channel', elements.channel.value); }
+        if (state.kind === 'team' && elements.ai.checked) body.set('include_ai', '1');
         [...elements.file.files].forEach(file => body.append('attachments[]', file));
         elements.send.disabled = true; elements.error.textContent = '';
-        try { await api('?action=send', {method:'POST', body}); elements.input.value = ''; elements.file.value = ''; elements.fileName.textContent = ''; await loadList(); await loadMessages(); }
+        try {
+            const result = await api('?action=send', {method:'POST', body});
+            elements.input.value = ''; elements.file.value = ''; elements.fileName.textContent = ''; elements.ai.checked = false;
+            await loadList(); await loadMessages();
+            if (result.ai_error) elements.error.textContent = `Сообщение отправлено, но ИИ не ответил: ${result.ai_error}`;
+        }
         catch (error) { elements.error.textContent = error.message; }
         finally { elements.send.disabled = false; elements.input.focus(); }
     });

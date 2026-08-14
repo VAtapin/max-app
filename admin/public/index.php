@@ -352,6 +352,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                 <header class="dashboard-chat-dialog-head">
                     <div><strong data-chat-title>Выберите диалог</strong><small data-chat-subtitle></small></div>
                     <label data-chat-channel-wrap hidden><span>Канал</span><select data-chat-channel><option value="">Автоматически</option><option value="VK">VK</option><option value="telegram">Telegram</option><option value="MAX">MAX</option><option value="OK">OK</option><option value="web">Web</option></select></label>
+                    <span class="dashboard-chat-internal-channel" data-chat-team-channel hidden>Канал: <strong>Админка</strong></span>
                 </header>
                 <div class="dashboard-chat-messages" data-chat-messages><div class="empty-state">Выберите клиента или чат команды.</div></div>
                 <form class="dashboard-chat-compose" data-chat-form enctype="multipart/form-data">
@@ -359,6 +360,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
                     <button type="button" class="secondary-button dashboard-chat-attach" data-chat-attach aria-label="Прикрепить файл">＋</button>
                     <textarea name="message" rows="2" placeholder="Напишите сообщение…" data-chat-input disabled></textarea>
                     <button type="submit" data-chat-send disabled>Отправить</button>
+                    <label class="dashboard-chat-ai-toggle" data-chat-ai-wrap hidden><input type="checkbox" data-chat-ai> <span>В том числе ИИ</span><small>Только это сообщение будет передано ИИ для ответа.</small></label>
                     <small data-chat-file-name></small>
                     <div class="form-error" data-chat-error></div>
                 </form>

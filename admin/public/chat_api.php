@@ -68,7 +68,7 @@ try {
             if ($errors) admin_chat_json(['error' => implode(' ', $errors)], 422);
             $kind = (string)($_POST['kind'] ?? 'client');
             $result = $kind === 'team'
-                ? live_chat_send_team($admin, $text, $attachments)
+                ? live_chat_send_team($admin, $text, $attachments, isset($_POST['include_ai']))
                 : live_chat_send_client($admin, max(0, (int)($_POST['end_user_id'] ?? 0)), $text, (string)($_POST['channel'] ?? ''), $attachments);
             admin_chat_json($result, !empty($result['ok']) ? 201 : 422);
         }
