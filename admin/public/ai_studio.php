@@ -340,6 +340,12 @@ require __DIR__ . '/../app/views/layouts/header.php';
 </details><?php endforeach; ?></section><?php endif; ?>
 
 <section class="panel ai-card-section"><div class="ai-studio-heading"><div><h2>Карточки для отправки</h2><p class="cell-muted">Готовые изображения с вашей ссылкой и QR‑кодом. Их можно скачать как PNG или сразу отправить с телефона.</p></div></div>
+<div class="ai-card-themes" role="group" aria-label="Оформление карточек">
+    <button type="button" class="ai-card-theme is-active" data-card-theme="ocean" aria-pressed="true"><span class="ai-theme-preview theme-ocean"></span><span><strong>Океан</strong><small>Основной фирменный</small></span></button>
+    <button type="button" class="ai-card-theme" data-card-theme="pearl" aria-pressed="false"><span class="ai-theme-preview theme-pearl"></span><span><strong>Жемчуг</strong><small>Светлый и спокойный</small></span></button>
+    <button type="button" class="ai-card-theme" data-card-theme="botanical" aria-pressed="false"><span class="ai-theme-preview theme-botanical"></span><span><strong>Ботаника</strong><small>Натуральный зелёный</small></span></button>
+    <button type="button" class="ai-card-theme" data-card-theme="berry" aria-pressed="false"><span class="ai-theme-preview theme-berry"></span><span><strong>Ягода</strong><small>Тёплый выразительный</small></span></button>
+</div>
 <div class="ai-card-grid">
     <article class="ai-card-item"><div><h3>Горизонтальная визитка</h3><p class="cell-muted">Для сообщений, публикаций и превью ссылки.</p></div><canvas id="ai-card-wide" data-variant="wide" aria-label="Горизонтальная персональная карточка"></canvas><div class="form-actions"><button type="button" class="secondary-button ai-card-download" data-canvas="ai-card-wide" data-name="swpro-card.png" disabled>Скачать PNG</button><button type="button" class="secondary-button ai-card-share" data-canvas="ai-card-wide" data-name="swpro-card.png" disabled>Поделиться</button></div></article>
     <article class="ai-card-item"><div><h3>Вертикальная карточка</h3><p class="cell-muted">Для историй и публикаций в мобильных соцсетях.</p></div><canvas id="ai-card-story" data-variant="story" aria-label="Вертикальная персональная карточка"></canvas><div class="form-actions"><button type="button" class="secondary-button ai-card-download" data-canvas="ai-card-story" data-name="swpro-story.png" disabled>Скачать PNG</button><button type="button" class="secondary-button ai-card-share" data-canvas="ai-card-story" data-name="swpro-story.png" disabled>Поделиться</button></div></article>
@@ -391,68 +397,135 @@ require __DIR__ . '/../app/views/layouts/header.php';
         return lines;
     };
     const drawLines = (ctx, lines, x, y, lineHeight) => lines.forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight));
+    const themes = {
+        ocean: {text: '#ffffff', muted: '#d8f7f3', accent: '#b9fff2', dark: '#073b5c', panel: '#ffffff', stops: ['#063a5a', '#087481', '#27a9a2']},
+        pearl: {text: '#172a39', muted: '#526872', accent: '#9b365e', dark: '#792747', panel: '#ffffff', stops: ['#fffaf2', '#f5eadb', '#e9d5cb']},
+        botanical: {text: '#fffdf5', muted: '#dcebd9', accent: '#f4d79b', dark: '#244b37', panel: '#fffdf8', stops: ['#173e35', '#356c4d', '#78966b']},
+        berry: {text: '#ffffff', muted: '#ffe5ec', accent: '#ffd5a7', dark: '#742b4a', panel: '#fffafc', stops: ['#672340', '#9d3d63', '#d16d72']},
+    };
+    let selectedTheme = localStorage.getItem('swpro.cardTheme');
+    if (!themes[selectedTheme]) selectedTheme = 'ocean';
+    const theme = () => themes[selectedTheme];
     const drawBackground = (ctx, width, height) => {
+        const colors = theme();
         const gradient = ctx.createLinearGradient(0, 0, width, height);
-        gradient.addColorStop(0, '#073b5c');
-        gradient.addColorStop(.58, '#087885');
-        gradient.addColorStop(1, '#27a9a2');
+        gradient.addColorStop(0, colors.stops[0]);
+        gradient.addColorStop(.58, colors.stops[1]);
+        gradient.addColorStop(1, colors.stops[2]);
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, width, height);
-        ctx.globalAlpha = .09;
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(width * .9, height * .08, width * .28, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 1;
+        ctx.save();
+        if (selectedTheme === 'ocean') {
+            ctx.globalAlpha = .1; ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(width * .91, height * .08, width * .3, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = .18; ctx.strokeStyle = '#b9fff2'; ctx.lineWidth = Math.max(3, width / 320);
+            ctx.beginPath(); ctx.moveTo(-40, height * .78); ctx.bezierCurveTo(width * .28, height * .58, width * .55, height * .98, width + 40, height * .72); ctx.stroke();
+        } else if (selectedTheme === 'pearl') {
+            ctx.globalAlpha = .5; ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(width * .86, height * .08, width * .3, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = .25; ctx.fillStyle = '#a23f66';
+            ctx.beginPath(); ctx.arc(width * .05, height * .96, width * .22, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = .6; ctx.strokeStyle = '#c69b55'; ctx.lineWidth = Math.max(3, width / 330);
+            ctx.beginPath(); ctx.moveTo(width * .05, height * .16); ctx.bezierCurveTo(width * .34, height * .02, width * .64, height * .3, width * .96, height * .13); ctx.stroke();
+        } else if (selectedTheme === 'botanical') {
+            ctx.globalAlpha = .16; ctx.strokeStyle = '#f4d79b'; ctx.lineWidth = Math.max(3, width / 360);
+            for (let i = 0; i < 4; i++) {
+                const x = width * (.73 + i * .07), y = height * (.12 + i * .12);
+                ctx.beginPath(); ctx.moveTo(x, y + height * .28); ctx.quadraticCurveTo(x + width * .05, y + height * .1, x + width * .02, y); ctx.stroke();
+                ctx.beginPath(); ctx.ellipse(x - width * .018, y + height * .12, width * .035, height * .07, -.6, 0, Math.PI * 2); ctx.stroke();
+                ctx.beginPath(); ctx.ellipse(x + width * .04, y + height * .19, width * .035, height * .07, .6, 0, Math.PI * 2); ctx.stroke();
+            }
+        } else {
+            ctx.globalAlpha = .12; ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(width * .86, height * .04, width * .32, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = .13; ctx.fillStyle = '#ffd5a7';
+            ctx.beginPath(); ctx.arc(width * .04, height * .98, width * .28, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = .25; ctx.strokeStyle = '#ffd5a7'; ctx.lineWidth = Math.max(3, width / 340);
+            ctx.beginPath(); ctx.moveTo(width * .58, -20); ctx.bezierCurveTo(width * .48, height * .28, width * .75, height * .46, width * .62, height + 20); ctx.stroke();
+        }
+        ctx.restore();
+    };
+    const ellipsize = (ctx, value, maxWidth) => {
+        let text = String(value || '');
+        if (ctx.measureText(text).width <= maxWidth) return text;
+        while (text.length > 2 && ctx.measureText(text + '…').width > maxWidth) text = text.slice(0, -1);
+        return text.trim() + '…';
+    };
+    const drawQrPanel = (ctx, qr, x, y, width, height, qrSize, label) => {
+        const colors = theme();
+        roundRect(ctx, x, y, width, height, Math.round(width * .11)); ctx.fillStyle = colors.panel; ctx.fill();
+        if (qr) ctx.drawImage(qr, x + (width - qrSize) / 2, y + 24, qrSize, qrSize);
+        ctx.fillStyle = colors.dark; ctx.font = `700 ${Math.max(18, Math.round(width * .075))}px Arial, sans-serif`; ctx.textAlign = 'center';
+        ctx.fillText(label, x + width / 2, y + height - 26); ctx.textAlign = 'left';
     };
     const renderWide = (canvas, photo, qr) => {
         canvas.width = 1200; canvas.height = 630;
         const ctx = canvas.getContext('2d');
         drawBackground(ctx, canvas.width, canvas.height);
-        ctx.fillStyle = '#b9fff2'; ctx.font = '700 30px Arial, sans-serif'; ctx.fillText('SWPro', 70, 78);
+        const colors = theme();
+        ctx.fillStyle = colors.accent; ctx.font = '700 30px Arial, sans-serif'; ctx.fillText('SWPro', 70, 72);
         let textX = 70;
         if (photo) {
-            ctx.save(); ctx.beginPath(); ctx.arc(170, 245, 92, 0, Math.PI * 2); ctx.clip(); coverImage(ctx, photo, 78, 153, 184, 184); ctx.restore();
-            ctx.strokeStyle = '#fff'; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(170, 245, 95, 0, Math.PI * 2); ctx.stroke();
-            textX = 315;
+            ctx.save(); ctx.beginPath(); ctx.arc(155, 235, 82, 0, Math.PI * 2); ctx.clip(); coverImage(ctx, photo, 73, 153, 164, 164); ctx.restore();
+            ctx.strokeStyle = colors.panel; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(155, 235, 85, 0, Math.PI * 2); ctx.stroke();
+            textX = 280;
         }
-        ctx.fillStyle = '#fff'; ctx.font = '700 52px Arial, sans-serif';
-        const nameLines = fitText(ctx, profile.name, 555, 2); drawLines(ctx, nameLines, textX, 205, 58);
-        ctx.fillStyle = '#dffaf7'; ctx.font = '28px Arial, sans-serif';
-        const subtitleY = 205 + nameLines.length * 58 + 15;
-        drawLines(ctx, fitText(ctx, profile.subtitle, 555, 2), textX, subtitleY, 38);
-        ctx.fillStyle = '#fff'; ctx.font = '700 25px Arial, sans-serif'; ctx.fillText('Чек‑ап  •  полезные материалы  •  личная поддержка', 70, 485);
-        ctx.fillStyle = '#d9f6f2'; ctx.font = '22px Arial, sans-serif'; ctx.fillText(profile.url, 70, 535);
-        roundRect(ctx, 915, 280, 225, 255, 28); ctx.fillStyle = '#fff'; ctx.fill();
-        if (qr) ctx.drawImage(qr, 935, 300, 185, 185);
-        ctx.fillStyle = '#073b5c'; ctx.font = '700 19px Arial, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Открыть мини‑сайт', 1027, 515); ctx.textAlign = 'left';
+        ctx.fillStyle = colors.text; ctx.font = `700 ${profile.name.length > 28 ? 43 : 50}px Arial, sans-serif`;
+        const nameLines = fitText(ctx, profile.name, 540, 2); drawLines(ctx, nameLines, textX, 205, 55);
+        ctx.fillStyle = colors.muted; ctx.font = '27px Arial, sans-serif';
+        const subtitleY = 205 + nameLines.length * 55 + 15;
+        drawLines(ctx, fitText(ctx, profile.subtitle, 540, 2), textX, subtitleY, 37);
+        ctx.fillStyle = colors.text; ctx.font = '700 25px Arial, sans-serif';
+        drawLines(ctx, fitText(ctx, 'Чек‑ап • полезные материалы • личная поддержка', 760, 2), 70, 485, 32);
+        ctx.fillStyle = colors.muted; ctx.font = '22px Arial, sans-serif'; ctx.fillText(ellipsize(ctx, profile.url, 760), 70, 550);
+        drawQrPanel(ctx, qr, 900, 135, 235, 305, 185, 'Открыть сайт');
     };
     const renderStory = (canvas, photo, qr) => {
         canvas.width = 1080; canvas.height = 1350;
         const ctx = canvas.getContext('2d');
         drawBackground(ctx, canvas.width, canvas.height);
-        ctx.fillStyle = '#b9fff2'; ctx.font = '700 42px Arial, sans-serif'; ctx.fillText('SWPro', 80, 100);
+        const colors = theme();
+        ctx.fillStyle = colors.accent; ctx.font = '700 42px Arial, sans-serif'; ctx.fillText('SWPro', 80, 92);
         if (photo) {
-            ctx.save(); ctx.beginPath(); ctx.arc(200, 300, 120, 0, Math.PI * 2); ctx.clip(); coverImage(ctx, photo, 80, 180, 240, 240); ctx.restore();
-            ctx.strokeStyle = '#fff'; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(200, 300, 125, 0, Math.PI * 2); ctx.stroke();
+            ctx.save(); ctx.beginPath(); ctx.arc(185, 260, 105, 0, Math.PI * 2); ctx.clip(); coverImage(ctx, photo, 80, 155, 210, 210); ctx.restore();
+            ctx.strokeStyle = colors.panel; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(185, 260, 110, 0, Math.PI * 2); ctx.stroke();
         }
-        const textX = photo ? 370 : 80;
-        ctx.fillStyle = '#fff'; ctx.font = '700 58px Arial, sans-serif';
-        const nameLines = fitText(ctx, profile.name, photo ? 620 : 900, 3); drawLines(ctx, nameLines, textX, photo ? 255 : 230, 66);
-        ctx.fillStyle = '#dffaf7'; ctx.font = '30px Arial, sans-serif';
-        drawLines(ctx, fitText(ctx, profile.subtitle, photo ? 620 : 900, 3), textX, (photo ? 255 : 230) + nameLines.length * 66 + 22, 42);
-        ctx.fillStyle = '#fff'; ctx.font = '700 38px Arial, sans-serif'; ctx.fillText('Всё полезное — в одном месте', 80, 610);
-        ctx.fillStyle = '#dffaf7'; ctx.font = '29px Arial, sans-serif';
-        drawLines(ctx, ['Чек‑ап ощущений', 'Полезные материалы', 'Личная поддержка'], 80, 675, 54);
-        roundRect(ctx, 590, 600, 370, 430, 34); ctx.fillStyle = '#fff'; ctx.fill();
-        if (qr) ctx.drawImage(qr, 635, 645, 280, 280);
-        ctx.fillStyle = '#073b5c'; ctx.font = '700 25px Arial, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Наведите камеру', 775, 980); ctx.textAlign = 'left';
-        roundRect(ctx, 80, 1110, 880, 110, 28); ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.font = '700 29px Arial, sans-serif'; ctx.fillText('Открыть персональную страницу', 120, 1160);
-        ctx.fillStyle = '#dffaf7'; ctx.font = '22px Arial, sans-serif'; ctx.fillText(profile.url, 120, 1198);
+        const textX = photo ? 345 : 80;
+        ctx.fillStyle = colors.text; ctx.font = `700 ${profile.name.length > 28 ? 48 : 56}px Arial, sans-serif`;
+        const nameLines = fitText(ctx, profile.name, photo ? 650 : 900, 2); drawLines(ctx, nameLines, textX, photo ? 230 : 205, 62);
+        ctx.fillStyle = colors.muted; ctx.font = '29px Arial, sans-serif';
+        drawLines(ctx, fitText(ctx, profile.subtitle, photo ? 650 : 900, 2), textX, (photo ? 230 : 205) + nameLines.length * 62 + 18, 40);
+        ctx.globalAlpha = .28; ctx.strokeStyle = colors.accent; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(80, 430); ctx.lineTo(1000, 430); ctx.stroke(); ctx.globalAlpha = 1;
+        ctx.fillStyle = colors.text; ctx.font = '700 36px Arial, sans-serif';
+        drawLines(ctx, fitText(ctx, 'Всё полезное — в одном месте', 430, 2), 80, 525, 45);
+        ctx.fillStyle = colors.muted; ctx.font = '28px Arial, sans-serif';
+        drawLines(ctx, ['Чек‑ап ощущений', 'Полезные материалы', 'Личная поддержка'], 80, 655, 56);
+        drawQrPanel(ctx, qr, 590, 500, 380, 440, 290, 'Наведите камеру');
+        roundRect(ctx, 80, 1070, 890, 140, 28); ctx.fillStyle = selectedTheme === 'pearl' ? 'rgba(255,255,255,.62)' : 'rgba(255,255,255,.14)'; ctx.fill();
+        ctx.fillStyle = colors.text; ctx.font = '700 29px Arial, sans-serif'; ctx.fillText('Открыть персональную страницу', 120, 1125);
+        ctx.fillStyle = colors.muted; ctx.font = '22px Arial, sans-serif'; ctx.fillText(ellipsize(ctx, profile.url, 800), 120, 1172);
     };
     const toBlob = (canvas) => new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG не создан')), 'image/png', 1));
     const saveBlob = (blob, name) => { const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
+    let loadedPhoto = null, loadedQr = null;
+    const renderCards = () => {
+        document.querySelectorAll('canvas[data-variant]').forEach(canvas => canvas.dataset.variant === 'story' ? renderStory(canvas, loadedPhoto, loadedQr) : renderWide(canvas, loadedPhoto, loadedQr));
+    };
+    const selectTheme = (name) => {
+        if (!themes[name]) return;
+        selectedTheme = name;
+        localStorage.setItem('swpro.cardTheme', name);
+        document.querySelectorAll('.ai-card-theme').forEach(button => {
+            const active = button.dataset.cardTheme === name;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        renderCards();
+    };
+    document.querySelectorAll('.ai-card-theme').forEach(button => button.addEventListener('click', () => selectTheme(button.dataset.cardTheme)));
+    selectTheme(selectedTheme);
     Promise.all([loadImage(profile.photo), loadImage(profile.qr)]).then(([photo, qr]) => {
-        document.querySelectorAll('canvas[data-variant]').forEach(canvas => canvas.dataset.variant === 'story' ? renderStory(canvas, photo, qr) : renderWide(canvas, photo, qr));
+        loadedPhoto = photo; loadedQr = qr; renderCards();
         document.querySelectorAll('.ai-card-download, .ai-card-share').forEach(button => button.disabled = false);
     });
     document.querySelectorAll('.ai-card-download').forEach(button => button.addEventListener('click', async () => saveBlob(await toBlob(document.getElementById(button.dataset.canvas)), button.dataset.name)));
