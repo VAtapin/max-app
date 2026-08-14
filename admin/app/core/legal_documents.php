@@ -101,14 +101,17 @@ function legal_reseller_id_from_referral(?string $referralCode): ?int
         $referralCode = substr($referralCode, 4);
     }
 
-    $stmt = db()->prepare('SELECT id FROM resellers WHERE referral_code = :code AND is_active = 1 LIMIT 1');
+    // Public mini-sites resolve consultant codes before leader codes. Keep legal
+    // documents on the same owner path so a consultant policy always uses the
+    // consultant's actual leader, including legacy cross-table code collisions.
+    $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE referral_code = :code AND is_active = 1 LIMIT 1');
     $stmt->execute(['code' => $referralCode]);
     $resellerId = (int)$stmt->fetchColumn();
     if ($resellerId > 0) {
         return $resellerId;
     }
 
-    $stmt = db()->prepare('SELECT reseller_id FROM managers WHERE referral_code = :code AND is_active = 1 LIMIT 1');
+    $stmt = db()->prepare('SELECT id FROM resellers WHERE referral_code = :code AND is_active = 1 LIMIT 1');
     $stmt->execute(['code' => $referralCode]);
     $resellerId = (int)$stmt->fetchColumn();
     return $resellerId > 0 ? $resellerId : null;
