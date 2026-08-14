@@ -244,3 +244,26 @@ function ai_workflow_refresh_actions(array $admin): array
     $list->execute($owner);
     return $list->fetchAll();
 }
+
+function ai_workflow_refresh_all_actions(): array
+{
+    $result = ['workspaces' => 0, 'suggestions' => 0, 'errors' => 0];
+    $seen = [];
+    $rows = db()->query('SELECT id, role, reseller_id, manager_id FROM admin_users WHERE is_active = 1 AND role IN ("reseller", "manager") ORDER BY id')->fetchAll();
+    foreach ($rows as $admin) {
+        $owner = ai_owner_for_admin($admin);
+        $key = $owner['owner_type'] . ':' . $owner['owner_id'];
+        if ($owner['owner_id'] <= 0 || isset($seen[$key])) {
+            continue;
+        }
+        $seen[$key] = true;
+        try {
+            $items = ai_workflow_refresh_actions($admin);
+            $result['workspaces']++;
+            $result['suggestions'] += count($items);
+        } catch (Throwable) {
+            $result['errors']++;
+        }
+    }
+    return $result;
+}

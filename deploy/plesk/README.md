@@ -74,6 +74,11 @@ only runtime configuration file used by the PHP application, bots, migrations
 and systemd service. Do not create `admin/app/config/local.php`, `bot/.env` or
 a root `.env`.
 
+For AI features, set `OPENAI_API_KEY` for text generation and voice. Real AI
+video additionally requires either `HEYGEN_API_KEY` or `TAVUS_API_KEY`; select
+the same provider in the super-admin AI settings after deployment. Generated
+MP3 and MP4 files are stored under `SWPRO_PRIVATE_STORAGE_PATH`.
+
 For Telegram OpenID Connect on ordinary desktop/mobile web:
 
 - set `TELEGRAM_OIDC_CLIENT_ID` and `TELEGRAM_OIDC_CLIENT_SECRET`;

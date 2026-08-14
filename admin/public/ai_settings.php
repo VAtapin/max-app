@@ -21,9 +21,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $values = [
         'ai.enabled' => isset($_POST['ai_enabled']) ? '1' : '0',
         'ai.external_processing_enabled' => isset($_POST['external_processing_enabled']) ? '1' : '0',
+        'ai.studio_external_enabled' => isset($_POST['studio_external_enabled']) ? '1' : '0',
+        'ai.voice_external_enabled' => isset($_POST['voice_external_enabled']) ? '1' : '0',
         'ai.text_provider' => trim((string)($_POST['text_provider'] ?? 'swpro')),
         'ai.text_model' => trim((string)($_POST['text_model'] ?? 'gpt-5-mini')),
         'ai.complex_model' => trim((string)($_POST['complex_model'] ?? 'gpt-5')),
+        'ai.studio_model' => trim((string)($_POST['studio_model'] ?? 'gpt-5-mini')),
+        'ai.openai_tts_model' => trim((string)($_POST['openai_tts_model'] ?? 'gpt-4o-mini-tts')),
+        'ai.openai_voice' => trim((string)($_POST['openai_voice'] ?? 'coral')),
+        'ai.openai_voice_instructions' => trim((string)($_POST['openai_voice_instructions'] ?? '')),
         'ai.video_provider' => trim((string)($_POST['video_provider'] ?? 'disabled')),
         'ai.voice_provider' => trim((string)($_POST['voice_provider'] ?? 'disabled')),
         'ai.minimum_source_score' => (string)max(1, min(20, (int)($_POST['minimum_source_score'] ?? 2))),
@@ -40,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!in_array($values['ai.video_provider'], ['heygen', 'tavus', 'disabled'], true)) {
         $errors[] = 'Выберите корректного видеопровайдера.';
     }
-    if (!in_array($values['ai.voice_provider'], ['openai', 'elevenlabs', 'disabled'], true)) {
+    if (!in_array($values['ai.voice_provider'], ['openai', 'disabled'], true)) {
         $errors[] = 'Выберите корректного голосового провайдера.';
     }
     if (!preg_match('/^[a-zA-Z0-9._:-]{1,100}$/', $values['ai.text_model'])) {
@@ -49,12 +55,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!preg_match('/^[a-zA-Z0-9._:-]{1,100}$/', $values['ai.complex_model'])) {
         $errors[] = 'Укажите корректное название модели сложных ответов.';
     }
+    if (!preg_match('/^[a-zA-Z0-9._:-]{1,100}$/', $values['ai.studio_model'])) {
+        $errors[] = 'Укажите корректное название модели AI-студии.';
+    }
+    if (!preg_match('/^[a-zA-Z0-9._:-]{1,100}$/', $values['ai.openai_tts_model'])) {
+        $errors[] = 'Укажите корректное название голосовой модели OpenAI.';
+    }
+    if (!in_array($values['ai.openai_voice'], ['alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse'], true)) {
+        $errors[] = 'Выберите корректный стандартный голос OpenAI.';
+    }
     $action = (string)($_POST['action'] ?? 'save');
     if ($action === 'save' && $values['ai.text_provider'] === 'openai' && !ai_openai_key_configured()) {
         $errors[] = 'OpenAI нельзя включить: OPENAI_API_KEY не найден на сервере.';
     }
     if ($action === 'save' && $values['ai.text_provider'] === 'openai' && $values['ai.external_processing_enabled'] !== '1') {
-        $errors[] = 'Для OpenAI подтвердите разрешение внешней обработки обезличенных материалов.';
+        $errors[] = 'Для OpenAI подтвердите разрешение передачи необходимого рабочего контекста.';
+    }
+    if ($action === 'save' && ($values['ai.studio_external_enabled'] === '1' || $values['ai.voice_external_enabled'] === '1')
+        && ($values['ai.external_processing_enabled'] !== '1' || !ai_openai_key_configured())) {
+        $errors[] = 'Для AI-студии и голоса сначала разрешите внешнюю обработку и настройте OPENAI_API_KEY.';
+    }
+    if ($action === 'save' && $values['ai.video_provider'] !== 'disabled' && !ai_video_provider_configured($values['ai.video_provider'])) {
+        $errors[] = 'Для выбранного видеопровайдера не найден ' . strtoupper($values['ai.video_provider']) . '_API_KEY на сервере.';
     }
     if (!$errors && $action === 'test_openai') {
         try {
@@ -129,9 +151,11 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <option value="swpro" <?= $value('ai.text_provider', 'swpro') === 'swpro' ? 'selected' : '' ?>>Собственный поиск SWPro</option>
             <option value="openai" <?= $value('ai.text_provider') === 'openai' ? 'selected' : '' ?>>OpenAI (после отдельного разрешения)</option>
         </select>
+        <small class="field-hint">HeyGen: <?= ai_video_provider_configured('heygen') ? 'ключ найден' : 'нет HEYGEN_API_KEY' ?>. Tavus: <?= ai_video_provider_configured('tavus') ? 'ключ найден' : 'нет TAVUS_API_KEY' ?>.</small>
     </label>
     <label class="field"><span>Основная модель</span><input name="text_model" value="<?= h($value('ai.text_model', 'gpt-5-mini')) ?>"></label>
     <label class="field"><span>Модель сложных ответов</span><input name="complex_model" value="<?= h($value('ai.complex_model', 'gpt-5')) ?>"></label>
+    <label class="field"><span>Модель AI-студии</span><input name="studio_model" value="<?= h($value('ai.studio_model', 'gpt-5-mini')) ?>"></label>
     <label class="field">
         <span>Видеоаватары</span>
         <select name="video_provider">
@@ -140,17 +164,22 @@ require __DIR__ . '/../app/views/layouts/header.php';
             <option value="tavus" <?= $value('ai.video_provider') === 'tavus' ? 'selected' : '' ?>>Tavus</option>
         </select>
     </label>
-    <label class="field"><span>Голосовые сообщения</span><select name="voice_provider"><option value="disabled" <?= $value('ai.voice_provider', 'disabled') === 'disabled' ? 'selected' : '' ?>>Выключены</option><option value="openai" <?= $value('ai.voice_provider') === 'openai' ? 'selected' : '' ?>>OpenAI Voice</option><option value="elevenlabs" <?= $value('ai.voice_provider') === 'elevenlabs' ? 'selected' : '' ?>>ElevenLabs</option></select></label>
+    <label class="field"><span>Голосовые сообщения</span><select name="voice_provider"><option value="disabled" <?= $value('ai.voice_provider', 'disabled') === 'disabled' ? 'selected' : '' ?>>Выключены</option><option value="openai" <?= $value('ai.voice_provider') === 'openai' ? 'selected' : '' ?>>OpenAI Voice</option></select></label>
+    <label class="field"><span>Модель голоса OpenAI</span><input name="openai_tts_model" value="<?= h($value('ai.openai_tts_model', 'gpt-4o-mini-tts')) ?>"></label>
+    <label class="field"><span>Стандартный голос OpenAI</span><select name="openai_voice"><?php foreach (['coral','alloy','ash','ballad','echo','fable','nova','onyx','sage','shimmer','verse'] as $voice): ?><option value="<?= h($voice) ?>" <?= $value('ai.openai_voice', 'coral') === $voice ? 'selected' : '' ?>><?= h($voice) ?></option><?php endforeach; ?></select></label>
+    <label class="field wide"><span>Манера стандартного голоса</span><textarea name="openai_voice_instructions" rows="3"><?= h($value('ai.openai_voice_instructions', 'Говори по-русски тепло, естественно и спокойно. Не спеши и делай смысловые паузы.')) ?></textarea></label>
     <label class="field"><span>Минимальная точность источника</span><input type="number" min="1" max="20" name="minimum_source_score" value="<?= (int)$value('ai.minimum_source_score', '2') ?>"><small class="field-hint">Чем выше значение, тем чаще помощник честно откажется отвечать.</small></label>
     <label class="field"><span>Стандартный план клиента</span><select name="default_plan_days"><?php foreach ([7,14,30] as $days): ?><option value="<?= $days ?>" <?= (int)$value('ai.default_plan_days', '7') === $days ? 'selected' : '' ?>><?= $days ?> дней</option><?php endforeach; ?></select></label>
     <label class="field"><span>Повторный чек-ап через, дней</span><input type="number" min="7" max="365" name="retest_after_days" value="<?= (int)$value('ai.retest_after_days', '30') ?>"></label>
     <label class="field"><span>Считать клиента неактивным через, дней</span><input type="number" min="3" max="365" name="inactive_after_days" value="<?= (int)$value('ai.inactive_after_days', '14') ?>"></label>
 
     <div class="alert wide">
-        <strong>Внешняя обработка данных по умолчанию выключена.</strong><br>
-        На первом этапе OpenAI используется только помощником админки. Клиентские вопросы, анкеты, результаты опросов, история клиента и профиль во внешний сервис не передаются.
+        <strong>Передача в OpenAI контролируется настройками ниже.</strong><br>
+        Помощник админки, клиентский помощник и AI-студия могут использовать утверждённые материалы и рабочий контекст. Для персонализации передаются имя, пол, возраст или дата рождения, город и содержание чек-апа. Контактные данные, точный адрес, внутренние и платформенные ID, логины и токены не передаются.
     </div>
-    <label class="check-row wide"><input type="checkbox" name="external_processing_enabled" value="1" <?= $value('ai.external_processing_enabled', '0') === '1' ? 'checked' : '' ?>><span>Разрешить внешний провайдер для отдельно утверждённых обезличенных материалов</span></label>
+    <label class="check-row wide"><input type="checkbox" name="external_processing_enabled" value="1" <?= $value('ai.external_processing_enabled', '0') === '1' ? 'checked' : '' ?>><span>Разрешить передачу необходимого рабочего контекста внешнему AI-провайдеру</span></label>
+    <label class="check-row wide"><input type="checkbox" name="studio_external_enabled" value="1" <?= $value('ai.studio_external_enabled', '0') === '1' ? 'checked' : '' ?>><span><strong>Разрешить OpenAI в AI-студии</strong><small>Передаются тема, утверждённый источник и выбранные сведения для персонализации. Контакты, точный адрес, ID, логины и токены исключаются.</small></span></label>
+    <label class="check-row wide"><input type="checkbox" name="voice_external_enabled" value="1" <?= $value('ai.voice_external_enabled', '0') === '1' ? 'checked' : '' ?>><span><strong>Разрешить внешний синтез голоса</strong><small>Передаётся только проверенный вручную сценарий после нажатия кнопки создания аудио.</small></span></label>
 
     <label class="field wide"><span>Правила помощника админки</span><textarea name="admin_system_prompt" rows="5"><?= h($value('ai.admin_system_prompt')) ?></textarea></label>
     <label class="field wide"><span>Правила помощника клиентов</span><textarea name="client_system_prompt" rows="5"><?= h($value('ai.client_system_prompt')) ?></textarea></label>

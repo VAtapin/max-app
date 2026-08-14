@@ -88,16 +88,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if (!$errors) {
             $version = $avatar ? (int)$avatar['version'] + 1 : 1;
-            $insert = db()->prepare('INSERT INTO ai_avatars (owner_type, owner_id, provider, avatar_type, version, source_photo_path, source_video_path, voice_name, background_key, pose_key, consent_confirmed_at, consent_text_version, status) VALUES (:owner_type, :owner_id, :provider, :avatar_type, :version, :photo, :video, :voice_name, :background_key, :pose_key, NOW(), "2026-08-14", "draft")');
+            $providerAvatarId = trim((string)($_POST['provider_avatar_id'] ?? ''));
+            $providerVoiceId = trim((string)($_POST['provider_voice_id'] ?? ''));
+            $provider = ai_setting('ai.video_provider', 'disabled') ?: 'disabled';
+            $status = $providerAvatarId !== '' && ai_video_provider_configured($provider) ? 'approved' : 'draft';
+            $insert = db()->prepare('INSERT INTO ai_avatars (owner_type, owner_id, provider, provider_avatar_id, avatar_type, version, source_photo_path, source_video_path, voice_id, voice_name, background_key, pose_key, consent_confirmed_at, consent_text_version, status) VALUES (:owner_type, :owner_id, :provider, :provider_avatar_id, :avatar_type, :version, :photo, :video, :voice_id, :voice_name, :background_key, :pose_key, NOW(), "2026-08-14", :status)');
             $insert->execute($owner + [
-                'provider' => ai_setting('ai.video_provider', 'disabled') ?: 'disabled',
+                'provider' => $provider,
+                'provider_avatar_id' => $providerAvatarId ?: null,
                 'avatar_type' => $video ? 'digital_twin' : 'photo',
                 'version' => $version,
                 'photo' => $photo ?: ($avatar['source_photo_path'] ?? null),
                 'video' => $video ?: ($avatar['source_video_path'] ?? null),
+                'voice_id' => $providerVoiceId ?: null,
                 'voice_name' => trim((string)($_POST['voice_name'] ?? '')),
                 'background_key' => trim((string)($_POST['background_key'] ?? 'neutral')),
                 'pose_key' => trim((string)($_POST['pose_key'] ?? 'portrait')),
+                'status' => $status,
             ]);
             log_activity('admin', (int)$admin['id'], 'create_ai_avatar_version', 'ai_avatars', (int)db()->lastInsertId(), ['version' => $version]);
             redirect('ai_avatar.php?success=saved');
@@ -125,6 +132,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <label class="field"><span>Портретная фотография</span><input type="file" name="source_photo" accept="image/jpeg,image/png,image/webp"><small class="field-hint">Лицо прямо, хорошее освещение, без других людей.</small></label>
     <label class="field"><span>Короткое исходное видео</span><input type="file" name="source_video" accept="video/mp4,video/webm,video/quicktime"><small class="field-hint">Спокойная речь, чистый звук, без монтажа.</small></label>
     <label class="field"><span>Желаемый голос</span><input name="voice_name" value="<?= h((string)($avatar['voice_name'] ?? '')) ?>" placeholder="Русский, спокойный женский"></label>
+    <label class="field"><span>ID аватара в HeyGen или Tavus</span><input name="provider_avatar_id" value="<?= h((string)($avatar['provider_avatar_id'] ?? '')) ?>"><small class="field-hint">Берётся в кабинете подключённого видеопровайдера.</small></label>
+    <label class="field"><span>ID голоса в HeyGen</span><input name="provider_voice_id" value="<?= h((string)($avatar['voice_id'] ?? '')) ?>"><small class="field-hint">Для Tavus можно оставить пустым.</small></label>
     <label class="field"><span>Фон</span><select name="background_key"><option value="neutral">Нейтральный</option><option value="office">Светлый кабинет</option><option value="home">Домашний</option><option value="transparent">Прозрачный</option></select></label>
     <label class="field"><span>Поза и кадр</span><select name="pose_key"><option value="portrait">Портрет</option><option value="waist">По пояс</option><option value="seated">Сидя</option></select></label>
     <label class="check-row wide"><input type="checkbox" name="likeness_consent" value="1" required><span>Подтверждаю, что загружаю собственное изображение/голос и разрешаю SWPro создать и использовать мой AI-аватар.</span></label>
