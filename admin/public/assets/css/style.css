@@ -5027,3 +5027,343 @@ button {
     }
 }
 .billing-overview,.dashboard-billing-card{display:flex;align-items:center;justify-content:space-between;gap:24px}.billing-status-card{display:grid;gap:6px;min-width:260px;padding:18px;border-radius:16px;background:#eef7f6}.billing-overdue{border:2px solid #d94b4b;background:#fff8f8}.billing-period-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px}.billing-period-card{position:relative;display:grid;gap:10px;padding:20px;border:1px solid #d8e2e6;border-radius:16px;background:#fff}.billing-period-card.featured{border-color:#087681;box-shadow:0 8px 24px rgba(8,118,129,.12)}.billing-badge{position:absolute;right:12px;top:12px;padding:4px 9px;border-radius:999px;background:#d9f6e8;color:#126b43;font-size:12px;font-weight:700}.billing-old-price{text-decoration:line-through;color:#77838c}.billing-period-card strong{font-size:22px}.compact-form{display:flex;gap:6px;margin:8px 0}.compact-form input{min-width:90px}@media(max-width:720px){.billing-overview,.dashboard-billing-card{align-items:stretch;flex-direction:column}.billing-status-card{min-width:0}.compact-form{flex-direction:column}}
+
+/* Compact admin design system */
+:root {
+    --admin-sidebar-width: 228px;
+    --admin-control-height: 38px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 15px;
+    --shadow-soft: 0 4px 16px rgba(23, 32, 51, .055);
+    --shadow-card: 0 8px 24px rgba(23, 32, 51, .07);
+}
+
+body {
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.app-shell {
+    grid-template-columns: var(--admin-sidebar-width) minmax(0, 1fr);
+}
+
+.sidebar {
+    height: 100vh;
+    overflow-y: auto;
+    padding: 16px 12px;
+    scrollbar-color: #cad6dc transparent;
+    scrollbar-width: thin;
+}
+
+.brand {
+    margin-bottom: 10px;
+    padding: 0 7px 13px;
+}
+
+.brand span { font-size: 17px; }
+.brand small { font-size: 10px; letter-spacing: .07em; }
+.sidebar nav { gap: 0; }
+
+.nav-section {
+    gap: 2px;
+    padding: 8px 0 9px;
+}
+
+.nav-section + .nav-section {
+    border-top-color: #edf1f4;
+}
+
+.nav-heading {
+    color: #8a94a3;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .07em;
+    padding: 4px 9px 5px;
+}
+
+.sidebar a {
+    border: 0;
+    border-radius: 9px;
+    gap: 9px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+    min-height: 36px;
+    padding: 8px 9px;
+}
+
+.sidebar a:hover {
+    background: #f3f7f7;
+}
+
+.sidebar a.active {
+    background: #eaf4f3;
+    box-shadow: none;
+    color: var(--accent);
+    font-weight: 750;
+}
+
+.nav-icon {
+    fill: none;
+    flex: 0 0 17px;
+    height: 17px;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.65;
+    width: 17px;
+}
+
+.topbar {
+    min-height: 60px;
+    padding: 10px 20px;
+}
+
+.topbar-title span { font-size: 16px; }
+.topbar-title small { font-size: 10px; }
+.user-chip { font-size: 12px; padding: 6px 9px; }
+
+.content {
+    padding: 20px;
+}
+
+.toolbar {
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.toolbar h1 {
+    font-size: clamp(24px, 2.1vw, 30px);
+    letter-spacing: -.02em;
+}
+
+h2 { font-size: 19px; }
+h3 { font-size: 16px; }
+
+.panel > h2,
+.form-panel > h2 {
+    font-size: clamp(18px, 1.4vw, 21px);
+    margin-bottom: 12px;
+}
+
+.panel,
+.login-card,
+.lead-card,
+.lead-response-card,
+.builder-card,
+.result-editor-card,
+.faq-manage-item,
+.profile-preview-card {
+    border-color: #e1e7eb;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-soft);
+}
+
+.panel {
+    padding: 16px;
+}
+
+.panel + .panel { margin-top: 12px; }
+
+.stats-grid {
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    margin-bottom: 14px;
+}
+
+.stat {
+    gap: 5px;
+    min-height: 82px;
+    padding: 14px;
+}
+
+.stat span { font-size: 12px; }
+.stat strong { font-size: 24px; margin-top: 3px; }
+
+.two-columns { gap: 14px; }
+
+.filters,
+.table-tools {
+    background: #f8fafb;
+    border-radius: 12px;
+    gap: 8px;
+    margin-bottom: 11px;
+    padding: 9px;
+}
+
+.filters span,
+.field span {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.field { gap: 4px; }
+
+.field input,
+.field select,
+.field textarea,
+.filters input,
+.filters select,
+.filters textarea,
+.block-row input,
+.find-form input,
+.admin-account-filters input[type="search"] {
+    border-radius: 9px;
+    font-size: 13px;
+    min-height: var(--admin-control-height);
+    padding: 8px 10px;
+}
+
+.field textarea { line-height: 1.45; }
+.field-hint { font-size: 11px; margin-top: 3px; }
+
+.crud-form,
+.profile-form-grid,
+.faq-form {
+    gap: 10px;
+}
+
+.form-panel { margin-bottom: 12px; }
+.form-actions, .sticky-actions { padding-top: 10px; }
+
+.button,
+button {
+    border-radius: 9px;
+    font-size: 13px;
+    min-height: 36px;
+    padding: 8px 12px;
+}
+
+.compact-button { min-height: 31px; padding: 5px 9px; }
+
+.notice,
+.alert,
+.empty-state {
+    border-radius: 10px;
+    font-size: 13px;
+    padding: 11px 13px;
+}
+
+.table-summary {
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+
+.table-scroll,
+.panel {
+    scrollbar-color: #c8d4da transparent;
+    scrollbar-width: thin;
+}
+
+table,
+.data-table {
+    font-size: 13px;
+}
+
+table.data-table th,
+table.responsive-table th {
+    background: #f6f8fa;
+    border-bottom: 1px solid #dfe6ea;
+    color: #687588;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .055em;
+    line-height: 1.25;
+    padding: 8px 9px;
+}
+
+table.data-table td,
+table.responsive-table td {
+    border-bottom: 1px solid #e8edf0;
+    font-size: 13px;
+    line-height: 1.35;
+    padding: 9px;
+    vertical-align: middle;
+}
+
+table.data-table tbody tr:last-child td,
+table.responsive-table tbody tr:last-child td { border-bottom: 0; }
+
+table.data-table tbody tr:hover td,
+table.responsive-table tbody tr:hover td { background: #f9fbfb; }
+
+.compact-table td { padding-block: 6px !important; }
+.compact-lines { gap: 3px; min-width: 140px; }
+.cell-muted { font-size: 11px; line-height: 1.35; }
+
+.badge {
+    font-size: 10px;
+    line-height: 1.15;
+    padding: 5px 8px;
+}
+
+.row-actions {
+    gap: 7px;
+    min-width: 0;
+}
+
+.row-actions .link-button,
+table.responsive-table td.row-actions .link-button {
+    font-size: 12px;
+}
+
+.pagination { font-size: 12px; margin-top: 12px; }
+
+.billing-overview,
+.dashboard-billing-card { gap: 16px; }
+.billing-status-card { border-radius: 12px; min-width: 230px; padding: 13px; }
+.billing-period-grid { gap: 11px; }
+.billing-period-card { border-radius: 12px; gap: 7px; padding: 15px; }
+.billing-period-card strong { font-size: 19px; }
+.payment-method-card, .payment-invoice-summary { padding: 16px; }
+
+details > summary {
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.two-factor-connect h2,
+.two-factor-connect-title {
+    font-family: inherit;
+    font-size: clamp(24px, 2.4vw, 30px);
+    line-height: 1.15;
+}
+
+.two-factor-connect > p,
+.login-card > .cell-muted,
+.help-hero p { font-size: 14px; line-height: 1.5; }
+.help-hero h2 { font-size: 22px; }
+.profile-preview-card strong { font-size: 18px; }
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+    outline: 3px solid rgba(22, 103, 111, .24);
+    outline-offset: 2px;
+}
+
+@media (max-width: 1024px) {
+    :root { --admin-control-height: 42px; }
+    .sidebar { height: 100vh; padding: 14px 12px; }
+    .sidebar a { font-size: 14px; min-height: 40px; }
+    .nav-icon { flex-basis: 19px; height: 19px; width: 19px; }
+    .content { padding: 16px; }
+    .button, button { min-height: 40px; }
+}
+
+@media (max-width: 640px) {
+    .content { padding: 12px 10px 20px; }
+    .toolbar h1 { font-size: 22px; }
+    .panel { padding: 13px; }
+    .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stat { min-height: 76px; padding: 12px; }
+    .stat strong { font-size: 21px; }
+    table.responsive-table tr { border-radius: 12px; box-shadow: 0 3px 12px rgba(23,32,51,.05); }
+    table.responsive-table td { padding: 7px 0; }
+}
