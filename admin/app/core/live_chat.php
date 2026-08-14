@@ -151,6 +151,10 @@ function live_chat_send_client(array $admin, int $endUserId, string $text, ?stri
         $result = $platformUserId ? send_telegram_response($platformUserId, $text, null, null, $attachments, null, lead_response_referral_code($user)) : ['ok' => false, 'error' => 'Telegram клиента не подключён.'];
     } elseif (in_array($channel, ['VK','OK'], true)) {
         $result = $platformUserId ? send_social_platform_message($channel, $platformUserId, $user + ['end_user_id' => $endUserId], $text, [], lead_response_media_urls(null, $attachments, false)) : ['ok' => false, 'error' => $channel . ' клиента не подключён.'];
+    } elseif ($channel === 'MAX') {
+        $result = ['ok' => false, 'error' => 'Отправка в MAX пока не подключена. Выберите другой доступный канал.'];
+    } elseif ($channel === 'web') {
+        $result = ['ok' => false, 'error' => 'У клиента доступен только Web-профиль. Для отправки по email или телефону сначала подключите почтовый или SMS-сервис.'];
     }
     $status = !empty($result['ok']) ? 'sent' : 'failed';
     db()->prepare('UPDATE chat_messages SET status = :status, error_text = :error, delivered_at = :delivered WHERE id = :id')->execute(['status' => $status, 'error' => $result['error'] ?? null, 'delivered' => $status === 'sent' ? date('Y-m-d H:i:s') : null, 'id' => $messageId]);
@@ -232,6 +236,11 @@ function live_chat_client_threads(array $admin): array
         'SELECT eu.id end_user_id,
                 CONCAT_WS(" ", NULLIF(eu.first_name,""), NULLIF(eu.last_name,"")) client_name,
                 eu.platform,
+                eu.email,
+                eu.phone,
+                (SELECT GROUP_CONCAT(DISTINCT pa.platform ORDER BY FIELD(pa.platform, "VK", "telegram", "MAX", "OK"))
+                 FROM platform_accounts pa
+                 WHERE pa.end_user_id = eu.id AND pa.platform <> "web" AND NULLIF(TRIM(pa.platform_user_id), "") IS NOT NULL) contact_platforms,
                 ct.id thread_id,
                 ct.last_message_at,
                 (SELECT message_text FROM chat_messages WHERE thread_id = ct.id ORDER BY id DESC LIMIT 1) last_message,
@@ -244,6 +253,17 @@ function live_chat_client_threads(array $admin): array
          FROM end_users eu
          LEFT JOIN chat_threads ct ON ct.end_user_id = eu.id AND ct.thread_type = "client" '
         . $where
+        . ' AND (
+                NULLIF(TRIM(eu.email), "") IS NOT NULL
+                OR NULLIF(TRIM(eu.phone), "") IS NOT NULL
+                OR (eu.platform <> "web" AND NULLIF(TRIM(eu.platform_user_id), "") IS NOT NULL)
+                OR EXISTS (
+                    SELECT 1 FROM platform_accounts contact_account
+                    WHERE contact_account.end_user_id = eu.id
+                      AND contact_account.platform <> "web"
+                      AND NULLIF(TRIM(contact_account.platform_user_id), "") IS NOT NULL
+                )
+            )'
         . ' ORDER BY needs_reply DESC, COALESCE(ct.last_message_at, eu.last_activity_at, eu.created_at) DESC LIMIT 150'
     );
     $stmt->execute($params);
