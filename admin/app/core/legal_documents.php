@@ -179,7 +179,7 @@ function legal_leader_party(?int $resellerId): ?array
     $publicUrl = rtrim((string)($config['app']['public_url'] ?? 'https://swpro.ru'), '/');
     return [
         'id' => (int)$row['id'],
-        'name' => trim((string)$row['name']),
+        'name' => trim((string)($row['legal_name'] ?: $row['name'])),
         'status' => trim((string)($row['legal_status'] ?? '')),
         'inn' => trim((string)($row['legal_inn'] ?: $row['billing_inn'])),
         'address' => trim((string)($row['legal_address'] ?? '')),
