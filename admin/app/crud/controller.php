@@ -203,7 +203,7 @@ if (in_array($moduleKey, owned_modules(), true) && $admin['role'] !== 'superadmi
     unset($formFields['owner_type'], $formFields['owner_id']);
 }
 if ($moduleKey === 'integrations' && $admin['role'] !== 'superadmin') {
-    unset($formFields['owner_type'], $formFields['owner_id']);
+    unset($formFields['owner_type'], $formFields['owner_id'], $formFields['is_default']);
 }
 if ($moduleKey === 'resellers' && $admin['role'] === 'reseller') {
     unset($formFields['parent_reseller_id']);
@@ -508,6 +508,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$errors) {
         try {
             $savedId = save_record($moduleKey, $module, $payload, $postId, $admin);
+            if ($moduleKey === 'integrations' && !empty($payload['is_default'])) {
+                $defaultStmt = db()->prepare(
+                    'UPDATE messaging_integrations
+                     SET is_default = CASE WHEN id = :id THEN 1 ELSE 0 END
+                     WHERE platform = :platform'
+                );
+                $defaultStmt->execute([
+                    'id' => $savedId,
+                    'platform' => (string)$payload['platform'],
+                ]);
+            }
             if ($moduleKey === 'managers' && can_manage_team_admin_access($moduleKey, $admin, $savedId)) {
                 save_manager_admin_access($savedId, $payload, $_POST, $errors);
                 if ($errors) {

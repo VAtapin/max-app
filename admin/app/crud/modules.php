@@ -248,7 +248,7 @@ return [
     'integrations' => [
         'title' => app_text('integrations.title'),
         'table' => 'messaging_integrations',
-        'columns' => ['id', 'owner_type', 'owner_id', 'platform', 'title', 'external_id', 'callback_last_event_at', 'is_active'],
+        'columns' => ['id', 'owner_type', 'owner_id', 'platform', 'title', 'external_id', 'is_default', 'callback_last_event_at', 'is_active'],
         'fields' => [
             'owner_type' => ['label' => app_text('integrations.owner_type'), 'type' => 'select', 'options' => ['reseller', 'manager'], 'required' => true],
             'owner_id' => ['label' => app_text('integrations.owner_id'), 'type' => 'number', 'required' => true],
@@ -290,6 +290,12 @@ return [
             ],
             'callback_last_event_at' => ['label' => app_text('integrations.callback_last_event_at'), 'readonly' => true],
             'callback_last_error' => ['label' => app_text('integrations.callback_last_error'), 'type' => 'textarea', 'readonly' => true],
+            'is_default' => [
+                'label' => 'Стандартное сообщество',
+                'type' => 'checkbox',
+                'default' => 0,
+                'hint' => 'Используется, если у лидера или консультанта ещё нет собственного готового сообщества VK.',
+            ],
             'is_active' => ['label' => app_text('auto.k_667904ef22a4'), 'type' => 'checkbox', 'default' => 1],
         ],
     ],

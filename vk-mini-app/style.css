@@ -1812,6 +1812,26 @@ button.secondary,
     color: var(--accent);
 }
 
+.marketing-delivery-hint {
+    margin: -2px 4px 4px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.4;
+    background: #eef5f6;
+    color: #205b62;
+}
+
+.marketing-delivery-hint.warning {
+    background: #fff3cd;
+    color: #8a4b08;
+}
+
+.marketing-delivery-hint.success {
+    background: #e1f7e8;
+    color: #17643a;
+}
+
 .main-action-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

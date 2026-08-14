@@ -27,6 +27,15 @@ function detach_owner_content(string $ownerType, int $ownerId): void
 
 function delete_owner_service_records(string $ownerType, int $ownerId): void
 {
+    $defaultStmt = db()->prepare(
+        'SELECT COUNT(*) FROM messaging_integrations
+         WHERE owner_type = :owner_type AND owner_id = :owner_id AND is_default = 1'
+    );
+    $defaultStmt->execute(['owner_type' => $ownerType, 'owner_id' => $ownerId]);
+    if ((int)$defaultStmt->fetchColumn() > 0) {
+        throw new RuntimeException('Сначала назначьте другое стандартное сообщество VK.');
+    }
+
     $stmt = db()->prepare('DELETE FROM referral_links WHERE owner_type = :owner_type AND owner_id = :owner_id');
     $stmt->execute(['owner_type' => $ownerType, 'owner_id' => $ownerId]);
 
@@ -39,6 +48,13 @@ function delete_owner_service_records(string $ownerType, int $ownerId): void
 
 function delete_crud_record(string $moduleKey, array $module, int $id, array $admin): void
 {
+    if ($moduleKey === 'integrations') {
+        $defaultStmt = db()->prepare('SELECT is_default FROM messaging_integrations WHERE id = :id LIMIT 1');
+        $defaultStmt->execute(['id' => $id]);
+        if ((int)$defaultStmt->fetchColumn() === 1) {
+            throw new RuntimeException('Сначала назначьте другое стандартное сообщество VK.');
+        }
+    }
     $pdo = db();
     $pdo->beginTransaction();
 

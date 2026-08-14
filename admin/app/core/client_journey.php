@@ -136,6 +136,7 @@ function client_onboarding_status(array $user): array
                 ? (string)legal_render_document($documents['marketing_consent'])['hash']
                 : null
         ),
+        'marketing_consent_available' => isset($documents['marketing_consent']),
         'notifications_enabled' => (int)($user['notifications_enabled'] ?? 1) === 1,
         'has_confirmed_platform' => $hasConfirmedPlatform,
         'web_merge_required' => $isWebOnly && !empty($user['onboarding_completed_at']),

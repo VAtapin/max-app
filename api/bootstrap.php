@@ -639,6 +639,16 @@ function link_existing_user_to_target(int $targetUserId, int $sourceUserId): ?ar
         );
         $dedupeAutomation->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
 
+        $dedupeVkPermissions = $pdo->prepare(
+            'DELETE source_permission
+             FROM vk_message_permissions source_permission
+             INNER JOIN vk_message_permissions target_permission
+               ON target_permission.end_user_id = :target_id
+              AND target_permission.group_id = source_permission.group_id
+             WHERE source_permission.end_user_id = :source_id'
+        );
+        $dedupeVkPermissions->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);
+
         foreach ([
             'platform_accounts' => 'end_user_id',
             'leads' => 'end_user_id',
@@ -650,6 +660,7 @@ function link_existing_user_to_target(int $targetUserId, int $sourceUserId): ?ar
             'user_notifications' => 'end_user_id',
             'automation_logs' => 'end_user_id',
             'consultant_notifications' => 'end_user_id',
+            'vk_message_permissions' => 'end_user_id',
         ] as $table => $column) {
             $stmt = $pdo->prepare("UPDATE $table SET $column = :target_id WHERE $column = :source_id");
             $stmt->execute(['target_id' => $targetUserId, 'source_id' => $sourceUserId]);

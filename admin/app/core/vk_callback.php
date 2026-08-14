@@ -28,12 +28,11 @@ function vk_callback_find_integration(string $groupId): ?array
            AND external_id = :external_id
            AND is_active = 1
          ORDER BY FIELD(owner_type, "manager", "reseller"), id DESC
-         LIMIT 1'
+         LIMIT 2'
     );
     $stmt->execute(['external_id' => $groupId]);
-    $integration = $stmt->fetch();
-
-    return $integration ?: null;
+    $integrations = $stmt->fetchAll();
+    return count($integrations) === 1 ? $integrations[0] : null;
 }
 
 function vk_callback_update_integration(int $integrationId, ?string $error = null): void
@@ -501,6 +500,90 @@ function vk_callback_mark_messages_allowed(int $endUserId, string $platformUserI
     ]);
 }
 
+function vk_callback_record_group_permission(array $user, string $platformUserId, array $integration, bool $allowed): void
+{
+    $account = messaging_vk_platform_account((int)$user['id'], $platformUserId);
+    if (!$account) {
+        return;
+    }
+    messaging_upsert_vk_permission(
+        (int)$user['id'],
+        (int)$account['id'],
+        $integration,
+        $allowed ? 'allowed' : 'denied'
+    );
+    vk_callback_sync_messages_allowed((int)$account['id']);
+}
+
+function vk_callback_sync_messages_allowed(int $platformAccountId): void
+{
+    $stmt = db()->prepare(
+        'UPDATE platform_accounts pa
+         SET pa.messages_allowed = CASE
+                 WHEN EXISTS (
+                     SELECT 1 FROM vk_message_permissions p
+                     WHERE p.platform_account_id = pa.id AND p.status = "allowed"
+                 ) THEN 1 ELSE 0 END,
+             pa.messages_allowed_at = CASE
+                 WHEN EXISTS (
+                     SELECT 1 FROM vk_message_permissions p
+                     WHERE p.platform_account_id = pa.id AND p.status = "allowed"
+                 ) THEN COALESCE(pa.messages_allowed_at, NOW()) ELSE pa.messages_allowed_at END,
+             pa.messages_denied_at = CASE
+                 WHEN EXISTS (
+                     SELECT 1 FROM vk_message_permissions p
+                     WHERE p.platform_account_id = pa.id AND p.status = "allowed"
+                 ) THEN NULL ELSE NOW() END
+         WHERE pa.id = :id'
+    );
+    $stmt->execute(['id' => $platformAccountId]);
+}
+
+function vk_callback_apply_permission_key(string $key, string $groupId, string $platformUserId, bool $allowed): bool
+{
+    if ($key === '') {
+        return false;
+    }
+    $stmt = db()->prepare(
+        'SELECT p.*, pa.platform_user_id
+         FROM vk_message_permissions p
+         INNER JOIN platform_accounts pa ON pa.id = p.platform_account_id
+         WHERE p.request_key_hash = :request_key_hash
+           AND p.group_id = :group_id
+           AND pa.platform_user_id = :platform_user_id
+           AND p.status = "pending"
+           AND p.request_expires_at >= NOW()
+         LIMIT 1'
+    );
+    $stmt->execute([
+        'request_key_hash' => hash('sha256', $key),
+        'group_id' => $groupId,
+        'platform_user_id' => $platformUserId,
+    ]);
+    $permission = $stmt->fetch();
+    if (!$permission) {
+        return false;
+    }
+
+    $update = db()->prepare(
+        'UPDATE vk_message_permissions
+         SET status = :status,
+             request_key_hash = NULL,
+             request_expires_at = NULL,
+             allowed_at = :allowed_at,
+             denied_at = :denied_at
+         WHERE id = :id'
+    );
+    $update->execute([
+        'status' => $allowed ? 'allowed' : 'denied',
+        'allowed_at' => $allowed ? date('Y-m-d H:i:s') : null,
+        'denied_at' => $allowed ? null : date('Y-m-d H:i:s'),
+        'id' => $permission['id'],
+    ]);
+    vk_callback_sync_messages_allowed((int)$permission['platform_account_id']);
+    return true;
+}
+
 function vk_callback_handle_message_new(array $payload, array $integration): void
 {
     $object = is_array($payload['object'] ?? null) ? $payload['object'] : [];
@@ -521,6 +604,7 @@ function vk_callback_handle_message_new(array $payload, array $integration): voi
     }
 
     vk_callback_mark_messages_allowed((int)$user['id'], $fromId, true);
+    vk_callback_record_group_permission($user, $fromId, $integration, true);
 
     $text = trim((string)($message['text'] ?? ''));
     if (vk_callback_is_start_command($message)) {
@@ -555,6 +639,10 @@ function vk_callback_handle_message_permission(array $payload, array $integratio
 {
     $object = is_array($payload['object'] ?? null) ? $payload['object'] : [];
     $userId = preg_replace('/\D+/', '', (string)($object['user_id'] ?? $object['from_id'] ?? '')) ?? '';
+    $key = trim((string)($object['key'] ?? ''));
+    if ($userId !== '' && vk_callback_apply_permission_key($key, (string)$integration['external_id'], $userId, $allowed)) {
+        return;
+    }
     if ($userId === '') {
         return;
     }
@@ -563,6 +651,7 @@ function vk_callback_handle_message_permission(array $payload, array $integratio
     $user = vk_callback_user($integration, $userId, $profile);
     if ($user) {
         vk_callback_mark_messages_allowed((int)$user['id'], $userId, $allowed);
+        vk_callback_record_group_permission($user, $userId, $integration, $allowed);
     }
 }
 

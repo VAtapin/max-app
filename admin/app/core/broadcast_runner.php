@@ -374,6 +374,7 @@ function send_broadcast_to_recipient(array $broadcast, array $recipient): array
             $platform,
             (string)$recipient['platform_user_id'],
             [
+                'end_user_id' => $recipient['end_user_id'] ?? null,
                 'manager_id' => $recipient['recipient_manager_id'] ?? null,
                 'reseller_id' => $recipient['reseller_id'] ?? null,
             ],

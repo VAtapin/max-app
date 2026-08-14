@@ -973,29 +973,23 @@ function currentMessagingIntegration() {
     return integrations[state.platform] || null;
 }
 
-function messagingPermissionStorageKey() {
-    const integration = currentMessagingIntegration();
-    if (!integration || !state.platformUserId) {
-        return '';
-    }
-    return `swpro_messages_allowed_${state.platform}_${integration.external_id}_${state.platformUserId}`;
-}
-
 function messagingPermissionWasRequested() {
-    const key = messagingPermissionStorageKey();
-    return key !== '' && localStorage.getItem(key) === '1';
-}
-
-function setMessagingPermissionRequested() {
-    const key = messagingPermissionStorageKey();
-    if (key) {
-        localStorage.setItem(key, '1');
+    const integration = currentMessagingIntegration();
+    if (state.platform === 'VK') {
+        return integration?.permission_status === 'allowed';
     }
+    if (!integration || !state.platformUserId) {
+        return false;
+    }
+    return localStorage.getItem(`swpro_messages_allowed_${state.platform}_${integration.external_id}_${state.platformUserId}`) === '1';
 }
 
 function renderMessagingPermissionCard() {
     const integration = currentMessagingIntegration();
-    if (!integration || messagingPermissionWasRequested()) {
+    if (state.onboarding?.marketing_consent_available === false
+        || !state.onboarding?.marketing_consent
+        || !integration
+        || messagingPermissionWasRequested()) {
         return '';
     }
 
@@ -1019,25 +1013,36 @@ function renderMessagingPermissionCard() {
 }
 
 async function allowSocialMessages() {
-    const integration = currentMessagingIntegration();
-    if (!integration) {
-        return;
-    }
-
     if (state.platform === 'VK' && window.vkBridge) {
-        await vkBridge.send('VKWebAppAllowMessagesFromGroup', {
-            group_id: Number(integration.external_id),
+        const permission = await api('vk_message_permission.php', {
+            method: 'POST',
+            body: JSON.stringify(userPayload()),
         });
-        setMessagingPermissionRequested();
-        await render();
-        return;
+        if (permission.status !== 'allowed') {
+            await vkBridge.send('VKWebAppAllowMessagesFromGroup', {
+                group_id: Number(permission.group_id),
+                key: String(permission.key || ''),
+            });
+        }
+        state.messagingConfig = state.messagingConfig || {integrations: {}};
+        state.messagingConfig.integrations = state.messagingConfig.integrations || {};
+        state.messagingConfig.integrations.VK = {
+            platform: 'VK',
+            title: permission.title,
+            external_id: permission.group_id,
+            permission_status: 'allowed',
+        };
+        return permission;
     }
 
     if (state.platform === 'OK' && window.FAPI?.UI?.showPermissions) {
         await new Promise((resolve) => {
             window.FAPI.UI.showPermissions(['BOT_API_INIT'], resolve);
         });
-        setMessagingPermissionRequested();
+        const integration = currentMessagingIntegration();
+        if (integration && state.platformUserId) {
+            localStorage.setItem(`swpro_messages_allowed_OK_${integration.external_id}_${state.platformUserId}`, '1');
+        }
         await render();
         return;
     }
@@ -1046,6 +1051,37 @@ async function allowSocialMessages() {
         'afterbegin',
         `<div class="form-error">${escapeHtml(ui('messages.allow_unavailable', 'Разрешение сообщений доступно только внутри приложения платформы.'))}</div>`
     );
+}
+
+function setMarketingDeliveryHint(form, message, tone = 'info') {
+    const hint = form?.querySelector('#marketing-delivery-hint');
+    if (!hint) return;
+    hint.textContent = message;
+    hint.className = `marketing-delivery-hint ${tone}`;
+    hint.hidden = message === '';
+}
+
+async function handleMarketingConsentChange(checkbox) {
+    const form = checkbox.form;
+    if (!checkbox.checked) {
+        setMarketingDeliveryHint(form, '');
+        return;
+    }
+    if (state.platform !== 'VK' || !window.vkBridge) {
+        setMarketingDeliveryHint(form, 'Сообщения VK доступны только внутри приложения VK. Укажите email, чтобы получать материалы и уведомления.', 'warning');
+        return;
+    }
+    checkbox.disabled = true;
+    state.vkMessagePermissionAttempted = true;
+    setMarketingDeliveryHint(form, 'Открываем системное окно VK…');
+    try {
+        await allowSocialMessages();
+        setMarketingDeliveryHint(form, 'Готово: сообщения VK разрешены для сообщества вашего консультанта.', 'success');
+    } catch (error) {
+        setMarketingDeliveryHint(form, 'Сообщения VK не подключены. Укажите email, чтобы мы могли отправлять вам материалы и уведомления.', 'warning');
+    } finally {
+        checkbox.disabled = false;
+    }
 }
 
 function accountSuggestionDismissKey() {
@@ -1177,10 +1213,13 @@ function renderOnboardingGate() {
                         <input type="checkbox" name="health_consent" ${!missing.has('health_data_consent') ? 'checked' : ''} required>
                         <span>Принимаю ${legalDocumentLink('health_data_consent', 'согласие на обработку ответов чек-апа')}</span>
                     </label>
-                    <label class="consent-line optional">
-                        <input type="checkbox" name="marketing_consent" ${state.onboarding?.marketing_consent ? 'checked' : ''}>
-                        <span>Хочу получать полезные материалы, акции и новости. ${legalDocumentLink('marketing_consent', 'Подробнее')}</span>
-                    </label>
+                    ${state.onboarding?.marketing_consent_available !== false ? `
+                        <label class="consent-line optional">
+                            <input type="checkbox" name="marketing_consent" ${state.onboarding?.marketing_consent ? 'checked' : ''}>
+                            <span>Хочу получать полезные материалы, акции и новости. ${legalDocumentLink('marketing_consent', 'Подробнее')}</span>
+                        </label>
+                        <div id="marketing-delivery-hint" class="marketing-delivery-hint" hidden></div>
+                    ` : ''}
                 </div>
 
                 <label>
@@ -2609,6 +2648,7 @@ page.addEventListener('click', async (event) => {
     if (target.dataset.action === 'allow-social-messages') {
         try {
             await allowSocialMessages();
+            await render();
         } catch (_) {
             page.insertAdjacentHTML(
                 'afterbegin',
@@ -2664,6 +2704,13 @@ document.addEventListener('click', (event) => {
     }
 });
 
+page.addEventListener('change', async (event) => {
+    const target = event.target;
+    if (target instanceof HTMLInputElement && target.name === 'marketing_consent') {
+        await handleMarketingConsentChange(target);
+    }
+});
+
 page.addEventListener('submit', async (event) => {
     const target = event.target;
     if (target instanceof HTMLFormElement && target.id === 'onboarding-form') {
@@ -2686,6 +2733,17 @@ page.addEventListener('submit', async (event) => {
                 'health_data_consent',
             ];
             const marketingConsent = formData.get('marketing_consent') === 'on';
+            if (marketingConsent
+                && state.platform === 'VK'
+                && !messagingPermissionWasRequested()
+                && !state.vkMessagePermissionAttempted) {
+                try {
+                    await allowSocialMessages();
+                    setMarketingDeliveryHint(target, 'Готово: сообщения VK разрешены для сообщества вашего консультанта.', 'success');
+                } catch (_) {
+                    setMarketingDeliveryHint(target, 'Сообщения VK не подключены. Укажите email, чтобы получать материалы и уведомления.', 'warning');
+                }
+            }
             if (marketingConsent) {
                 documentTypes.push('marketing_consent');
             }

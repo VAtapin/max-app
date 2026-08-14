@@ -1,5 +1,35 @@
 <?php
 
+function messaging_integration_is_usable(array $integration): bool
+{
+    $baseReady = (int)($integration['is_active'] ?? 0) === 1
+        && trim((string)($integration['external_id'] ?? '')) !== ''
+        && trim((string)($integration['access_token'] ?? '')) !== '';
+    if (!$baseReady || normalize_platform((string)($integration['platform'] ?? '')) !== 'VK') {
+        return $baseReady;
+    }
+    return trim((string)($integration['callback_confirmation_code'] ?? '')) !== ''
+        && !empty($integration['callback_last_event_at'])
+        && trim((string)($integration['callback_last_error'] ?? '')) === '';
+}
+
+function messaging_default_integration(string $platform): ?array
+{
+    $stmt = db()->prepare(
+        'SELECT *
+         FROM messaging_integrations
+         WHERE platform = :platform
+           AND is_default = 1
+           AND is_active = 1
+         ORDER BY id DESC
+         LIMIT 1'
+    );
+    $stmt->execute(['platform' => normalize_platform($platform)]);
+    $integration = $stmt->fetch();
+
+    return $integration && messaging_integration_is_usable($integration) ? $integration : null;
+}
+
 function messaging_integration_for_owner(string $platform, ?int $managerId, ?int $resellerId): ?array
 {
     $platform = normalize_platform($platform);
@@ -18,10 +48,12 @@ function messaging_integration_for_owner(string $platform, ?int $managerId, ?int
            AND owner_type = :owner_type
            AND owner_id = :owner_id
            AND is_active = 1
+           AND external_id IS NOT NULL
+           AND external_id <> ""
            AND access_token IS NOT NULL
            AND access_token <> ""
          ORDER BY id DESC
-         LIMIT 1'
+         LIMIT 20'
     );
 
     foreach ($candidates as $candidate) {
@@ -30,13 +62,104 @@ function messaging_integration_for_owner(string $platform, ?int $managerId, ?int
             'owner_type' => $candidate['owner_type'],
             'owner_id' => $candidate['owner_id'],
         ]);
-        $integration = $stmt->fetch();
-        if ($integration) {
-            return $integration;
+        foreach ($stmt->fetchAll() as $integration) {
+            if (messaging_integration_is_usable($integration)) {
+                return $integration;
+            }
         }
     }
 
-    return null;
+    return messaging_default_integration($platform);
+}
+
+function messaging_vk_platform_account(int $endUserId, ?string $platformUserId = null): ?array
+{
+    $sql = 'SELECT * FROM platform_accounts WHERE end_user_id = :end_user_id AND platform = "VK"';
+    $params = ['end_user_id' => $endUserId];
+    if ($platformUserId !== null && $platformUserId !== '') {
+        $sql .= ' AND platform_user_id = :platform_user_id';
+        $params['platform_user_id'] = preg_replace('/\D+/', '', $platformUserId) ?: $platformUserId;
+    }
+    $sql .= ' ORDER BY id DESC LIMIT 1';
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    $account = $stmt->fetch();
+    return $account ?: null;
+}
+
+function messaging_vk_permission_for_user(int $endUserId, string $platformUserId, ?int $integrationId = null): ?array
+{
+    $integrationFilter = $integrationId ? ' AND p.integration_id = :integration_id' : '';
+    $stmt = db()->prepare(
+        'SELECT p.*, i.*,
+                p.id AS permission_id,
+                p.status AS permission_status,
+                i.id AS integration_id
+         FROM vk_message_permissions p
+         INNER JOIN messaging_integrations i ON i.id = p.integration_id
+         INNER JOIN platform_accounts pa ON pa.id = p.platform_account_id
+         WHERE p.end_user_id = :end_user_id
+           AND pa.platform = "VK"
+           AND pa.platform_user_id = :platform_user_id
+           AND p.status = "allowed"
+           AND i.platform = "VK"
+           AND i.is_active = 1
+           AND i.external_id = p.group_id
+           ' . $integrationFilter . '
+         ORDER BY p.allowed_at DESC, p.id DESC
+         LIMIT 1'
+    );
+    $params = [
+        'end_user_id' => $endUserId,
+        'platform_user_id' => preg_replace('/\D+/', '', $platformUserId) ?: $platformUserId,
+    ];
+    if ($integrationId) {
+        $params['integration_id'] = $integrationId;
+    }
+    $stmt->execute($params);
+    $permission = $stmt->fetch();
+    return $permission && messaging_integration_is_usable($permission) ? $permission : null;
+}
+
+function messaging_upsert_vk_permission(
+    int $endUserId,
+    int $platformAccountId,
+    array $integration,
+    string $status,
+    ?string $requestKeyHash = null,
+    ?string $requestExpiresAt = null
+): void {
+    $allowedAt = $status === 'allowed' ? date('Y-m-d H:i:s') : null;
+    $deniedAt = $status === 'denied' ? date('Y-m-d H:i:s') : null;
+    $stmt = db()->prepare(
+        'INSERT INTO vk_message_permissions (
+            end_user_id, platform_account_id, integration_id, group_id, status,
+            request_key_hash, request_expires_at, requested_at, allowed_at, denied_at
+         ) VALUES (
+            :end_user_id, :platform_account_id, :integration_id, :group_id, :status,
+            :request_key_hash, :request_expires_at, NOW(), :allowed_at, :denied_at
+         )
+         ON DUPLICATE KEY UPDATE
+            platform_account_id = VALUES(platform_account_id),
+            integration_id = VALUES(integration_id),
+            status = VALUES(status),
+            request_key_hash = VALUES(request_key_hash),
+            request_expires_at = VALUES(request_expires_at),
+            requested_at = NOW(),
+            allowed_at = VALUES(allowed_at),
+            denied_at = VALUES(denied_at)'
+    );
+    $stmt->execute([
+        'end_user_id' => $endUserId,
+        'platform_account_id' => $platformAccountId,
+        'integration_id' => (int)$integration['id'],
+        'group_id' => (string)$integration['external_id'],
+        'status' => $status,
+        'request_key_hash' => $requestKeyHash,
+        'request_expires_at' => $requestExpiresAt,
+        'allowed_at' => $allowedAt,
+        'denied_at' => $deniedAt,
+    ]);
 }
 
 function messaging_owner_context_from_user_id(?int $endUserId): array
@@ -308,11 +431,26 @@ function send_social_platform_message(
         return ['ok' => false, 'error' => 'Unsupported social platform: ' . $platform];
     }
 
+    $endUserId = !empty($ownerContext['end_user_id']) ? (int)$ownerContext['end_user_id'] : null;
     $integration = messaging_integration_for_owner(
         $platform,
         !empty($ownerContext['manager_id']) ? (int)$ownerContext['manager_id'] : null,
         !empty($ownerContext['reseller_id']) ? (int)$ownerContext['reseller_id'] : null
     );
+    if ($platform === 'VK' && $endUserId) {
+        $allowedIntegration = $integration
+            ? messaging_vk_permission_for_user($endUserId, $platformUserId, (int)$integration['id'])
+            : null;
+        if ($allowedIntegration) {
+            $integration = $allowedIntegration;
+        } else {
+            $historyStmt = db()->prepare('SELECT COUNT(*) FROM vk_message_permissions WHERE end_user_id = :end_user_id');
+            $historyStmt->execute(['end_user_id' => $endUserId]);
+            if ((int)$historyStmt->fetchColumn() > 0) {
+                return ['ok' => false, 'error' => 'Клиент не разрешил сообщения выбранного VK-сообщества'];
+            }
+        }
+    }
     if (!$integration) {
         return ['ok' => false, 'error' => 'Нет активной интеграции сообщества для ' . platform_label($platform)];
     }

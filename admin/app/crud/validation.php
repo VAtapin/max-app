@@ -265,6 +265,51 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin,
         }
     }
 
+    if ($moduleKey === 'integrations' && !empty($payload['is_default'])) {
+        if (($payload['platform'] ?? '') !== 'VK') {
+            $errors[] = 'Стандартным можно назначить только сообщество VK.';
+        }
+        if (empty($payload['is_active'])) {
+            $errors[] = 'Стандартное сообщество должно быть активным.';
+        }
+        foreach (['external_id', 'access_token', 'callback_confirmation_code'] as $requiredField) {
+            if (trim((string)($payload[$requiredField] ?? '')) === '') {
+                $errors[] = 'Для стандартного сообщества заполните group_id, ключ доступа и Callback API.';
+                break;
+            }
+        }
+        if (empty($payload['callback_last_event_at']) || trim((string)($payload['callback_last_error'] ?? '')) !== '') {
+            $errors[] = 'Сначала завершите и проверьте настройку Callback API этого сообщества.';
+        }
+    }
+    if ($moduleKey === 'integrations' && trim((string)($payload['external_id'] ?? '')) !== '') {
+        $duplicateSql = 'SELECT COUNT(*) FROM messaging_integrations
+                         WHERE platform = :platform AND external_id = :external_id';
+        $duplicateParams = [
+            'platform' => (string)($payload['platform'] ?? ''),
+            'external_id' => trim((string)$payload['external_id']),
+        ];
+        if ($recordId) {
+            $duplicateSql .= ' AND id <> :id';
+            $duplicateParams['id'] = $recordId;
+        }
+        $duplicateStmt = db()->prepare($duplicateSql);
+        $duplicateStmt->execute($duplicateParams);
+        if ((int)$duplicateStmt->fetchColumn() > 0) {
+            $errors[] = 'Это сообщество уже добавлено в подключения.';
+        }
+    }
+    if ($moduleKey === 'integrations'
+        && $recordId
+        && array_key_exists('is_default', $payload)
+        && empty($payload['is_default'])) {
+        $defaultStmt = db()->prepare('SELECT is_default FROM messaging_integrations WHERE id = :id LIMIT 1');
+        $defaultStmt->execute(['id' => $recordId]);
+        if ((int)$defaultStmt->fetchColumn() === 1) {
+            $errors[] = 'Сначала назначьте другое стандартное сообщество VK.';
+        }
+    }
+
     if ($moduleKey === 'broadcasts'
         && trim((string)($payload['message_text'] ?? '')) === ''
         && empty($payload['image_path'])

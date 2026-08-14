@@ -210,6 +210,7 @@ function crud_display_columns(string $moduleKey): array
             'owner_label' => app_text('integrations.owner'),
             'platform' => app_text('auto.k_89009febe5c6'),
             'external_id' => app_text('integrations.external_id'),
+            'is_default' => 'Стандартное',
             'callback_last_event_at' => app_text('integrations.callback_last_event_at'),
             'state' => app_text('auto.k_f7f293b5c58c'),
         ],
@@ -644,7 +645,7 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
                         WHEN i.owner_type = 'reseller' THEN CONCAT('#', i.owner_id, ' ', COALESCE(NULLIF(r.name, ''), 'без имени'))
                         ELSE 'Общее'
                     END AS owner_label,
-                    i.platform, i.external_id, i.callback_last_event_at, IF(i.is_active = 1, 'active', 'inactive') AS state
+                    i.platform, i.external_id, i.is_default, i.callback_last_event_at, IF(i.is_active = 1, 'active', 'inactive') AS state
              FROM messaging_integrations i
              LEFT JOIN managers m ON m.id = i.owner_id AND i.owner_type = 'manager'
              LEFT JOIN resellers r ON r.id = i.owner_id AND i.owner_type = 'reseller'
@@ -691,6 +692,10 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
 
     if ($moduleKey === 'integrations' && $column === 'callback_last_event_at') {
         return crud_format_ru_datetime($row[$column] ?? null);
+    }
+
+    if ($moduleKey === 'integrations' && $column === 'is_default') {
+        return !empty($row[$column]) ? 'Да' : '—';
     }
 
     if ($moduleKey === 'resellers' && $column === 'manager_capacity') {

@@ -672,7 +672,7 @@ function create_and_send_lead_response(int $leadId, array $admin, array &$errors
             $result = send_social_platform_message(
                 $platform,
                 $platformUserId,
-                $lead,
+                $lead + ['end_user_id' => (int)$lead['end_user_id']],
                 $text,
                 lead_response_social_buttons($content, $test, $externalUrl, $platform, $referralCode, (int)$lead['end_user_id']),
                 lead_response_media_urls($content, $attachmentPaths, false)
