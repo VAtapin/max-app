@@ -309,7 +309,14 @@ function ai_retrieve_sources(string $question, string $audience, array $owner, s
     unset($item);
     usort($items, static fn(array $a, array $b): int => ($b['score'] ?? 0) <=> ($a['score'] ?? 0));
     $minimum = max(1, (int)ai_setting('ai.minimum_source_score', '2'));
-    return array_slice(array_values(array_filter($items, static fn(array $item): bool => (int)$item['score'] >= $minimum)), 0, 4);
+    $matched = array_slice(array_values(array_filter($items, static fn(array $item): bool => (int)$item['score'] >= $minimum)), 0, 4);
+    foreach ($matched as &$item) {
+        // Retrieval stays inside SWPro. External AI receives only this compact
+        // matching fragment, never an entire README or documentation page.
+        $item['matched_content'] = ai_source_excerpt((string)($item['content'] ?? ''), $question, 4000);
+    }
+    unset($item);
+    return $matched;
 }
 
 function ai_find_or_create_conversation(string $actorType, array $actor, array $owner, string $channel, ?string $pageContext): int
@@ -343,15 +350,65 @@ function ai_recent_user_context(int $conversationId, int $limit = 3): string
     return implode("\n", array_reverse(array_map(static fn(array $row): string => (string)$row['content'], $stmt->fetchAll())));
 }
 
-function ai_compose_grounded_answer(array $sources, bool $admin): string
+function ai_source_excerpt(string $content, string $question, int $maxChars): string
+{
+    $content = trim($content);
+    if ($content === '' || mb_strlen($content, 'UTF-8') <= $maxChars) {
+        return $content;
+    }
+
+    $paragraphs = preg_split('/\R{2,}/u', $content, -1, PREG_SPLIT_NO_EMPTY) ?: [$content];
+    $tokens = ai_tokenize($question);
+    $bestIndex = 0;
+    $bestScore = -1;
+    foreach ($paragraphs as $index => $paragraph) {
+        $haystack = mb_strtolower($paragraph, 'UTF-8');
+        $score = 0;
+        foreach ($tokens as $token) {
+            if (str_contains($haystack, $token)) {
+                $score++;
+            }
+        }
+        if ($score > $bestScore) {
+            $bestScore = $score;
+            $bestIndex = $index;
+        }
+    }
+
+    // A heading often contains the strongest match, while the actual answer is
+    // in the following paragraph. Keep nearby blocks and restore their order.
+    $bestIsHeading = mb_strlen(trim((string)$paragraphs[$bestIndex]), 'UTF-8') <= 160;
+    $nearbyIndexes = $bestIsHeading
+        ? [$bestIndex, $bestIndex + 1, $bestIndex + 2]
+        : [$bestIndex - 1, $bestIndex, $bestIndex + 1];
+    $selected = [];
+    foreach ($nearbyIndexes as $index) {
+        if (!isset($paragraphs[$index])) {
+            continue;
+        }
+        $candidate = implode("\n\n", array_replace($selected, [$index => trim($paragraphs[$index])]));
+        if (mb_strlen($candidate, 'UTF-8') > $maxChars && $selected) {
+            continue;
+        }
+        $selected[$index] = trim($paragraphs[$index]);
+    }
+    ksort($selected);
+    $excerpt = trim(implode("\n\n", $selected));
+    if (mb_strlen($excerpt, 'UTF-8') > $maxChars) {
+        $excerpt = rtrim(mb_substr($excerpt, 0, $maxChars, 'UTF-8')) . '…';
+    }
+    return $excerpt;
+}
+
+function ai_compose_grounded_answer(array $sources, bool $admin, string $question = ''): string
 {
     $parts = [];
     foreach (array_slice($sources, 0, 2) as $index => $source) {
-        $content = trim((string)$source['content']);
+        $content = ai_source_excerpt((string)($source['matched_content'] ?? $source['content'] ?? ''), $question, $admin ? 1400 : 900);
         if ($content === '') {
             continue;
         }
-        $parts[] = ($index === 0 ? '' : "Дополнительно:\n") . mb_substr($content, 0, $admin ? 1400 : 900, 'UTF-8') . ' [' . ($index + 1) . ']';
+        $parts[] = ($index === 0 ? '' : "Дополнительно:\n") . $content . ' [' . ($index + 1) . ']';
     }
     return implode("\n\n", $parts);
 }
@@ -585,7 +642,7 @@ function ai_openai_generate(string $question, array $sources, bool $isAdmin, arr
     $rules = trim((string)ai_setting($ruleKey, ''));
     $sourceBlocks = [];
     foreach (array_slice($sources, 0, $route['source_limit']) as $index => $source) {
-        $content = ai_redact_external_text(mb_substr(trim((string)($source['content'] ?? '')), 0, $route['source_chars'], 'UTF-8'));
+        $content = ai_redact_external_text(ai_source_excerpt((string)($source['matched_content'] ?? $source['content'] ?? ''), $question, $route['source_chars']));
         $sourceBlocks[] = sprintf("[Источник %d: %s]\n%s", $index + 1, (string)($source['source_label'] ?? $source['title'] ?? 'SWPro'), $content);
     }
     $instructions = trim($rules . "\n\n" . implode("\n", [
@@ -804,7 +861,7 @@ function ai_answer(string $question, string $audience, array $actor, string $cha
         }
     }
     if (!isset($answer)) {
-        $answer = ai_compose_grounded_answer($sources, $isAdmin);
+        $answer = ai_compose_grounded_answer($sources, $isAdmin, $question);
     }
     if (!$isAdmin && $provider === 'swpro') {
         $firstName = trim((string)($actor['first_name'] ?? ''));
@@ -819,7 +876,7 @@ function ai_answer(string $question, string $audience, array $actor, string $cha
         };
         $answer = $prefix . $lead . "\n\n" . $answer;
         if (str_starts_with((string)$sources[0]['source_key'], 'checkup:')) {
-            $answer = $prefix . 'я посмотрел результаты вашего последнего чек-апа. Вот утверждённое пояснение:\n\n' . ai_compose_grounded_answer($sources, false);
+            $answer = $prefix . 'я посмотрел результаты вашего последнего чек-апа. Вот утверждённое пояснение:\n\n' . ai_compose_grounded_answer($sources, false, $question);
         }
     }
     ai_save_message($conversationId, 'assistant', $answer, ['citations' => $citations, 'provider' => $provider, 'model' => $model, 'safety_status' => $safetyStatus]);
