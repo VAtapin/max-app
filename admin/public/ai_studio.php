@@ -68,6 +68,7 @@ function ai_studio_card_payload(array $profile): array
     return [
         'name' => $name !== '' ? $name : 'SWPro',
         'subtitle' => $subtitle !== '' ? $subtitle : 'Ваш персональный консультант SWPro',
+        'referral_code' => $code,
         'url' => $url,
         'photo' => ai_studio_photo_uri((string)($profile['photo_path'] ?? ''), $base),
         'qr' => qr_code_svg_data_uri($url),
@@ -340,8 +341,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
 </details><?php endforeach; ?></section><?php endif; ?>
 
 <section class="panel ai-card-section"><div class="ai-studio-heading"><div><h2>Карточки для отправки</h2><p class="cell-muted">Готовые изображения с вашей ссылкой и QR‑кодом. Их можно скачать как PNG или сразу отправить с телефона.</p></div></div>
-<h3 class="ai-card-option-title">1. Выберите фон</h3>
-<div class="ai-card-themes" role="group" aria-label="Фон карточек">
+<div class="ai-card-controls">
+<details class="ai-card-picker" id="ai-theme-picker"><summary><span class="ai-theme-preview theme-ocean" id="ai-theme-current-preview"></span><span><small>Фон</small><strong id="ai-theme-current-label">Океан</strong></span></summary>
+<div class="ai-card-picker-menu ai-card-themes" role="group" aria-label="Фон карточек">
     <button type="button" class="ai-card-theme is-active" data-card-theme="ocean" aria-pressed="true"><span class="ai-theme-preview theme-ocean"></span><span><strong>Океан</strong><small>Основной фирменный</small></span></button>
     <button type="button" class="ai-card-theme" data-card-theme="pearl" aria-pressed="false"><span class="ai-theme-preview theme-pearl"></span><span><strong>Жемчуг</strong><small>Светлый и спокойный</small></span></button>
     <button type="button" class="ai-card-theme" data-card-theme="botanical" aria-pressed="false"><span class="ai-theme-preview theme-botanical"></span><span><strong>Ботаника</strong><small>Натуральный зелёный</small></span></button>
@@ -351,14 +353,15 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <button type="button" class="ai-card-theme" data-card-theme="technology" aria-pressed="false"><span class="ai-theme-preview theme-technology"></span><span><strong>Технологии</strong><small>Синий 3D-стиль</small></span></button>
     <button type="button" class="ai-card-theme" data-card-theme="herbarium" aria-pressed="false"><span class="ai-theme-preview theme-herbarium"></span><span><strong>Гербарий</strong><small>Зелень и золото</small></span></button>
     <button type="button" class="ai-card-theme" data-card-theme="sunlight" aria-pressed="false"><span class="ai-theme-preview theme-sunlight"></span><span><strong>Солнечный</strong><small>Тёплый светлый</small></span></button>
-</div>
-<h3 class="ai-card-option-title">2. Выберите компоновку</h3>
-<div class="ai-card-layouts" role="group" aria-label="Компоновка карточек">
+</div></details>
+<details class="ai-card-picker" id="ai-layout-picker"><summary><span class="ai-layout-preview layout-classic" id="ai-layout-current-preview"><i></i><b></b><em></em></span><span><small>Компоновка</small><strong id="ai-layout-current-label">Классика</strong></span></summary>
+<div class="ai-card-picker-menu ai-card-layouts" role="group" aria-label="Компоновка карточек">
     <button type="button" class="ai-card-layout is-active" data-card-layout="classic" aria-pressed="true"><span class="ai-layout-preview layout-classic"><i></i><b></b><em></em></span><span><strong>Классика</strong><small>Фото слева, QR справа</small></span></button>
     <button type="button" class="ai-card-layout" data-card-layout="portrait" aria-pressed="false"><span class="ai-layout-preview layout-portrait"><i></i><b></b><em></em></span><span><strong>Фото крупно</strong><small>Акцент на специалисте</small></span></button>
     <button type="button" class="ai-card-layout" data-card-layout="columns" aria-pressed="false"><span class="ai-layout-preview layout-columns"><i></i><b></b><em></em></span><span><strong>Две колонки</strong><small>Строгая визитка</small></span></button>
     <button type="button" class="ai-card-layout" data-card-layout="centered" aria-pressed="false"><span class="ai-layout-preview layout-centered"><i></i><b></b><em></em></span><span><strong>По центру</strong><small>Симметричный вариант</small></span></button>
     <button type="button" class="ai-card-layout" data-card-layout="minimal" aria-pressed="false"><span class="ai-layout-preview layout-minimal"><i></i><b></b><em></em></span><span><strong>Минимализм</strong><small>Только самое важное</small></span></button>
+</div></details>
 </div>
 <div class="ai-card-grid">
     <article class="ai-card-item"><div><h3>Горизонтальная визитка</h3><p class="cell-muted">Для сообщений, публикаций и превью ссылки.</p></div><canvas id="ai-card-wide" data-variant="wide" aria-label="Горизонтальная персональная карточка"></canvas><div class="form-actions"><button type="button" class="secondary-button ai-card-download" data-canvas="ai-card-wide" data-name="swpro-card.png" disabled>Скачать PNG</button><button type="button" class="secondary-button ai-card-share" data-canvas="ai-card-wide" data-name="swpro-card.png" disabled>Поделиться</button></div></article>
@@ -369,6 +372,9 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <script>
 (() => {
     const profile = <?= json_encode($cardPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    const fileBase = String(profile.referral_code || 'SWPro').trim().replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'SWPro';
+    document.querySelectorAll('[data-canvas="ai-card-wide"]').forEach(button => { button.dataset.name = `${fileBase}.png`; });
+    document.querySelectorAll('[data-canvas="ai-card-story"]').forEach(button => { button.dataset.name = `${fileBase}-story.png`; });
     const loadImage = (src) => new Promise((resolve) => {
         if (!src) return resolve(null);
         const image = new Image();
@@ -620,6 +626,10 @@ require __DIR__ . '/../app/views/layouts/header.php';
             button.classList.toggle('is-active', active);
             button.setAttribute('aria-pressed', active ? 'true' : 'false');
         });
+        const selected = document.querySelector(`.ai-card-theme[data-card-theme="${name}"]`);
+        const preview = document.getElementById('ai-theme-current-preview');
+        if (preview) preview.className = `ai-theme-preview theme-${name}`;
+        if (selected) document.getElementById('ai-theme-current-label').textContent = selected.querySelector('strong').textContent;
         renderCards();
     };
     const selectLayout = (name) => {
@@ -631,10 +641,18 @@ require __DIR__ . '/../app/views/layouts/header.php';
             button.classList.toggle('is-active', active);
             button.setAttribute('aria-pressed', active ? 'true' : 'false');
         });
+        const selected = document.querySelector(`.ai-card-layout[data-card-layout="${name}"]`);
+        const preview = document.getElementById('ai-layout-current-preview');
+        if (preview) preview.className = `ai-layout-preview layout-${name}`;
+        if (selected) document.getElementById('ai-layout-current-label').textContent = selected.querySelector('strong').textContent;
         renderCards();
     };
-    document.querySelectorAll('.ai-card-theme').forEach(button => button.addEventListener('click', () => selectTheme(button.dataset.cardTheme)));
-    document.querySelectorAll('.ai-card-layout').forEach(button => button.addEventListener('click', () => selectLayout(button.dataset.cardLayout)));
+    document.querySelectorAll('.ai-card-theme').forEach(button => button.addEventListener('click', () => { selectTheme(button.dataset.cardTheme); document.getElementById('ai-theme-picker').removeAttribute('open'); }));
+    document.querySelectorAll('.ai-card-layout').forEach(button => button.addEventListener('click', () => { selectLayout(button.dataset.cardLayout); document.getElementById('ai-layout-picker').removeAttribute('open'); }));
+    document.querySelectorAll('.ai-card-picker').forEach(picker => picker.addEventListener('toggle', () => {
+        if (!picker.open) return;
+        document.querySelectorAll('.ai-card-picker[open]').forEach(other => { if (other !== picker) other.removeAttribute('open'); });
+    }));
     selectTheme(selectedTheme);
     selectLayout(selectedLayout);
     const imageThemeEntries = Object.entries(themes).filter(([, value]) => value.image);
