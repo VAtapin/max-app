@@ -256,6 +256,7 @@ function public_person_first_name(string $displayName): string
             <nav>
                 <a href="#how">Как работает</a>
                 <a href="#roles">Для кого</a>
+                <a href="/leaders.php">Стать лидером</a>
                 <a href="#start">Открыть страницу</a>
             </nav>
         </header>
@@ -268,6 +269,7 @@ function public_person_first_name(string $displayName): string
                     <input name="ref" placeholder="Код консультанта" required>
                     <button type="submit">Открыть страницу</button>
                 </form>
+                <p><a class="secondary" href="/leaders.php">Хотите стать лидером? Возможности и тарифы →</a></p>
                 <?php if ($invalidReferralCode): ?>
                     <p class="form-error" role="alert">Код не найден или консультант неактивен. Проверьте код и попробуйте снова.</p>
                 <?php endif; ?>
