@@ -5596,6 +5596,47 @@ table.responsive-table tbody tr:last-child td { border-bottom: 0; }
 table.data-table tbody tr:hover td,
 table.responsive-table tbody tr:hover td { background: #f9fbfb; }
 
+.table-cell-collapse-shell {
+    min-width: 0;
+}
+
+.table-cell-collapse-content {
+    position: relative;
+}
+
+.table-cell-collapse-shell.is-collapsible:not(.is-expanded) .table-cell-collapse-content {
+    max-height: 72px;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 72%, transparent 100%);
+}
+
+.table-cell-collapse-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 0;
+    margin-top: 5px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.table-cell-collapse-toggle::after {
+    content: '⌄';
+    font-size: 13px;
+    line-height: 1;
+}
+
+.table-cell-collapse-shell.is-expanded .table-cell-collapse-toggle::after {
+    content: '⌃';
+}
+
 .compact-table td { padding-block: 6px !important; }
 .compact-lines { gap: 3px; min-width: 140px; }
 .cell-muted { font-size: 11px; line-height: 1.35; }

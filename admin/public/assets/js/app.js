@@ -125,6 +125,7 @@ function initAdminRemoteModals(root = document) {
                 initLimitChecks(modal);
                 initImagePreviewModal(modal);
                 initResponsiveTables(modal);
+                initCollapsibleTableCells(modal);
             } catch (error) {
                 modal.innerHTML = `
                     <div class="modal-shell">
@@ -698,6 +699,54 @@ function initResponsiveTables(root = document) {
     });
 }
 
+function initCollapsibleTableCells(root = document) {
+    const collapsedHeight = 72;
+    const bindCells = () => {
+        root.querySelectorAll('table.responsive-table tbody td').forEach((cell) => {
+            if (cell.dataset.collapsibleCellBound === '1'
+                || cell.hasAttribute('colspan')
+                || cell.querySelector('form, input, select, textarea, button, details, table')) {
+                return;
+            }
+            const label = (cell.dataset.label || '').trim().toLowerCase();
+            if (label === 'действия' || cell.classList.contains('row-actions')) {
+                return;
+            }
+
+            const shell = document.createElement('div');
+            shell.className = 'table-cell-collapse-shell';
+            const content = document.createElement('div');
+            content.className = 'table-cell-collapse-content';
+            while (cell.firstChild) content.appendChild(cell.firstChild);
+            shell.appendChild(content);
+            cell.appendChild(shell);
+
+            if (content.scrollHeight <= collapsedHeight + 8) {
+                while (content.firstChild) cell.insertBefore(content.firstChild, shell);
+                shell.remove();
+                cell.dataset.collapsibleCellBound = '1';
+                return;
+            }
+
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'table-cell-collapse-toggle';
+            toggle.textContent = 'Показать полностью';
+            toggle.setAttribute('aria-expanded', 'false');
+            toggle.addEventListener('click', () => {
+                const expanded = shell.classList.toggle('is-expanded');
+                toggle.textContent = expanded ? 'Свернуть' : 'Показать полностью';
+                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            });
+            shell.appendChild(toggle);
+            shell.classList.add('is-collapsible');
+            cell.dataset.collapsibleCellBound = '1';
+        });
+    };
+
+    window.requestAnimationFrame(() => window.requestAnimationFrame(bindCells));
+}
+
 function initAiChat(root = document) {
     root.querySelectorAll('[data-ai-chat]').forEach((widget) => {
         if (widget.dataset.aiChatBound === '1') return;
@@ -799,4 +848,5 @@ initLimitChecks();
 initLeadMediaModal();
 initImagePreviewModal();
 initResponsiveTables();
+initCollapsibleTableCells();
 initAiChat();
