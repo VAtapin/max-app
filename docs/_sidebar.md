@@ -11,7 +11,7 @@
   - [Шаблоны и наследование](/content/inheritance.md)
 - **РАБОТА С КЛИЕНТОМ**
   - [Опросы и результаты](/work/surveys.md)
-  - [Обращения](/work/appeals.md)
+  - [Живой чат](/work/appeals.md)
   - [Рассылки](/work/broadcasts.md)
 - **ПОДКЛЮЧЕНИЯ**
   - [Разрешение сообщений VK](/integrations/vk-messages.md)

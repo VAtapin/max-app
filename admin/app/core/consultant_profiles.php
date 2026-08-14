@@ -528,40 +528,88 @@ function consultant_profile_indexed_upload(string $field, string|int $index, ?st
     return consultant_profile_store_upload($file, $currentPath, $errors);
 }
 
-function consultant_options_for_admin(array $admin): array
+function consultant_owner_option(string $ownerType, int $ownerId): ?array
+{
+    if (!in_array($ownerType, ['manager', 'reseller'], true) || $ownerId <= 0) {
+        return null;
+    }
+    $table = $ownerType === 'manager' ? 'managers' : 'resellers';
+    $stmt = db()->prepare("SELECT id, name FROM $table WHERE id = :id LIMIT 1");
+    $stmt->execute(['id' => $ownerId]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        return null;
+    }
+    return [
+        'owner_type' => $ownerType,
+        'owner_id' => (int)$row['id'],
+        'label' => ($ownerType === 'manager' ? 'Консультант: ' : 'Лидер: ') . (string)$row['name'],
+    ];
+}
+
+function consultant_search_options_for_admin(array $admin, string $query = '', int $limit = 30): array
 {
     if ($admin['role'] === 'manager') {
         return [];
     }
 
-    $options = [];
+    $query = mb_substr(trim($query), 0, 100, 'UTF-8');
+    $limit = max(1, min(200, $limit));
+    $like = '%' . $query . '%';
+    $exactId = preg_match('/^#?(\d+)$/', $query, $match) ? (int)$match[1] : 0;
+    $searchSql = $query !== '' ? 'WHERE (display_name LIKE :query OR owner_id = :exact_id)' : '';
+    $params = $query !== '' ? ['query' => $like, 'exact_id' => $exactId] : [];
+
     if ($admin['role'] === 'reseller') {
-        $resellerIds = team_reseller_branch_ids((int)$admin['reseller_id'], true);
-        [$resellerWhere, $resellerParams] = team_sql_in_condition('id', $resellerIds, 'profile_reseller');
-        $stmt = db()->prepare('SELECT id, name FROM resellers WHERE ' . $resellerWhere . ' ORDER BY name, id');
-        $stmt->execute($resellerParams);
-        foreach ($stmt->fetchAll() as $row) {
-            $options[] = ['owner_type' => 'reseller', 'owner_id' => (int)$row['id'], 'label' => 'Лидер: ' . team_reseller_label((int)$row['id'])];
-        }
+        $sql = 'WITH RECURSIVE branch AS (
+                    SELECT id FROM resellers WHERE id = :root_reseller_id
+                    UNION ALL
+                    SELECT r.id FROM resellers r INNER JOIN branch b ON r.parent_reseller_id = b.id
+                )
+                SELECT owner_type, owner_id, label FROM (
+                    SELECT "reseller" owner_type, r.id owner_id, r.name display_name, CONCAT("Лидер: ", r.name) label
+                    FROM resellers r INNER JOIN branch b ON b.id = r.id
+                    UNION ALL
+                    SELECT "manager" owner_type, m.id owner_id, m.name display_name, CONCAT("Консультант: ", m.name) label
+                    FROM managers m INNER JOIN branch b ON b.id = m.reseller_id
+                ) owners ' . $searchSql . '
+                ORDER BY label, owner_id LIMIT ' . $limit;
+        $params['root_reseller_id'] = (int)$admin['reseller_id'];
+    } else {
+        $sql = 'SELECT owner_type, owner_id, label FROM (
+                    SELECT "reseller" owner_type, id owner_id, name display_name, CONCAT("Лидер: ", name) label FROM resellers
+                    UNION ALL
+                    SELECT "manager" owner_type, id owner_id, name display_name, CONCAT("Консультант: ", name) label FROM managers
+                ) owners ' . $searchSql . '
+                ORDER BY label, owner_id LIMIT ' . $limit;
+    }
 
-        $managerIds = team_manager_ids_for_resellers($resellerIds);
-        if ($managerIds) {
-            [$managerWhere, $managerParams] = team_sql_in_condition('id', $managerIds, 'profile_manager');
-            $stmt = db()->prepare('SELECT id, name FROM managers WHERE ' . $managerWhere . ' ORDER BY name, id');
-            $stmt->execute($managerParams);
-            foreach ($stmt->fetchAll() as $row) {
-                $options[] = ['owner_type' => 'manager', 'owner_id' => (int)$row['id'], 'label' => app_text('auto.k_8d98911527e4') . ': ' . $row['name']];
-            }
-        }
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    return array_map(static fn(array $row): array => [
+        'owner_type' => (string)$row['owner_type'],
+        'owner_id' => (int)$row['owner_id'],
+        'label' => (string)$row['label'],
+    ], $stmt->fetchAll());
+}
 
+function consultant_options_for_admin(array $admin, ?array $selectedOwner = null): array
+{
+    $options = consultant_search_options_for_admin($admin, '', 200);
+    if (!$selectedOwner) {
         return $options;
     }
 
-    foreach (db()->query('SELECT id, name FROM managers ORDER BY id ASC')->fetchAll() as $row) {
-        $options[] = ['owner_type' => 'manager', 'owner_id' => (int)$row['id'], 'label' => app_text('auto.k_8d98911527e4') . ': ' . $row['name']];
+    $selectedValue = $selectedOwner['owner_type'] . ':' . (int)$selectedOwner['owner_id'];
+    foreach ($options as $option) {
+        if ($option['owner_type'] . ':' . $option['owner_id'] === $selectedValue) {
+            return $options;
+        }
     }
-    foreach (db()->query('SELECT id, name FROM resellers ORDER BY id ASC')->fetchAll() as $row) {
-        $options[] = ['owner_type' => 'reseller', 'owner_id' => (int)$row['id'], 'label' => app_text('auto.k_86469fea3a4a') . ': ' . $row['name']];
+
+    $selected = consultant_owner_option((string)$selectedOwner['owner_type'], (int)$selectedOwner['owner_id']);
+    if ($selected) {
+        array_unshift($options, $selected);
     }
 
     return $options;

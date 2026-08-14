@@ -388,7 +388,7 @@ $aboutTitles = about_section_titles($blocks);
 $cashbackCards = consultant_cashback_cards($effectiveProfileId, $profile);
 $selectedProducts = consultant_selected_ids($effectiveProfileId, 'profile_products', 'product_id');
 $selectedMaterials = consultant_selected_ids($effectiveProfileId, 'profile_materials', 'content_post_id');
-$ownerOptions = consultant_options_for_admin($admin);
+$ownerOptions = consultant_options_for_admin($admin, $owner);
 $templateOptions = site_template_options(profile_owner_admin($owner));
 $parentProfile = consultant_parent_profile($owner['owner_type'], (int)$owner['owner_id']);
 $isInheritedProfile = consultant_profile_inherits($storedProfile);
@@ -412,11 +412,25 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php endforeach; ?>
 
 <?php if ($ownerOptions): ?>
+    <style>
+        .profile-owner-search { position: relative; min-width: min(420px, 80vw); }
+        .profile-owner-results { position: absolute; z-index: 30; top: 100%; left: 0; right: 0; max-height: 280px; overflow-y: auto; background: #fff; border: 1px solid #cbd9df; border-radius: 10px; box-shadow: 0 12px 30px rgba(20, 48, 60, .16); }
+        .profile-owner-results[hidden] { display: none; }
+        .profile-owner-result { display: block; width: 100%; padding: 10px 12px; border: 0; border-bottom: 1px solid #edf2f4; border-radius: 0; background: #fff; color: #13233a; text-align: left; }
+        .profile-owner-result:hover, .profile-owner-result.is-active { background: #eaf7f5; }
+        .profile-owner-search-status { min-height: 18px; }
+    </style>
     <section class="panel profile-owner-panel">
-        <form method="get" class="inline-form">
+        <form method="get" class="inline-form" data-profile-owner-form>
+            <label class="field profile-owner-search">
+                <span>Поиск профиля</span>
+                <input type="search" autocomplete="off" placeholder="Начните вводить имя или ID" data-profile-owner-search aria-autocomplete="list" aria-expanded="false">
+                <div class="profile-owner-results" data-profile-owner-results role="listbox" hidden></div>
+                <small class="cell-muted profile-owner-search-status" data-profile-owner-status>Введите не менее двух символов.</small>
+            </label>
             <label class="field">
                 <span><?= h(app_text('consultant_profile.profile_owner')) ?></span>
-                <select name="owner_selector">
+                <select name="owner_selector" data-profile-owner-select>
                     <?php foreach ($ownerOptions as $option): ?>
                         <?php $value = $option['owner_type'] . ':' . $option['owner_id']; ?>
                         <option value="<?= h($value) ?>" <?= $value === $owner['owner_type'] . ':' . $owner['owner_id'] ? 'selected' : '' ?>><?= h($option['label']) ?></option>
@@ -836,6 +850,101 @@ require __DIR__ . '/../app/views/layouts/header.php';
         form.querySelector('[name="owner_type"]').value = ownerType;
         form.querySelector('[name="owner_id"]').value = ownerId;
     });
+
+    (() => {
+        const form = document.querySelector('[data-profile-owner-form]');
+        const input = form?.querySelector('[data-profile-owner-search]');
+        const select = form?.querySelector('[data-profile-owner-select]');
+        const results = form?.querySelector('[data-profile-owner-results]');
+        const status = form?.querySelector('[data-profile-owner-status]');
+        if (!form || !input || !select || !results || !status) return;
+
+        let timer = null;
+        let controller = null;
+        let activeIndex = -1;
+
+        const closeResults = () => {
+            results.hidden = true;
+            input.setAttribute('aria-expanded', 'false');
+            activeIndex = -1;
+        };
+        const choose = (option) => {
+            const value = `${option.owner_type}:${option.owner_id}`;
+            let selectOption = Array.from(select.options).find((item) => item.value === value);
+            if (!selectOption) {
+                selectOption = new Option(option.label, value);
+                select.add(selectOption, 0);
+            }
+            select.value = value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            input.value = option.label;
+            status.textContent = 'Профиль выбран. Нажмите «Показать».';
+            closeResults();
+        };
+        const render = (options) => {
+            results.replaceChildren();
+            activeIndex = -1;
+            if (!options.length) {
+                status.textContent = 'Совпадений не найдено.';
+                closeResults();
+                return;
+            }
+            options.forEach((option) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'profile-owner-result';
+                button.setAttribute('role', 'option');
+                button.textContent = option.label;
+                button.addEventListener('click', () => choose(option));
+                results.appendChild(button);
+            });
+            status.textContent = `Найдено: ${options.length}`;
+            results.hidden = false;
+            input.setAttribute('aria-expanded', 'true');
+        };
+        const search = async () => {
+            const query = input.value.trim();
+            if (query.length < 2 && !/^#?\d+$/.test(query)) {
+                status.textContent = 'Введите не менее двух символов.';
+                closeResults();
+                return;
+            }
+            controller?.abort();
+            controller = new AbortController();
+            status.textContent = 'Ищу…';
+            try {
+                const response = await fetch(`profile_owner_search.php?q=${encodeURIComponent(query)}`, {
+                    headers: { Accept: 'application/json' },
+                    signal: controller.signal,
+                });
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || 'Ошибка поиска');
+                render(Array.isArray(payload.options) ? payload.options : []);
+            } catch (error) {
+                if (error.name === 'AbortError') return;
+                status.textContent = 'Не удалось выполнить поиск.';
+                closeResults();
+            }
+        };
+        input.addEventListener('input', () => {
+            clearTimeout(timer);
+            timer = setTimeout(search, 250);
+        });
+        input.addEventListener('keydown', (event) => {
+            const items = Array.from(results.querySelectorAll('.profile-owner-result'));
+            if (event.key === 'Escape') return closeResults();
+            if (!items.length || !['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) return;
+            event.preventDefault();
+            if (event.key === 'ArrowDown') activeIndex = Math.min(activeIndex + 1, items.length - 1);
+            if (event.key === 'ArrowUp') activeIndex = Math.max(activeIndex - 1, 0);
+            if (event.key === 'Enter' && activeIndex >= 0) return items[activeIndex].click();
+            items.forEach((item, index) => item.classList.toggle('is-active', index === activeIndex));
+            items[activeIndex]?.scrollIntoView({ block: 'nearest' });
+        });
+        document.addEventListener('click', (event) => {
+            if (!form.contains(event.target)) closeResults();
+        });
+    })();
 
     document.addEventListener('DOMContentLoaded', () => {
         const control = document.querySelector('[data-profile-slug-control]');

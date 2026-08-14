@@ -26,6 +26,7 @@ const state = {
     webMergeCheckMessage: '',
     webMergeCheckState: '',
     answerPending: false,
+    liveChatTimer: null,
 };
 
 const page = document.querySelector('#page');
@@ -1790,6 +1791,37 @@ function renderCooperation() {
     `;
 }
 
+function clientLiveChatMarkup(messages) {
+    if (!messages.length) {
+        return '<div class="client-live-chat-empty">Сообщений пока нет. Напишите консультанту — ответ появится здесь.</div>';
+    }
+    return messages.map((message) => {
+        const own = message.sender_type === 'client';
+        const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+        return `<div class="client-live-chat-message ${own ? 'is-own' : 'is-consultant'}">
+            <div class="client-live-chat-bubble">
+                ${message.message_text ? `<div>${escapeHtml(message.message_text).replace(/\n/g, '<br>')}</div>` : ''}
+                ${attachments.map((path) => `<a href="${escapeHtml(path)}" target="_blank" rel="noopener">Вложение</a>`).join('')}
+                <small>${escapeHtml(formatRuDateTime(message.created_at))}${message.status === 'failed' ? ' · не отправлено' : ''}</small>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function loadClientLiveChat(scrollToEnd = false) {
+    const container = document.querySelector('#client-live-chat-messages');
+    if (!container || state.page !== 'contact') return;
+    try {
+        const result = await api(`chat.php?${userQuery()}`);
+        container.innerHTML = clientLiveChatMarkup(result.messages || []);
+        if (scrollToEnd || container.scrollHeight - container.scrollTop - container.clientHeight < 100) {
+            container.scrollTop = container.scrollHeight;
+        }
+    } catch (error) {
+        container.innerHTML = `<div class="client-live-chat-empty">${escapeHtml(friendlyError(error))}</div>`;
+    }
+}
+
 async function renderContactPage() {
     await loadMessagingConfig();
     const profile = state.consultantProfile?.profile || {};
@@ -1805,7 +1837,7 @@ async function renderContactPage() {
         <section class="panel feature-page contact-page">
             <span class="eyebrow">Ваш консультант</span>
             <h2>${escapeHtml(profile.display_name || 'Связаться с консультантом')}</h2>
-            <p class="muted">Напишите сообщение здесь или выберите удобный способ связи.</p>
+            <p class="muted">Напишите сообщение здесь — ответ консультанта появится сразу в этом чате.</p>
             ${contacts.length ? `
                 <div class="contact-list">
                     ${contacts.map(([, label, value]) => `
@@ -1816,33 +1848,20 @@ async function renderContactPage() {
                     `).join('')}
                 </div>
             ` : ''}
-            <button class="primary" data-action="contact">Написать консультанту</button>
         </section>
         ${renderMessagingPermissionCard()}
-        <section class="panel contact-page" id="lead-history">
-            <div class="empty">${escapeHtml(ui('common.loading'))}</div>
+        <section class="panel contact-page client-live-chat">
+            <div class="section-title"><h2>Чат с консультантом</h2><span class="client-live-chat-status">На связи</span></div>
+            <div class="client-live-chat-messages" id="client-live-chat-messages"><div class="client-live-chat-empty">${escapeHtml(ui('common.loading'))}</div></div>
+            <form class="client-live-chat-form" id="client-live-chat-form">
+                <textarea name="message" rows="2" placeholder="Напишите сообщение…" required></textarea>
+                <button type="submit" class="primary">Отправить</button>
+                <div class="form-error" id="client-live-chat-error"></div>
+            </form>
         </section>
     `;
-
-    try {
-        const result = await api(`leads.php?${userQuery()}`);
-        const unreadLeadIds = result.leads.filter(leadHasUnreadResponse).map((lead) => lead.id);
-        const history = document.querySelector('#lead-history');
-        if (history) {
-            history.innerHTML = `
-                <div class="section-title">
-                    <h2>${escapeHtml(ui('leads.history_title', 'Ваши обращения'))}</h2>
-                </div>
-                ${leadListMarkup(result.leads)}
-            `;
-        }
-        await Promise.allSettled(unreadLeadIds.map(markLeadRead));
-    } catch (error) {
-        const history = document.querySelector('#lead-history');
-        if (history) {
-            history.innerHTML = `<div class="empty">${escapeHtml(friendlyError(error))}</div>`;
-        }
-    }
+    await loadClientLiveChat(true);
+    state.liveChatTimer = window.setInterval(() => loadClientLiveChat(false), 3000);
 }
 
 async function renderProfile() {
@@ -2608,6 +2627,10 @@ function renderTestResult(result) {
 }
 
 async function render() {
+    if (state.liveChatTimer) {
+        window.clearInterval(state.liveChatTimer);
+        state.liveChatTimer = null;
+    }
     updateLegalFooterLinks();
     updateStaffPreviewBanner();
     if (state.authBlocked === 'staff') {
@@ -3052,6 +3075,29 @@ page.addEventListener('submit', async (event) => {
 
 document.addEventListener('submit', async (event) => {
     const target = event.target;
+    if (target instanceof HTMLFormElement && target.id === 'client-live-chat-form') {
+        event.preventDefault();
+        const input = target.querySelector('textarea[name="message"]');
+        const button = target.querySelector('button[type="submit"]');
+        const error = target.querySelector('#client-live-chat-error');
+        const message = String(input?.value || '').trim();
+        if (!message) return;
+        if (button) button.disabled = true;
+        if (error) error.textContent = '';
+        try {
+            await api('chat.php', {
+                method: 'POST',
+                body: JSON.stringify({...userPayload(), action: 'send', message}),
+            });
+            if (input) input.value = '';
+            await loadClientLiveChat(true);
+        } catch (exception) {
+            if (error) error.textContent = exception instanceof Error ? exception.message : ui('common.load_failed');
+        } finally {
+            if (button) button.disabled = false;
+        }
+        return;
+    }
     if (!(target instanceof HTMLFormElement) || target.id !== 'contact-form') {
         return;
     }

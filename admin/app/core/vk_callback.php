@@ -669,6 +669,15 @@ function vk_callback_handle_message_new(array $payload, array $integration): voi
         'attachments_json' => $attachments ? json_encode($attachments, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null,
         'id' => $leadId,
     ]);
+    if (function_exists('live_chat_record_client_message')) {
+        live_chat_record_client_message(
+            (int)$user['id'],
+            'VK',
+            $leadMessage,
+            $attachments,
+            'legacy-lead:' . $leadId
+        );
+    }
 }
 
 function vk_callback_handle_message_permission(array $payload, array $integration, bool $allowed): void

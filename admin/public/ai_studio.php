@@ -5,6 +5,7 @@ require_once __DIR__ . '/../app/core/permissions.php';
 require_once __DIR__ . '/../app/core/ai_center.php';
 require_once __DIR__ . '/../app/core/ai_jobs.php';
 require_once __DIR__ . '/../app/core/qrcode.php';
+require_once __DIR__ . '/../app/core/live_chat.php';
 
 $admin = require_auth();
 if (!can_manage('ai_studio', $admin)) {
@@ -103,6 +104,23 @@ $clients = $clientStmt->fetchAll();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $action = (string)($_POST['action'] ?? 'create');
+    if ($action === 'send_draft') {
+        $draftStmt = db()->prepare('SELECT * FROM ai_content_drafts WHERE id = :id AND owner_type = :owner_type AND owner_id = :owner_id LIMIT 1');
+        $draftStmt->execute(['id' => (int)($_POST['id'] ?? 0)] + $owner);
+        $draft = $draftStmt->fetch();
+        if (!$draft || empty($draft['end_user_id'])) {
+            $errors[] = 'Этот материал не привязан к клиенту.';
+        } else {
+            $result = live_chat_send_client($admin, (int)$draft['end_user_id'], (string)$draft['content']);
+            if (empty($result['ok'])) {
+                $errors[] = (string)($result['error'] ?? 'Не удалось отправить сообщение.');
+            } else {
+                db()->prepare('UPDATE ai_content_drafts SET status = "used" WHERE id = :id')->execute(['id' => (int)$draft['id']]);
+                log_activity('admin', (int)$admin['id'], 'send_ai_draft', 'ai_content_drafts', (int)$draft['id'], ['channel' => $result['channel'] ?? null]);
+                redirect('ai_studio.php?success=sent&draft=' . (int)$draft['id'] . '#draft-' . (int)$draft['id']);
+            }
+        }
+    }
     if (in_array($action, ['queue_voice', 'queue_video'], true)) {
         $draftStmt = db()->prepare('SELECT * FROM ai_content_drafts WHERE id = :id AND owner_type = :owner_type AND owner_id = :owner_id LIMIT 1');
         $draftStmt->execute(['id' => (int)($_POST['id'] ?? 0)] + $owner);
@@ -301,7 +319,7 @@ $cardPayload = ai_studio_card_payload($profile);
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
 <div class="page-title-row"><div><h1>AI-студия</h1><p class="cell-muted">Черновики публикаций, сценариев, кампаний и персональные материалы на основе утверждённых данных.</p></div></div>
-<?php if (isset($_GET['success'])): ?><div class="notice success"><?= h(match ((string)$_GET['success']) { 'created' => 'OpenAI создал текст. Проверьте его ниже.', 'voice_ready' => 'Голосовое сообщение создано.', 'video_queued' => 'Видео поставлено в очередь.', default => 'Изменения сохранены.' }) ?></div><?php endif; ?>
+<?php if (isset($_GET['success'])): ?><div class="notice success"><?= h(match ((string)$_GET['success']) { 'created' => 'OpenAI создал текст. Проверьте его ниже.', 'voice_ready' => 'Голосовое сообщение создано.', 'video_queued' => 'Видео поставлено в очередь.', 'sent' => 'Сообщение отправлено клиенту и появилось в живом чате.', default => 'Изменения сохранены.' }) ?></div><?php endif; ?>
 <?php foreach ($errors as $error): ?><div class="alert"><?= h($error) ?></div><?php endforeach; ?>
 
 <section class="panel ai-studio-create"><div class="ai-studio-heading"><div><h2>Создать материал с OpenAI</h2><p class="cell-muted">Выберите формат, источник и при необходимости клиента — готовый текст откроется сразу под этой формой.</p></div><span class="ai-status <?= $openAiReady ? 'is-ready' : 'is-offline' ?>"><?= $openAiReady ? 'OpenAI подключён' : 'OpenAI выключен' ?></span></div>
@@ -334,6 +352,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php if ($drafts): ?><section class="panel ai-studio-results"><h2><?= $selectedDraftId > 0 ? 'Готовый текст' : 'Созданные тексты' ?></h2><p class="cell-muted">Проверьте текст, при необходимости исправьте его и сохраните. Последний созданный материал открыт автоматически.</p>
 <?php foreach ($drafts as $draft): $draftOpen = $selectedDraftId > 0 ? (int)$draft['id'] === $selectedDraftId : $draft === $drafts[0]; ?><details id="draft-<?= (int)$draft['id'] ?>" class="faq-manage-item ai-draft-item" <?= $draftOpen ? 'open' : '' ?>><summary><strong><?= h((string)$draft['title']) ?></strong><span class="cell-muted"><?= h((string)$draft['draft_type']) ?> · <?= h((string)$draft['status']) ?> · <?= h((string)($draft['provider'] ?? 'swpro')) ?><?= !empty($draft['model']) ? ' · ' . h((string)$draft['model']) : '' ?></span></summary>
 <form method="post" class="crud-form"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="save"><input type="hidden" name="id" value="<?= (int)$draft['id'] ?>"><label class="field wide"><span>Название</span><input name="title" value="<?= h((string)$draft['title']) ?>"></label><label class="field wide"><span>Текст</span><textarea name="content" rows="9"><?= h((string)$draft['content']) ?></textarea></label><label class="field"><span>Статус</span><select name="status"><?php foreach (['draft'=>'Черновик','approved'=>'Проверено','used'=>'Использовано'] as $key=>$label): ?><option value="<?= h($key) ?>" <?= $draft['status'] === $key ? 'selected' : '' ?>><?= h($label) ?></option><?php endforeach; ?></select></label><div class="form-actions"><button>Сохранить</button></div></form>
+<?php if (!empty($draft['end_user_id'])): ?><div class="form-actions ai-draft-send-actions"><form method="post"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="send_draft"><input type="hidden" name="id" value="<?= (int)$draft['id'] ?>"><button type="submit">Отправить клиенту</button></form><a class="button secondary-button" href="index.php?chat_user_id=<?= (int)$draft['end_user_id'] ?>#live-chat">Открыть чат</a><small class="field-hint">Перед отправкой сохраните исправленный текст.</small></div><?php endif; ?>
 <div class="form-actions">
 <?php if ($draft['draft_type'] === 'voice_script'): ?><form method="post" class="inline-form"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="queue_voice"><input type="hidden" name="id" value="<?= (int)$draft['id'] ?>"><label class="check-row"><input type="checkbox" name="external_voice_confirm" value="1"><span>Я проверил текст и разрешаю отправить его в OpenAI для создания аудио</span></label><button>Создать голосовое сообщение</button></form><?php endif; ?>
 <?php if (in_array($draft['draft_type'], ['video_script','greeting'], true)): ?><form method="post"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="queue_video"><input type="hidden" name="id" value="<?= (int)$draft['id'] ?>"><label class="check-row"><input type="checkbox" name="external_video_confirm" value="1"><span>Я проверил сценарий и разрешаю отправить его подключённому видеопровайдеру</span></label><button>Создать видео</button></form><?php endif; ?>

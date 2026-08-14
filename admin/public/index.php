@@ -219,6 +219,7 @@ if ($billingWorkspace) {
 
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
+<?php if (($_GET['success'] ?? '') === 'message_sent'): ?><div class="notice success">Сообщение отправлено клиенту и сохранено в чате.</div><?php endif; ?>
 <?php if ($billingWorkspace): ?>
     <section class="panel dashboard-billing-card <?= in_array($billingWorkspace['status'], ['overdue','suspended'], true) ? 'billing-overdue' : '' ?>">
         <div><span class="eyebrow">Подписка рабочего места</span><h2><?= h(subscription_money_text((float)$billingWorkspace['monthly_price'])) ?> в месяц</h2>
@@ -329,9 +330,42 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <section class="panel dashboard-today-panel">
         <div class="page-title-row"><div><span class="eyebrow">Ежедневный план</span><h2>Что сделать сегодня</h2><p class="cell-muted">Клиенты, которым сейчас особенно полезно ваше внимание.</p></div><a class="button secondary-button" href="ai_actions.php">Открыть весь список</a></div>
         <?php if ($todayActions): ?><div class="dashboard-action-list">
-            <?php foreach ($todayActions as $action): ?><a href="ai_actions.php" class="dashboard-action-item"><span class="badge"><?= (int)$action['priority'] ?></span><span><strong><?= h(trim((string)$action['first_name'] . ' ' . (string)$action['last_name']) ?: 'Клиент') ?> — <?= h((string)$action['title']) ?></strong><small><?= h((string)$action['reason_text']) ?></small></span></a><?php endforeach; ?>
+            <?php foreach ($todayActions as $action): ?><div class="dashboard-action-item"><span class="badge"><?= (int)$action['priority'] ?></span><span><strong><?= h(trim((string)$action['first_name'] . ' ' . (string)$action['last_name']) ?: 'Клиент') ?> — <?= h((string)$action['title']) ?></strong><small><?= h((string)$action['reason_text']) ?></small></span><span class="dashboard-action-buttons"><form method="post" action="ai_actions.php"><input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="send"><input type="hidden" name="return_to" value="dashboard"><input type="hidden" name="id" value="<?= (int)$action['id'] ?>"><input type="hidden" name="draft_text" value="<?= h((string)$action['draft_text']) ?>"><button type="submit">Отправить</button></form><a class="button secondary-button" href="index.php?chat_user_id=<?= (int)$action['end_user_id'] ?>#live-chat">Чат</a></span></div><?php endforeach; ?>
         </div><?php else: ?><p class="empty-state">На сегодня срочных действий нет.</p><?php endif; ?>
     </section>
+
+    <section class="panel dashboard-chat" id="live-chat" data-live-chat data-endpoint="chat_api.php" data-csrf="<?= h(csrf_token()) ?>" data-initial-user="<?= max(0, (int)($_GET['chat_user_id'] ?? 0)) ?>">
+        <div class="page-title-row dashboard-chat-title">
+            <div><span class="eyebrow">Живое общение</span><h2>Чаты</h2><p class="cell-muted">Личные сообщения клиентам и общий чат вашей команды.</p></div>
+            <span class="dashboard-chat-connection" data-chat-connection>Подключение…</span>
+        </div>
+        <div class="dashboard-chat-tabs" role="tablist">
+            <button type="button" class="is-active" data-chat-tab="client">Клиенты <span data-client-unread></span></button>
+            <button type="button" data-chat-tab="team">Команда <span data-team-unread></span></button>
+        </div>
+        <div class="dashboard-chat-layout">
+            <aside class="dashboard-chat-sidebar">
+                <label class="dashboard-chat-search"><span class="sr-only">Найти клиента</span><input type="search" placeholder="Найти клиента" data-chat-search></label>
+                <div class="dashboard-chat-threads" data-chat-threads><div class="empty-state">Загружаем диалоги…</div></div>
+            </aside>
+            <div class="dashboard-chat-dialog">
+                <header class="dashboard-chat-dialog-head">
+                    <div><strong data-chat-title>Выберите диалог</strong><small data-chat-subtitle></small></div>
+                    <label data-chat-channel-wrap hidden><span>Канал</span><select data-chat-channel><option value="">Автоматически</option><option value="VK">VK</option><option value="telegram">Telegram</option><option value="MAX">MAX</option><option value="OK">OK</option><option value="web">Web</option></select></label>
+                </header>
+                <div class="dashboard-chat-messages" data-chat-messages><div class="empty-state">Выберите клиента или чат команды.</div></div>
+                <form class="dashboard-chat-compose" data-chat-form enctype="multipart/form-data">
+                    <input type="file" name="attachments[]" data-chat-file accept="image/*,application/pdf,video/mp4,audio/*" multiple hidden>
+                    <button type="button" class="secondary-button dashboard-chat-attach" data-chat-attach aria-label="Прикрепить файл">＋</button>
+                    <textarea name="message" rows="2" placeholder="Напишите сообщение…" data-chat-input disabled></textarea>
+                    <button type="submit" data-chat-send disabled>Отправить</button>
+                    <small data-chat-file-name></small>
+                    <div class="form-error" data-chat-error></div>
+                </form>
+            </div>
+        </div>
+    </section>
+    <script src="assets/js/live-chat.js?v=<?= h((string)@filemtime(__DIR__ . '/assets/js/live-chat.js')) ?>"></script>
 <?php endif; ?>
 
 <div class="grid stats-grid">
