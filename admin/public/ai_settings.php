@@ -36,6 +36,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'ai.default_plan_days' => in_array((int)($_POST['default_plan_days'] ?? 7), [7, 14, 30], true) ? (string)(int)$_POST['default_plan_days'] : '7',
         'ai.retest_after_days' => (string)max(7, min(365, (int)($_POST['retest_after_days'] ?? 30))),
         'ai.inactive_after_days' => (string)max(3, min(365, (int)($_POST['inactive_after_days'] ?? 14))),
+        'ai.retention.conversations_days' => (string)max(1, min(3650, (int)($_POST['retention_conversations_days'] ?? 365))),
+        'ai.retention.drafts_days' => (string)max(1, min(3650, (int)($_POST['retention_drafts_days'] ?? 180))),
+        'ai.retention.failed_jobs_days' => (string)max(1, min(3650, (int)($_POST['retention_failed_jobs_days'] ?? 30))),
+        'ai.retention.ready_media_days' => (string)max(0, min(3650, (int)($_POST['retention_ready_media_days'] ?? 0))),
+        'ai.retention.usage_days' => (string)max(30, min(3650, (int)($_POST['retention_usage_days'] ?? 1095))),
+        'ai.docs_sync_enabled' => isset($_POST['docs_sync_enabled']) ? '1' : '0',
         'ai.admin_system_prompt' => trim((string)($_POST['admin_system_prompt'] ?? '')),
         'ai.client_system_prompt' => trim((string)($_POST['client_system_prompt'] ?? '')),
     ];
@@ -119,7 +125,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 ?>
 <div class="page-title-row">
     <div><h1>Настройки ИИ</h1><p class="cell-muted">Единые правила AI-центра SWPro, провайдеры и безопасная обработка данных.</p></div>
-    <a class="button secondary-button" href="ai_knowledge.php">База знаний</a>
+    <div class="form-actions"><a class="button secondary-button" href="ai_content_control.php">Контроль наполнения</a><a class="button secondary-button" href="ai_knowledge.php">База знаний</a></div>
 </div>
 
 <?php if ($success === 'saved'): ?><div class="notice success">Настройки ИИ сохранены.</div><?php endif; ?>
@@ -172,6 +178,13 @@ require __DIR__ . '/../app/views/layouts/header.php';
     <label class="field"><span>Стандартный план клиента</span><select name="default_plan_days"><?php foreach ([7,14,30] as $days): ?><option value="<?= $days ?>" <?= (int)$value('ai.default_plan_days', '7') === $days ? 'selected' : '' ?>><?= $days ?> дней</option><?php endforeach; ?></select></label>
     <label class="field"><span>Повторный чек-ап через, дней</span><input type="number" min="7" max="365" name="retest_after_days" value="<?= (int)$value('ai.retest_after_days', '30') ?>"></label>
     <label class="field"><span>Считать клиента неактивным через, дней</span><input type="number" min="3" max="365" name="inactive_after_days" value="<?= (int)$value('ai.inactive_after_days', '14') ?>"></label>
+    <label class="check-row wide"><input type="checkbox" name="docs_sync_enabled" value="1" <?= $value('ai.docs_sync_enabled', '1') === '1' ? 'checked' : '' ?>><span><strong>Синхронизировать Docsify с базой знаний ИИ</strong><small>Markdown остаётся единственным источником HELP; копия для поиска ИИ создаётся автоматически по команде из раздела «Контроль наполнения».</small></span></label>
+    <h2 class="wide">Сроки хранения AI-данных</h2>
+    <label class="field"><span>Диалоги, дней</span><input type="number" min="1" max="3650" name="retention_conversations_days" value="<?= (int)$value('ai.retention.conversations_days', '365') ?>"></label>
+    <label class="field"><span>Архивные черновики, дней</span><input type="number" min="1" max="3650" name="retention_drafts_days" value="<?= (int)$value('ai.retention.drafts_days', '180') ?>"></label>
+    <label class="field"><span>Ошибочные задания, дней</span><input type="number" min="1" max="3650" name="retention_failed_jobs_days" value="<?= (int)$value('ai.retention.failed_jobs_days', '30') ?>"></label>
+    <label class="field"><span>Готовые MP3/MP4, дней</span><input type="number" min="0" max="3650" name="retention_ready_media_days" value="<?= (int)$value('ai.retention.ready_media_days', '0') ?>"><small class="field-hint">0 — хранить бессрочно.</small></label>
+    <label class="field"><span>Статистика использования, дней</span><input type="number" min="30" max="3650" name="retention_usage_days" value="<?= (int)$value('ai.retention.usage_days', '1095') ?>"></label>
 
     <div class="alert wide">
         <strong>Передача в OpenAI контролируется настройками ниже.</strong><br>

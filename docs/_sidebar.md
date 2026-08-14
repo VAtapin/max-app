@@ -25,6 +25,7 @@
   - [Двухфакторная защита](/security/2fa.md)
 - **AI-ЦЕНТР**
   - [Помощник и база знаний](/ai/assistant.md)
+  - [Контроль базы ИИ](/ai/content-control.md)
   - [Задачи и персональные планы](/ai/workflows.md)
 - **ОБСЛУЖИВАНИЕ**
   - [Автоматические задачи](/operations/automation.md)

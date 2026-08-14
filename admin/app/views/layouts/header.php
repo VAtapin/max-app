@@ -65,6 +65,7 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                     'content' => ['Материалы сайта', 'crud.php?module=content'],
                     'site_templates' => ['Шаблоны мини-сайта', 'crud.php?module=site_templates'],
                     'ai_knowledge' => ['База знаний ИИ', 'ai_knowledge.php'],
+                    'ai_content_control' => ['Контроль базы ИИ', 'ai_content_control.php'],
                 ],
                 'Настройки' => [
                     'admin_accounts' => ['Пользователи админки', 'admin_accounts.php'],
@@ -95,6 +96,7 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                 'content' => '<path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h6M9 17h6"/>',
                 'site_templates' => '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 9v12"/>',
                 'ai_knowledge' => '<path d="M4 5a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z"/><path d="M8 7h8M8 11h8M8 15h5"/>',
+                'ai_content_control' => '<path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h5M16 16l2 2 3-4"/>',
                 'ai_actions' => '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
                 'ai_studio' => '<path d="m12 3 1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7z"/><path d="m5 16 .8 2.2L8 19l-2.2.8L5 22l-.8-2.2L2 19l2.2-.8z"/>',
                 'ai_avatar' => '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="m18 3 .7 1.5L20 5l-1.3.5L18 7l-.7-1.5L16 5l1.3-.5z"/>',
@@ -111,7 +113,7 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                 $visibleItems = array_filter(
                     $navItems,
                     static fn($item, $module) => ($module !== 'billing_self' || ($admin['role'] ?? '') !== 'superadmin')
-                        && ($module !== 'ai_settings' || ($admin['role'] ?? '') === 'superadmin')
+                        && (!in_array($module, ['ai_settings', 'ai_content_control'], true) || ($admin['role'] ?? '') === 'superadmin')
                         && ($module === 'help' || can_manage((string)$module, $admin)),
                     ARRAY_FILTER_USE_BOTH
                 );

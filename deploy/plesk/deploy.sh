@@ -36,6 +36,8 @@ mkdir -p admin/uploads/products admin/uploads/content admin/uploads/tests admin/
 
 echo "Applying database migrations..."
 bash deploy/plesk/migrate-db.sh "$ENV_FILE"
+echo "Synchronizing Docsify with the AI knowledge index..."
+SWPRO_ENV_FILE="$ENV_FILE" "$PHP_BIN" admin/cron/sync-docsify-ai.php
 SWPRO_ENV_FILE="$ENV_FILE" "$PHP_BIN" admin/cron/run-billing.php
 echo "Checking the configured PHP database..."
 SWPRO_ENV_FILE="$ENV_FILE" "$PHP_BIN" -r \

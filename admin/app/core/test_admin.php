@@ -335,6 +335,10 @@ function handle_test_builder_action(string $postAction, int $testId, array $admi
                      tr.severity = :severity,
                      tr.summary_text = :summary_text,
                      tr.advice_text = :advice_text,
+                     tr.ai_enabled = 0,
+                     tr.content_status = "draft",
+                     tr.reviewed_by = NULL,
+                     tr.reviewed_at = NULL,
                      tr.sort_order = :sort_order
                  WHERE tr.id = :id AND ts.test_id = :test_id'
             );
@@ -590,6 +594,10 @@ function handle_test_builder_action(string $postAction, int $testId, array $admi
                      max_score = :max_score,
                      summary_text = :summary_text,
                      advice_text = :advice_text,
+                     ai_enabled = 0,
+                     content_status = "draft",
+                     reviewed_by = NULL,
+                     reviewed_at = NULL,
                      product_id = :product_id,
                      category_id = :category_id,
                      sort_order = :sort_order

@@ -148,6 +148,19 @@ Avatar files are returned only by the authenticated owner-only PHP endpoint.
 The bundled web-server rules also deny `/storage/private` in case the fallback
 folder under the project root is ever used.
 
+Add a daily cron task for the retention periods configured in
+`Настройки → Настройки ИИ`:
+
+```bash
+php /var/www/vhosts/swpro.ru/httpdocs/admin/cron/cleanup-ai-data.php
+```
+
+Use `--dry-run` to preview counts without deleting records.
+
+The standard deploy also runs `admin/cron/sync-docsify-ai.php` after migrations,
+so committed Docsify pages become searchable by the admin assistant without a
+second manual copy.
+
 ## 8. Telegram Bot Service
 
 Install generated service from `live.env`:

@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../admin/app/core/ai_content_governance.php';
+
 function build_recommendations(int $endUserId, int $testSessionId): array
 {
     $userStmt = db()->prepare('SELECT * FROM end_users WHERE id = :id LIMIT 1');
@@ -80,5 +82,8 @@ function build_recommendations(int $endUserId, int $testSessionId): array
         ];
     }
 
-    return $recommendations;
+    ai_apply_recommendation_rules($endUserId, $testSessionId);
+    $finalStmt = db()->prepare('SELECT product_id, category_id, tag_id, score FROM recommendations WHERE test_session_id = :session_id ORDER BY score DESC, id');
+    $finalStmt->execute(['session_id' => $testSessionId]);
+    return $finalStmt->fetchAll();
 }

@@ -1315,7 +1315,7 @@ function renderOnboardingGate() {
                 <div class="consultant-meta">
                     <span class="eyebrow">Бот вашего консультанта</span>
                     <strong>${escapeHtml(profile.display_name || 'SWPro')}</strong>
-                    <p>${escapeHtml(profile.welcome_text || profile.short_description || '')}</p>
+                    <p>${escapeHtml(profile.personalized_welcome_text || profile.welcome_text || profile.short_description || '')}</p>
                 </div>
             </div>
             ${profile.welcome_video_url ? renderVideoBlock(profile.welcome_video_url, 'Приветствие консультанта') : ''}
@@ -1530,7 +1530,7 @@ function renderHome() {
     const profile = state.consultantProfile?.profile || {};
     const initials = String(profile.display_name || 'SW').slice(0, 2).toUpperCase();
     const unreadNotifications = (state.notifications || []).filter((item) => Number(item.is_read) === 0);
-    const welcomeText = profile.welcome_text || profile.short_description || 'Пройдите бесплатный чек-ап организма и обсудите результат со своим консультантом.';
+    const welcomeText = profile.personalized_welcome_text || profile.welcome_text || profile.short_description || 'Пройдите бесплатный чек-ап организма и обсудите результат со своим консультантом.';
 
     page.innerHTML = `
         <section class="home-hero">
@@ -2703,7 +2703,20 @@ function addClientAiMessage(text, role, citations = []) {
     node.appendChild(body);
     if (citations.length) {
         const sources = document.createElement('small');
-        sources.textContent = `Источники: ${citations.map((item) => item.label).join('; ')}`;
+        sources.append(document.createTextNode('Источники: '));
+        citations.forEach((item, index) => {
+            if (index) sources.append(document.createTextNode('; '));
+            if (typeof item.url === 'string' && item.url.startsWith('/docs/')) {
+                const link = document.createElement('a');
+                link.href = item.url;
+                link.target = '_blank';
+                link.rel = 'noopener';
+                link.textContent = item.label;
+                sources.append(link);
+            } else {
+                sources.append(document.createTextNode(item.label));
+            }
+        });
         node.appendChild(sources);
     }
     clientAiMessages.appendChild(node);

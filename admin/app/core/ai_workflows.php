@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/ai_center.php';
+require_once __DIR__ . '/ai_content_governance.php';
 require_once __DIR__ . '/permissions.php';
 
 function ai_workflow_setting_days(string $key, int $default, int $minimum = 1, int $maximum = 365): int
@@ -53,10 +54,10 @@ function ai_workflow_ensure_plan(array $user, int $sessionId): ?int
         ]);
         $planId = (int)db()->lastInsertId();
 
-        $sourceStmt = db()->prepare('SELECT ts.id source_id, "test_scale" source_type, ts.title, tsr.advice_text FROM user_test_scale_scores uss INNER JOIN test_scales ts ON ts.id = uss.scale_id LEFT JOIN test_scale_results tsr ON tsr.id = uss.result_id WHERE uss.session_id = :session_id AND COALESCE(tsr.advice_text, "") <> "" ORDER BY FIELD(tsr.severity, "critical", "risk", "good", "excellent"), uss.score DESC LIMIT 5');
+        $sourceStmt = db()->prepare('SELECT ts.id source_id, "test_scale" source_type, ts.title, tsr.advice_text FROM user_test_scale_scores uss INNER JOIN test_scales ts ON ts.id = uss.scale_id LEFT JOIN test_scale_results tsr ON tsr.id = uss.result_id WHERE uss.session_id = :session_id AND tsr.ai_enabled = 1 AND tsr.content_status = "approved" AND COALESCE(tsr.advice_text, "") <> "" ORDER BY FIELD(tsr.severity, "critical", "risk", "good", "excellent"), uss.score DESC LIMIT 5');
         $sourceStmt->execute(['session_id' => $sessionId]);
         $sources = $sourceStmt->fetchAll();
-        $productStmt = db()->prepare('SELECT p.id source_id, "product" source_type, p.title, COALESCE(NULLIF(r.reason_text, ""), p.usage_text, p.short_description) advice_text FROM recommendations r INNER JOIN products p ON p.id = r.product_id AND p.is_active = 1 AND p.is_deleted = 0 WHERE r.test_session_id = :session_id ORDER BY r.score DESC, r.id DESC LIMIT 3');
+        $productStmt = db()->prepare('SELECT p.id source_id, "product" source_type, p.title, COALESCE(NULLIF(r.reason_text, ""), p.usage_text, p.short_description) advice_text FROM recommendations r INNER JOIN products p ON p.id = r.product_id AND p.is_active = 1 AND p.is_deleted = 0 AND p.ai_enabled = 1 AND p.content_status = "approved" WHERE r.test_session_id = :session_id ORDER BY r.score DESC, r.id DESC LIMIT 3');
         $productStmt->execute(['session_id' => $sessionId]);
         $sources = array_merge($sources, $productStmt->fetchAll());
         if (!$sources) {
@@ -181,6 +182,17 @@ function ai_workflow_client_today(array $user): array
 
 function ai_workflow_action_message(string $type, array $user, array $context = []): string
 {
+    $owner = ai_owner_for_client($user);
+    $scenario = ai_render_scenario($type, (string)($context['channel'] ?? ($user['platform'] ?? 'any')), $owner, [
+        'first_name' => $user['first_name'] ?? '',
+        'consultant_name' => $context['consultant_name'] ?? '',
+        'test_title' => $context['test_title'] ?? '',
+        'days' => $context['days'] ?? '',
+        'city' => $user['city'] ?? '',
+    ]);
+    if ($scenario !== null) {
+        return $scenario;
+    }
     $name = trim((string)($user['first_name'] ?? ''));
     $hello = $name !== '' ? $name . ', здравствуйте!' : 'Здравствуйте!';
     return match ($type) {

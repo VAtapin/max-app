@@ -12,7 +12,7 @@ if (!can_manage('ai_actions', $admin)) {
 $owner = ai_owner_for_admin($admin);
 $title = 'Что сделать сегодня';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($admin['role'] ?? '') !== 'superadmin') {
     verify_csrf();
     $id = max(0, (int)($_POST['id'] ?? 0));
     $status = (string)($_POST['status'] ?? 'pending');
@@ -26,14 +26,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('ai_actions.php?success=saved');
 }
 
-$actions = ai_workflow_refresh_actions($admin);
+$isSuperadmin = ($admin['role'] ?? '') === 'superadmin';
+$actions = $isSuperadmin ? ai_superadmin_tasks() : ai_workflow_refresh_actions($admin);
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
-<div class="page-title-row"><div><h1>Что сделать сегодня</h1><p class="cell-muted">SWPro собирает поводы для контакта. Вы проверяете и редактируете текст до отправки.</p></div></div>
+<div class="page-title-row"><div><h1>Что сделать сегодня</h1><p class="cell-muted"><?= $isSuperadmin ? 'SWPro показывает административные задачи по настройке, наполнению и безопасности системы.' : 'SWPro собирает поводы для контакта. Вы проверяете и редактируете текст до отправки.' ?></p></div></div>
 <?php if (($_GET['success'] ?? '') === 'saved'): ?><div class="notice success">Задача обновлена.</div><?php endif; ?>
 
 <?php if (!$actions): ?>
-    <section class="panel empty-state"><h2>На сегодня срочных действий нет</h2><p>Список обновляется по активности клиентов, чек-апам, датам рождения и персональным планам.</p></section>
+    <section class="panel empty-state"><h2>На сегодня срочных действий нет</h2><p><?= $isSuperadmin ? 'Настройки, Docsify и утверждённые материалы находятся в рабочем состоянии.' : 'Список обновляется по активности клиентов, чек-апам, датам рождения и персональным планам.' ?></p></section>
+<?php elseif ($isSuperadmin): ?>
+    <section class="ai-action-list">
+    <?php foreach ($actions as $action): ?>
+        <article class="panel ai-action-card">
+            <div class="ai-action-card-head"><div><span class="eyebrow"><?= h((string)$action['reason']) ?></span><h2><?= h((string)$action['title']) ?></h2></div><span class="badge">Администрирование</span></div>
+            <p><?= h((string)$action['description']) ?></p>
+            <div class="form-actions"><a class="button" href="<?= h((string)$action['href']) ?>">Открыть и исправить</a></div>
+        </article>
+    <?php endforeach; ?>
+    </section>
 <?php else: ?>
     <section class="ai-action-list">
     <?php foreach ($actions as $action): ?>

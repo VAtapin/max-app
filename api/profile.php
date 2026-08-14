@@ -2,6 +2,7 @@
 
 require __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/../admin/app/core/consultant_profiles.php';
+require_once __DIR__ . '/../admin/app/core/ai_content_governance.php';
 
 function profile_by_slug(string $slug): ?array
 {
@@ -41,4 +42,16 @@ if (billing_profile_is_blocked($profile)) {
     json_response(['error' => 'workspace_payment_required', 'message' => 'Страница временно недоступна.'], 402);
 }
 
-json_response(consultant_profile_payload($profile));
+$payload = consultant_profile_payload($profile);
+if ($user) {
+    $owner = ['owner_type' => (string)$profile['owner_type'], 'owner_id' => (int)$profile['owner_id']];
+    $personalizedWelcome = ai_render_scenario('welcome', (string)($user['platform'] ?? 'web'), $owner, [
+        'first_name' => $user['first_name'] ?? '',
+        'consultant_name' => $profile['display_name'] ?? '',
+        'city' => $user['city'] ?? '',
+    ]);
+    if ($personalizedWelcome !== null) {
+        $payload['personalized_welcome_text'] = $personalizedWelcome;
+    }
+}
+json_response($payload);

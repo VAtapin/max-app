@@ -151,6 +151,10 @@ function ai_allowed_role(?string $json, string $role): bool
 
 function ai_help_sources(string $role): array
 {
+    $docsifyReady = (int)db()->query('SELECT COUNT(*) FROM ai_knowledge_entries WHERE source_type = "docsify" AND is_active = 1 AND is_approved = 1')->fetchColumn();
+    if ($docsifyReady > 0) {
+        return [];
+    }
     $items = [];
     $rows = db()->query('SELECT id, title, body, items_json, keywords, allowed_roles, page_context, updated_at FROM help_faq_sections WHERE is_active = 1 AND ai_enabled = 1 ORDER BY sort_order, id')->fetchAll();
     foreach ($rows as $row) {
@@ -174,7 +178,7 @@ function ai_help_sources(string $role): array
 function ai_manual_sources(string $audience, array $owner, string $role): array
 {
     $stmt = db()->prepare(
-        'SELECT id, title, content, keywords, page_context, allowed_roles, source_type, version
+        'SELECT id, title, content, keywords, page_context, allowed_roles, source_type, source_url, version
          FROM ai_knowledge_entries
          WHERE is_active = 1 AND is_approved = 1 AND audience IN (:audience, "both")
            AND ((owner_type = "superadmin" AND owner_id = 0) OR (owner_type = :owner_type AND owner_id = :owner_id))
@@ -187,7 +191,7 @@ function ai_manual_sources(string $audience, array $owner, string $role): array
             continue;
         }
         $row['source_key'] = 'knowledge:' . $row['id'];
-        $row['source_label'] = 'База знаний: ' . $row['title'];
+        $row['source_label'] = ($row['source_type'] === 'docsify' ? 'HELP: ' : 'База знаний: ') . $row['title'];
         $items[] = $row;
     }
     return $items;
@@ -224,7 +228,7 @@ function ai_client_sources(array $user, array $owner): array
         }
     }
 
-    foreach (db()->query('SELECT * FROM products WHERE is_active = 1 AND is_deleted = 0 ORDER BY updated_at DESC LIMIT 300')->fetchAll() as $row) {
+    foreach (db()->query('SELECT * FROM products WHERE is_active = 1 AND is_deleted = 0 AND ai_enabled = 1 AND content_status = "approved" ORDER BY updated_at DESC LIMIT 300')->fetchAll() as $row) {
         if (!ai_owner_row_visible($row, $owner, $resellerId)) {
             continue;
         }
@@ -234,6 +238,7 @@ function ai_client_sources(array $user, array $owner): array
             $row['usage_text'] ? 'Применение: ' . $row['usage_text'] : null,
             $row['warning_text'] ? 'Предупреждения: ' . $row['warning_text'] : null,
             $row['contraindications'] ? 'Противопоказания: ' . $row['contraindications'] : null,
+            $row['allowed_claims'] ? 'Допустимые формулировки: ' . $row['allowed_claims'] : null,
         ]));
         if ($content !== '') {
             $items[] = ['title' => 'Продукт: ' . $row['title'], 'content' => $content, 'keywords' => 'продукт состав применение противопоказания', 'source_key' => 'product:' . $row['id'], 'source_label' => 'Продукт: ' . $row['title'], 'version' => strtotime((string)$row['updated_at']) ?: 1];
@@ -251,16 +256,17 @@ function ai_client_sources(array $user, array $owner): array
     }
 
     $stmt = db()->prepare(
-        'SELECT ts.title scale_title, uss.score, tsr.title result_title, tsr.summary_text, tsr.advice_text, uts.completed_at
+        'SELECT ts.title scale_title, uss.score, tsr.title result_title, tsr.summary_text, tsr.advice_text, tsr.exclusions_text, tsr.escalation_text, uts.completed_at
          FROM user_test_sessions uts JOIN user_test_scale_scores uss ON uss.session_id = uts.id
          JOIN test_scales ts ON ts.id = uss.scale_id LEFT JOIN test_scale_results tsr ON tsr.id = uss.result_id
          WHERE uts.end_user_id = :user_id AND uts.completed_at IS NOT NULL AND uts.is_preview = 0
+           AND tsr.ai_enabled = 1 AND tsr.content_status = "approved"
            AND uts.id = (SELECT MAX(id) FROM user_test_sessions WHERE end_user_id = :user_id2 AND completed_at IS NOT NULL AND is_preview = 0)
          ORDER BY uss.score DESC'
     );
     $stmt->execute(['user_id' => (int)$user['id'], 'user_id2' => (int)$user['id']]);
     foreach ($stmt->fetchAll() as $row) {
-        $items[] = ['title' => 'Результат чек-апа: ' . $row['scale_title'], 'content' => implode("\n", array_filter(['Баллы: ' . $row['score'], $row['result_title'], $row['summary_text'], $row['advice_text']])), 'keywords' => 'чек-ап результат ' . $row['scale_title'], 'source_key' => 'checkup:' . $row['scale_title'], 'source_label' => 'Результат чек-апа: ' . $row['scale_title'], 'version' => strtotime((string)$row['completed_at']) ?: 1];
+        $items[] = ['title' => 'Результат чек-апа: ' . $row['scale_title'], 'content' => implode("\n", array_filter(['Баллы: ' . $row['score'], $row['result_title'], $row['summary_text'], $row['advice_text'], $row['exclusions_text'] ? 'Исключения: ' . $row['exclusions_text'] : null, $row['escalation_text'] ? 'Передать человеку: ' . $row['escalation_text'] : null])), 'keywords' => 'чек-ап результат ' . $row['scale_title'], 'source_key' => 'checkup:' . $row['scale_title'], 'source_label' => 'Результат чек-апа: ' . $row['scale_title'], 'version' => strtotime((string)$row['completed_at']) ?: 1];
     }
     return $items;
 }
@@ -680,7 +686,7 @@ function ai_answer(string $question, string $audience, array $actor, string $cha
     if (!isset($citations)) {
         $citations = [];
         foreach ($answerSources as $index => $source) {
-            $citations[] = ['number' => $index + 1, 'key' => $source['source_key'], 'label' => $source['source_label'], 'version' => $source['version'] ?? 1];
+            $citations[] = ['number' => $index + 1, 'key' => $source['source_key'], 'label' => $source['source_label'], 'url' => $source['source_url'] ?? null, 'version' => $source['version'] ?? 1];
         }
     }
     if (!isset($answer)) {

@@ -62,7 +62,7 @@ $stmt->execute($owner);
 $rows = $stmt->fetchAll();
 require __DIR__ . '/../app/views/layouts/header.php';
 ?>
-<div class="page-title-row"><div><h1>База знаний ИИ</h1><p class="cell-muted">Дополнительные утверждённые материалы. HELP, продукты, материалы сайта, профиль и результаты чек-апа подключаются автоматически.</p></div></div>
+<div class="page-title-row"><div><h1>База знаний ИИ</h1><p class="cell-muted">Дополнительные утверждённые материалы. HELP поступает из Docsify через синхронизацию; продукты и результаты допускаются отдельно после проверки.</p></div><a class="button secondary-button" href="ai_content_control.php">Контроль наполнения</a></div>
 <?php if ($success === 'saved'): ?><div class="notice success">Материал сохранён и доступен помощнику.</div><?php endif; ?>
 <?php if ($success === 'deleted'): ?><div class="notice success">Материал удалён.</div><?php endif; ?>
 <?php foreach ($errors as $error): ?><div class="alert"><?= h($error) ?></div><?php endforeach; ?>

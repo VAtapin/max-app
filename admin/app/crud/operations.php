@@ -223,6 +223,9 @@ function save_record(string $moduleKey, array $module, array $payload, ?int $id,
             }
             throw $e;
         }
+        if ($moduleKey === 'products') {
+            db()->prepare('UPDATE products SET ai_enabled = 0, content_status = "draft", reviewed_by = NULL, reviewed_at = NULL WHERE id = :id')->execute(['id' => $id]);
+        }
         log_activity('admin', (int)$admin['id'], 'update_' . $module['table'], $module['table'], $id);
 
         if ($moduleKey === 'users' && $before) {

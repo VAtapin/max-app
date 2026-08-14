@@ -18,6 +18,21 @@ function require_test_onboarding(array $user): void
     }
 }
 
+function test_ai_recommendations(array $user, int $sessionId): array
+{
+    if (!empty($user['staff_preview'])) {
+        return ['recommendations' => [], 'materials' => []];
+    }
+    try {
+        ai_apply_recommendation_rules((int)$user['id'], $sessionId);
+        $stmt = db()->prepare('SELECT r.product_id, r.reason_text, r.score, p.title, p.short_description, p.image_path, p.purchase_url FROM recommendations r JOIN products p ON p.id = r.product_id AND p.is_active = 1 AND p.is_deleted = 0 AND p.ai_enabled = 1 AND p.content_status = "approved" WHERE r.test_session_id = :session_id ORDER BY r.score DESC, r.id');
+        $stmt->execute(['session_id' => $sessionId]);
+        return ['recommendations' => $stmt->fetchAll(), 'materials' => ai_rule_materials_for_session($sessionId)];
+    } catch (Throwable) {
+        return ['recommendations' => [], 'materials' => []];
+    }
+}
+
 function test_preview_flag(array $user): int
 {
     return !empty($user['staff_preview']) ? 1 : 0;
@@ -535,7 +550,8 @@ function complete_test_session(array $user, int $testId, int $sessionId): array
 
     $done = db()->prepare('UPDATE user_test_sessions SET completed_at = NOW(), total_score = :total, result_summary = :summary WHERE id = :id');
     $done->execute(['total' => $total, 'summary' => $summary, 'id' => $sessionId]);
-    $recommendations = [];
+    $aiRecommendations = test_ai_recommendations($user, $sessionId);
+    $recommendations = $aiRecommendations['recommendations'];
 
     $log = db()->prepare(
         'INSERT INTO activity_logs (actor_type, actor_id, action, entity_type, entity_id, details)
@@ -561,7 +577,7 @@ function complete_test_session(array $user, int $testId, int $sessionId): array
             'advice_text' => $resultRule['advice_text'],
         ] : null,
         'scale_results' => $scaleResults,
-        'materials' => [],
+        'materials' => $aiRecommendations['materials'],
         'recommendations' => $recommendations,
     ];
 }
@@ -933,8 +949,9 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
         $summary = $scaleResults ? build_scale_result_summary($scaleResults) : build_result_summary($resultRule);
         $done = db()->prepare('UPDATE user_test_sessions SET completed_at = NOW(), total_score = :total, result_summary = :summary WHERE id = :id');
         $done->execute(['total' => $total, 'summary' => $summary, 'id' => $sessionId]);
-        $recommendations = [];
         db()->commit();
+        $aiRecommendations = test_ai_recommendations($user, $sessionId);
+        $recommendations = $aiRecommendations['recommendations'];
         finalize_test_journey($user, $testId, $sessionId);
     } catch (Throwable $e) {
         if (db()->inTransaction()) {
@@ -966,7 +983,7 @@ if (($_GET['action'] ?? '') === 'submit' && $_SERVER['REQUEST_METHOD'] === 'POST
             'advice_text' => $resultRule['advice_text'],
         ] : null,
         'scale_results' => $scaleResults ?? [],
-        'materials' => [],
+        'materials' => $aiRecommendations['materials'] ?? [],
         'recommendations' => $recommendations,
     ]);
 }

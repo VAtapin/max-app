@@ -728,7 +728,20 @@ function initAiChat(root = document) {
             if (citations.length) {
                 const sourceList = document.createElement('small');
                 sourceList.className = 'ai-chat-sources';
-                sourceList.textContent = `Источники: ${citations.map((item) => item.label).join('; ')}`;
+                sourceList.append(document.createTextNode('Источники: '));
+                citations.forEach((item, index) => {
+                    if (index) sourceList.append(document.createTextNode('; '));
+                    if (typeof item.url === 'string' && item.url.startsWith('/docs/')) {
+                        const link = document.createElement('a');
+                        link.href = item.url;
+                        link.target = '_blank';
+                        link.rel = 'noopener';
+                        link.textContent = item.label;
+                        sourceList.append(link);
+                    } else {
+                        sourceList.append(document.createTextNode(item.label));
+                    }
+                });
                 node.appendChild(sourceList);
             }
             messages.appendChild(node);
