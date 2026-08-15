@@ -31,15 +31,15 @@ function ai_openai_speech(string $text): array
         throw new RuntimeException('Сценарий должен содержать от 1 до 4000 символов.');
     }
     $model = ai_openai_model(ai_setting('ai.openai_tts_model', 'gpt-4o-mini-tts'));
-    $voice = trim((string)ai_setting('ai.openai_voice', 'coral'));
-    if (!in_array($voice, ['alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse'], true)) {
+    $voice = trim((string)ai_setting('ai.openai_voice', 'marin'));
+    if (!in_array($voice, ['alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse','marin','cedar'], true)) {
         throw new RuntimeException('В настройках указан неподдерживаемый голос OpenAI.');
     }
     $payload = [
         'model' => $model,
         'voice' => $voice,
         'input' => $text,
-        'instructions' => trim((string)ai_setting('ai.openai_voice_instructions', 'Говори по-русски тепло, естественно и спокойно.')),
+        'instructions' => trim((string)ai_setting('ai.openai_voice_instructions', 'Говори по-русски как в личном голосовом сообщении знакомому человеку: тепло, живо и естественно. Избегай дикторской, рекламной и торжественной подачи. Используй разговорную интонацию, лёгкие изменения темпа и высоты голоса, короткие естественные паузы между мыслями. Не растягивай окончания и не делай одинаковые паузы после каждого предложения.')),
         // Ogg/Opus is delivered by Telegram as a native voice message.
         'response_format' => 'opus',
     ];

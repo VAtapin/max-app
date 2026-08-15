@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'ai.standard_max_output_tokens' => (string)max(300, min(2000, (int)($_POST['standard_max_output_tokens'] ?? 700))),
         'ai.complex_max_output_tokens' => (string)max(500, min(3000, (int)($_POST['complex_max_output_tokens'] ?? 1100))),
         'ai.openai_tts_model' => trim((string)($_POST['openai_tts_model'] ?? 'gpt-4o-mini-tts')),
-        'ai.openai_voice' => trim((string)($_POST['openai_voice'] ?? 'coral')),
+        'ai.openai_voice' => trim((string)($_POST['openai_voice'] ?? 'marin')),
         'ai.openai_voice_instructions' => trim((string)($_POST['openai_voice_instructions'] ?? '')),
         'ai.video_provider' => trim((string)($_POST['video_provider'] ?? 'disabled')),
         'ai.voice_provider' => trim((string)($_POST['voice_provider'] ?? 'disabled')),
@@ -71,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!preg_match('/^[a-zA-Z0-9._:-]{1,100}$/', $values['ai.openai_tts_model'])) {
         $errors[] = 'Укажите корректное название голосовой модели OpenAI.';
     }
-    if (!in_array($values['ai.openai_voice'], ['alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse'], true)) {
+    if (!in_array($values['ai.openai_voice'], ['alloy','ash','ballad','coral','echo','fable','nova','onyx','sage','shimmer','verse','marin','cedar'], true)) {
         $errors[] = 'Выберите корректный стандартный голос OpenAI.';
     }
     $action = (string)($_POST['action'] ?? 'save');
@@ -214,8 +214,8 @@ require __DIR__ . '/../app/views/layouts/header.php';
     </div>
     <label class="field"><span>Голосовые сообщения</span><select name="voice_provider"><option value="disabled" <?= $value('ai.voice_provider', 'disabled') === 'disabled' ? 'selected' : '' ?>>Выключены</option><option value="openai" <?= $value('ai.voice_provider') === 'openai' ? 'selected' : '' ?>>OpenAI Voice</option></select></label>
     <label class="field"><span>Модель голоса OpenAI</span><input name="openai_tts_model" value="<?= h($value('ai.openai_tts_model', 'gpt-4o-mini-tts')) ?>"></label>
-    <label class="field"><span>Стандартный голос OpenAI</span><select name="openai_voice"><?php foreach (['coral','alloy','ash','ballad','echo','fable','nova','onyx','sage','shimmer','verse'] as $voice): ?><option value="<?= h($voice) ?>" <?= $value('ai.openai_voice', 'coral') === $voice ? 'selected' : '' ?>><?= h($voice) ?></option><?php endforeach; ?></select></label>
-    <label class="field wide"><span>Манера стандартного голоса</span><textarea name="openai_voice_instructions" rows="3"><?= h($value('ai.openai_voice_instructions', 'Говори по-русски тепло, естественно и спокойно. Не спеши и делай смысловые паузы.')) ?></textarea></label>
+    <label class="field"><span>Стандартный голос OpenAI</span><select name="openai_voice"><?php foreach (['marin','cedar','coral','alloy','ash','ballad','echo','fable','nova','onyx','sage','shimmer','verse'] as $voice): ?><option value="<?= h($voice) ?>" <?= $value('ai.openai_voice', 'marin') === $voice ? 'selected' : '' ?>><?= h($voice) ?><?= in_array($voice, ['marin', 'cedar'], true) ? ' — высокое качество' : '' ?></option><?php endforeach; ?></select><small class="field-hint">Для наиболее естественного звучания OpenAI рекомендует marin или cedar. Все голоса можно послушать на <a href="https://openai.fm" target="_blank" rel="noopener">OpenAI.fm</a> — там выберите русский текст и сравните варианты.</small></label>
+    <label class="field wide"><span>Манера стандартного голоса</span><textarea name="openai_voice_instructions" rows="5"><?= h($value('ai.openai_voice_instructions', 'Говори по-русски как в личном голосовом сообщении знакомому человеку: тепло, живо и естественно. Избегай дикторской, рекламной и торжественной подачи. Используй разговорную интонацию, лёгкие изменения темпа и высоты голоса, короткие естественные паузы между мыслями. Не растягивай окончания и не делай одинаковые паузы после каждого предложения.')) ?></textarea><small class="field-hint">Инструкция применяется ко всем новым аудиосообщениям.</small></label>
     <label class="field"><span>Минимальная точность источника</span><input type="number" min="1" max="20" name="minimum_source_score" value="<?= (int)$value('ai.minimum_source_score', '2') ?>"><small class="field-hint">Чем выше значение, тем чаще помощник честно откажется отвечать.</small></label>
     <label class="field"><span>Стандартный план клиента</span><select name="default_plan_days"><?php foreach ([7,14,30] as $days): ?><option value="<?= $days ?>" <?= (int)$value('ai.default_plan_days', '7') === $days ? 'selected' : '' ?>><?= $days ?> дней</option><?php endforeach; ?></select></label>
     <label class="field"><span>Повторный чек-ап через, дней</span><input type="number" min="7" max="365" name="retest_after_days" value="<?= (int)$value('ai.retest_after_days', '30') ?>"></label>
