@@ -162,6 +162,16 @@ function crud_display_columns(string $moduleKey): array
             'sort_order' => app_text('auto.k_c00d5a4cbda0'),
             'state' => app_text('auto.k_f7f293b5c58c'),
         ],
+        'product_variants' => [
+            'id' => 'ID',
+            'product_title' => 'Продукт',
+            'sku' => 'Артикул',
+            'title' => 'Название варианта',
+            'volume_text' => 'Объём или упаковка',
+            'price' => 'Справочная цена',
+            'is_sample' => 'Пробник',
+            'state' => app_text('auto.k_f7f293b5c58c'),
+        ],
         'tests' => [
             'id' => 'ID',
             'title' => app_text('auto.k_ec1868c5a7fb'),
@@ -591,6 +601,18 @@ function crud_list_query(string $moduleKey, array $module, array $admin): array
         ];
     }
 
+    if ($moduleKey === 'product_variants') {
+        return [
+            "SELECT pv.id, pv.product_id, p.title AS product_title, pv.sku, pv.title, pv.volume_text, pv.price, pv.currency, pv.is_sample,
+                    IF(pv.is_active = 1, 'active', 'inactive') AS state
+             FROM product_variants pv
+             INNER JOIN products p ON p.id = pv.product_id
+             ORDER BY p.title ASC, pv.sort_order ASC, pv.id DESC
+             LIMIT 100",
+            [],
+        ];
+    }
+
     if ($moduleKey === 'content') {
         [$where, $params] = owner_scope_condition($admin, 'cp', 'content');
         if ($admin['role'] !== 'superadmin') {
@@ -857,6 +879,14 @@ function crud_cell_value(string $moduleKey, string $column, array $row): string
         return ($row['scoring_type'] ?? 'single') === 'multiscale' ? 'Многошкальная матрица' : 'Обычный тест';
     }
 
+    if ($moduleKey === 'product_variants' && $column === 'is_sample') {
+        return !empty($row['is_sample']) ? 'Да' : 'Нет';
+    }
+
+    if ($moduleKey === 'product_variants' && $column === 'state') {
+        return (string)($row['state'] ?? '') === 'active' ? 'Активен' : 'Отключён';
+    }
+
     if ($moduleKey === 'users' && $column === 'client_profile') {
         if (
             trim((string)($row['city'] ?? '')) === ''
@@ -984,6 +1014,11 @@ function render_cell(string $moduleKey, string $key, array $row): string
         return '<span class="' . h($class) . '">' . h(crud_cell_value($moduleKey, $key, $row)) . '</span>';
     }
 
+    if ($moduleKey === 'product_variants' && $key === 'state') {
+        $value = crud_cell_value($moduleKey, $key, $row);
+        return '<span class="' . h(status_badge_class($value)) . '">' . h($value) . '</span>';
+    }
+
     if ($moduleKey === 'users' && in_array($key, ['client_stage', 'checkup_status'], true)) {
         $value = crud_cell_value($moduleKey, $key, $row);
         return '<span class="' . h(status_badge_class($value)) . '">' . h($value) . '</span>';
@@ -1083,6 +1118,7 @@ function crud_search_columns(string $moduleKey): array
         'platform_accounts' => ['id', 'full_name', 'user_username', 'display_name', 'username', 'platform', 'platform_user_id'],
         'categories' => ['id', 'title', 'slug', 'owner_type', 'state'],
         'products' => ['id', 'title', 'category_title', 'price', 'state'],
+        'product_variants' => ['id', 'product_title', 'sku', 'title', 'volume_text', 'price', 'state'],
         'tests' => ['id', 'title', 'category_title', 'scoring_type', 'state'],
         'broadcasts' => ['id', 'title', 'owner_label', 'platform', 'target_type', 'status'],
         'content' => ['id', 'title', 'owner_label', 'content_type', 'section_type', 'category_title', 'status'],
@@ -1138,6 +1174,14 @@ function crud_sort_columns(string $moduleKey): array
             'category_title' => '`category_title`',
             'price' => '`price`',
             'sort_order' => '`sort_order`',
+            'state' => '`state`',
+        ],
+        'product_variants' => [
+            'product_title' => '`product_title`',
+            'sku' => '`sku`',
+            'title' => '`title`',
+            'volume_text' => '`volume_text`',
+            'price' => '`price`',
             'state' => '`state`',
         ],
         'tests' => [
