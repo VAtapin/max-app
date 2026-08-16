@@ -1274,6 +1274,17 @@ button:disabled {
     margin-bottom: 12px;
 }
 
+.forgot-password-link {
+    text-align: right;
+    font-size: 13px;
+    margin-top: 2px;
+}
+
+.forgot-password-link a {
+    color: var(--accent);
+    font-weight: 600;
+}
+
 .notice {
     padding: 10px;
     border-radius: var(--radius-sm);

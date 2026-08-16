@@ -4,6 +4,7 @@ require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/qrcode.php';
 
 $error = null;
+$resetStatus = (string)($_GET['status'] ?? '');
 $step = 'login';
 $pending2fa = pending_2fa_admin();
 $pendingSetup = pending_2fa_setup_admin();
@@ -84,6 +85,9 @@ if ($setupUri !== '') {
         <?php if ($step !== 'setup_2fa'): ?>
             <h1><?= $step === 'login' ? h(app_text('auto.k_53407b712a93')) : 'Подтверждение входа' ?></h1>
         <?php endif; ?>
+        <?php if ($resetStatus === 'reset'): ?>
+            <div class="notice success">Пароль успешно обновлён. Войдите с новым паролем.</div>
+        <?php endif; ?>
         <?php if ($error): ?>
             <div class="alert"><?= h($error) ?></div>
         <?php endif; ?>
@@ -127,6 +131,7 @@ if ($setupUri !== '') {
             <label><?= h(app_text('auto.k_14f7c63cc128')) ?></label>
             <input type="password" name="password" required>
             <button type="submit"><?= h(app_text('auto.k_939e95a11ddd')) ?></button>
+            <div class="forgot-password-link"><a href="forgot_password.php">Забыли пароль?</a></div>
         <?php endif; ?>
     </form>
 </body>
