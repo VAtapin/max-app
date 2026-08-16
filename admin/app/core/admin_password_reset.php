@@ -51,6 +51,50 @@ function admin_password_reset_send_url(): string
     return $publicUrl !== '' ? $publicUrl . '/admin/public/admin_reset_password.php?token=%s' : '/admin/public/admin_reset_password.php?token=%s';
 }
 
+function admin_password_reset_mask_email(?string $email): string
+{
+    $email = trim((string)$email);
+    if (!str_contains($email, '@')) {
+        return $email;
+    }
+
+    [$local, $domain] = explode('@', $email, 2);
+    $local = trim($local);
+    if ($local === '') {
+        return $email;
+    }
+
+    $first = $local[0];
+    $last = $local[strlen($local) - 1];
+    return $first . '***' . $last . '@' . $domain;
+}
+
+function admin_password_reset_send_email(string $to, string $subject, string $message): bool
+{
+    $host = trim((string)($_SERVER['SERVER_NAME'] ?? ''));
+    if ($host === '') {
+        $host = 'localhost';
+    }
+    $fromEmail = 'noreply@' . $host;
+    $fromName = (string)(app_config()['app']['name'] ?? 'SWPro');
+    $headers = [
+        'From: ' . mb_encode_mimeheader($fromName, 'UTF-8') . ' <' . $fromEmail . '>',
+        'Reply-To: ' . $fromEmail,
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=UTF-8',
+        'Content-Transfer-Encoding: 8bit',
+    ];
+
+    $sent = @mail(
+        $to,
+        mb_encode_mimeheader($subject, 'UTF-8'),
+        $message,
+        implode("\r\n", $headers)
+    );
+
+    return (bool)$sent;
+}
+
 function admin_password_reset_request(string $email): ?array
 {
     $admin = admin_password_reset_find_by_email($email);
@@ -87,43 +131,74 @@ function admin_password_reset_request(string $email): ?array
         . $url . "\n\n"
         . "Если вы не запрашивали это изменение, просто проигнорируйте сообщение.";
 
-    $telegramId = preg_replace('/\D+/', '', (string)($admin['telegram_id'] ?? ''));
-    $telegramSent = false;
-    $response = [];
-    $result = [];
+    $sentChannels = [];
+    $telegramId = preg_replace('/\\D+/', '', (string)($admin['telegram_id'] ?? ''));
     if ($telegramId !== '') {
-        $response = send_telegram_text($telegramId, $message);
-        if (!empty($response['ok'])) {
+        $telegramResult = send_telegram_text($telegramId, $message);
+        if (!empty($telegramResult['ok'])) {
+            $sentChannels['telegram'] = true;
             log_activity('admin', (int)$admin['id'], 'request_password_reset', 'admin_users', (int)$admin['id'], [
                 'channel' => 'telegram',
             ]);
-            return ['status' => 'ok', 'channel' => 'telegram'];
+        } else {
+            log_activity('admin', (int)$admin['id'], 'request_password_reset_channel_failed', 'admin_users', (int)$admin['id'], [
+                'channel' => 'telegram',
+                'error' => (string)($telegramResult['error'] ?? 'Не удалось отправить в Telegram'),
+            ]);
         }
-        $telegramSent = true;
     }
 
     $vkId = trim((string)($admin['vk_id'] ?? ''));
     if ($vkId !== '') {
         $integration = messaging_default_integration('VK');
         if ($integration) {
-            $result = send_vk_community_message($integration, $vkId, $message);
-            if (!empty($result['ok'])) {
+            $vkResult = send_vk_community_message($integration, $vkId, $message);
+            if (!empty($vkResult['ok'])) {
+                $sentChannels['vk'] = true;
                 log_activity('admin', (int)$admin['id'], 'request_password_reset', 'admin_users', (int)$admin['id'], [
                     'channel' => 'vk',
                 ]);
-                return ['status' => 'ok', 'channel' => 'vk'];
+            } else {
+                log_activity('admin', (int)$admin['id'], 'request_password_reset_channel_failed', 'admin_users', (int)$admin['id'], [
+                    'channel' => 'vk',
+                    'error' => (string)($vkResult['error'] ?? 'Не удалось отправить в VK'),
+                ]);
             }
-        }
-        if (!$telegramSent) {
-            return ['status' => 'error', 'error' => $result['error'] ?? 'Не удалось отправить в VK', 'channel' => 'vk'];
+        } else {
+            log_activity('admin', (int)$admin['id'], 'request_password_reset_channel_failed', 'admin_users', (int)$admin['id'], [
+                'channel' => 'vk',
+                'error' => 'Нет активной интеграции для VK-сообщения',
+            ]);
         }
     }
 
-    if ($telegramId !== '') {
-        return ['status' => 'error', 'error' => $response['error'] ?? 'Не удалось отправить в Telegram', 'channel' => 'telegram'];
+    $adminEmail = trim((string)($admin['email'] ?? ''));
+    if ($adminEmail !== '') {
+        $emailSubject = 'Сброс пароля админки SWPro';
+        $emailSent = admin_password_reset_send_email($adminEmail, $emailSubject, $message);
+        if ($emailSent) {
+            $sentChannels['email'] = admin_password_reset_mask_email($adminEmail);
+            log_activity('admin', (int)$admin['id'], 'request_password_reset', 'admin_users', (int)$admin['id'], [
+                'channel' => 'email',
+            ]);
+        } else {
+            log_activity('admin', (int)$admin['id'], 'request_password_reset_channel_failed', 'admin_users', (int)$admin['id'], [
+                'channel' => 'email',
+                'error' => 'Не удалось отправить email',
+            ]);
+        }
     }
 
-    return ['status' => 'error', 'error' => 'Не настроен Telegram и не указан VK для доставки'];
+    if (!$sentChannels) {
+        return ['status' => 'error', 'error' => 'Не удалось отправить ссылку для восстановления пароля. Проверьте доступные способы связи или обратитесь к администратору.'];
+    }
+
+    return [
+        'status' => 'ok',
+        'channels' => array_keys($sentChannels),
+        'email' => $adminEmail,
+        'masked_email' => $sentChannels['email'] ?? null,
+    ];
 }
 
 function admin_password_reset_token_data(string $token): ?array

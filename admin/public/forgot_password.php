@@ -3,6 +3,71 @@
 require_once __DIR__ . '/../app/core/auth.php';
 require_once __DIR__ . '/../app/core/admin_password_reset.php';
 
+function admin_password_reset_result_text(array $result): string
+{
+    if (($result['status'] ?? '') !== 'ok') {
+        return 'Не удалось отправить ссылку для восстановления пароля. Проверьте доступные способы связи или обратитесь к администратору.';
+    }
+
+    $channels = $result['channels'] ?? [];
+    if (!$channels) {
+        return 'Не удалось отправить ссылку для восстановления пароля. Проверьте доступные способы связи или обратитесь к администратору.';
+    }
+
+    $hasTelegram = in_array('telegram', $channels, true);
+    $hasVk = in_array('vk', $channels, true);
+    $hasEmail = in_array('email', $channels, true);
+    $parts = [];
+    if ($hasTelegram) {
+        $parts[] = 'Telegram';
+    }
+    if ($hasVk) {
+        $parts[] = 'VK';
+    }
+
+    $maskedEmail = $result['masked_email'] ?? '';
+    if ($hasEmail && $maskedEmail === '') {
+        $adminEmail = trim((string)($result['email'] ?? ''));
+        if ($adminEmail !== '' && str_contains($adminEmail, '@')) {
+            $parts[] = 'на email: ' . admin_password_reset_mask_email($adminEmail);
+        }
+    } elseif ($hasEmail) {
+        $parts[] = 'на email: ' . $maskedEmail;
+    }
+
+    if (!$parts) {
+        return 'Не удалось отправить ссылку для восстановления пароля. Проверьте доступные способы связи или обратитесь к администратору.';
+    }
+
+    if (count($parts) === 1) {
+        if (str_starts_with((string)$parts[0], 'на email: ')) {
+            return 'Ссылка для восстановления пароля отправлена на email: ' . str_replace('на email: ', '', $parts[0]);
+        }
+
+        return 'Ссылка для восстановления пароля отправлена в ' . $parts[0] . '.';
+    }
+
+    if (count($parts) === 2) {
+        if (str_starts_with((string)$parts[0], 'на email: ') && str_starts_with((string)$parts[1], 'на email: ')) {
+            return 'Ссылка для восстановления пароля отправлена на email: ' . str_replace('на email: ', '', $parts[0]);
+        }
+        if (str_starts_with((string)$parts[0], 'на email: ')) {
+            return 'Ссылка для восстановления пароля отправлена на email: ' . str_replace('на email: ', '', $parts[0]) . ' и ' . $parts[1] . '.';
+        }
+        if (str_starts_with((string)$parts[1], 'на email: ')) {
+            return 'Ссылка для восстановления пароля отправлена в ' . $parts[0] . ' и ' . $parts[1] . '.';
+        }
+
+        return 'Ссылка для восстановления пароля отправлена в ' . $parts[0] . ' и ' . $parts[1] . '.';
+    }
+
+    if (count($parts) === 3) {
+        return 'Ссылка для восстановления пароля отправлена в ' . $parts[0] . ', ' . $parts[1] . ' и ' . $parts[2] . '.';
+    }
+
+    return 'Ссылка для восстановления пароля отправлена.';
+}
+
 $error = null;
 $success = null;
 
@@ -16,9 +81,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($result === null) {
             $success = 'Если такой email есть в системе, мы отправили ссылку для смены пароля.';
         } elseif (is_array($result) && ($result['status'] ?? '') === 'ok') {
-            $success = 'Ссылка для смены пароля отправлена. Проверьте Telegram или VK.';
+            $success = admin_password_reset_result_text($result);
         } else {
-            $error = 'Не удалось отправить сообщение с ссылкой: ' . (string)($result['error'] ?? 'проверьте настройки контактов в профиле.');
+            $error = admin_password_reset_result_text([
+                'status' => 'error',
+                'error' => (string)($result['error'] ?? 'Не удалось отправить ссылку для восстановления пароля. Проверьте доступные способы связи или обратитесь к администратору.'),
+            ]);
         }
     }
 }
