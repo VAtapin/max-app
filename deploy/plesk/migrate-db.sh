@@ -29,6 +29,18 @@ if [[ ! -d database/migrations ]]; then
   exit 0
 fi
 
+shopt -s nullglob
+readarray -t migration_files < <(
+  for migration in database/migrations/*.sql; do
+    printf '%s\n' "$migration"
+  done | sort
+)
+
+if (( ${#migration_files[@]} == 0 )); then
+  echo "No migration files found."
+  exit 0
+fi
+
 MYSQL_PWD="$DB_PASSWORD" "$MYSQL_BIN" \
   --host="$DB_HOST" \
   --port="$DB_PORT" \
@@ -44,7 +56,7 @@ SQL
 applied_count=0
 skipped_count=0
 
-for migration in database/migrations/*.sql; do
+for migration in "${migration_files[@]}"; do
   [[ -e "$migration" ]] || continue
   migration_name="$(basename "$migration")"
   if grep -Eiq '^[[:space:]]*(USE[[:space:]]+|CREATE[[:space:]]+DATABASE|DROP[[:space:]]+DATABASE)' "$migration"; then
