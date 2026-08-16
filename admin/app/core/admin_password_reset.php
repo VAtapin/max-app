@@ -105,7 +105,7 @@ function admin_password_reset_request(string $email): ?array
     $token = bin2hex(random_bytes(32));
     $tokenHash = admin_password_reset_hash_token($token);
     $adminId = (int)$admin['id'];
-    $expiresAt = date('Y-m-d H:i:s', time() + admin_password_reset_token_ttl_seconds());
+    $expiresAt = gmdate('Y-m-d H:i:s', time() + admin_password_reset_token_ttl_seconds());
 
     db()->prepare('DELETE FROM admin_password_resets WHERE admin_user_id = :admin_user_id')
         ->execute(['admin_user_id' => $adminId]);
@@ -208,7 +208,7 @@ function admin_password_reset_token_data(string $token): ?array
          FROM admin_password_resets apr
          INNER JOIN admin_users au ON au.id = apr.admin_user_id
          WHERE apr.token_hash = :token_hash
-           AND apr.expires_at > NOW()
+           AND apr.expires_at > UTC_TIMESTAMP()
            AND apr.used_at IS NULL
          LIMIT 1'
     );
