@@ -253,7 +253,9 @@ https://swpro.ru/api/payment_webhook.php?method=КОД
 - `database/seed.sql` — стартовые данные;
 - `database/migrations/` — последовательные обновления рабочей базы;
 - `docs/` — пользовательский справочный центр Docsify;
-- `deploy/plesk/` — установка и обновление сервера;
+- `docs/PRODUCTION_SERVER.md` — актуальная инфраструктура Debian production, Telegram transport, backup, monitoring и cutover;
+- `deploy/plesk/` — legacy/Plesk deployment и текущий канонический `live.env`;
+- `deploy/server/` — deploy-логика нового Debian production;
 - `index.php` — публичный мини-сайт;
 - `legal.php` — публикация юридических документов.
 
@@ -261,27 +263,98 @@ https://swpro.ru/api/payment_webhook.php?method=КОД
 
 ## Развёртывание
 
-Рабочая конфигурация хранится только в `deploy/plesk/live.env`. Не создавайте параллельные `.env`, `bot/.env` или `admin/app/config/local.php`.
+### Новый production: Debian 12
 
-Установка описана в [deploy/plesk/README.md](deploy/plesk/README.md).
+Новый production root:
 
-Обновление сервера:
+```text
+/var/www/swpro
+```
+
+Рабочая конфигурация по историческим причинам пока хранится только в:
+
+```text
+/var/www/swpro/deploy/plesk/live.env
+```
+
+Несмотря на имя каталога `plesk`, этот файл остаётся каноническим runtime env и на Debian. Не создавайте параллельные `.env`, `bot/.env` или `admin/app/config/local.php`.
+
+Поток обновления кода:
+
+```text
+локальная разработка -> GitHub main -> production git pull -> deploy/server/deploy.sh
+```
+
+Типовое обновление production:
+
+```bash
+cd /var/www/swpro
+runuser -u swpro -- git fetch origin
+runuser -u swpro -- git pull --ff-only
+/var/www/swpro/deploy/server/deploy.sh
+```
+
+`deploy/server/deploy.sh` применяет миграции, проверяет БД, синхронизирует Docsify/AI index, обновляет Python dependencies, проверяет PHP/Python syntax и перезапускает Telegram bot только если он уже был запущен. Биллинг не является частью deploy и запускается только по cron.
+
+Полное описание production-инфраструктуры, server paths, security, backup, monitoring, phpMyAdmin, mail и прозрачного Telegram transport через немецкий SSH relay: [docs/PRODUCTION_SERVER.md](docs/PRODUCTION_SERVER.md).
+
+### Старый Plesk
+
+Legacy root:
+
+```text
+/var/www/vhosts/swpro.ru/httpdocs
+```
+
+Старый deploy остаётся в `deploy/plesk/` для старого сервера и миграционного периода:
 
 ```bash
 cd /var/www/vhosts/swpro.ru/httpdocs
 bash deploy/plesk/deploy.sh deploy/plesk/live.env
 ```
 
-Скрипт получает `main`, применяет только ещё не выполненные миграции, проверяет PHP и перезапускает установленный сервис бота.
+Не возвращайте Plesk-пути в новый Debian production-код.
+
+## Production-инфраструктура
+
+Ключевые server-side пути и сервисы нового production:
+
+```text
+Project root:                 /var/www/swpro
+Runtime env:                  /var/www/swpro/deploy/plesk/live.env
+Python venv:                  /var/www/swpro/.venv
+Nginx vhost:                  /etc/nginx/sites-available/swpro.ru
+PHP-FPM pool:                 /etc/php/8.3/fpm/pool.d/swpro.conf
+PHP-FPM socket:               /run/php/php8.3-fpm-swpro.sock
+MariaDB config:               /etc/mysql/mariadb.conf.d/60-swpro.cnf
+Telegram bot service:         /etc/systemd/system/max-app-telegram.service
+Telegram SSH transport:       /etc/systemd/system/swpro-telegram-tunnel.service
+Remote backup script:         /usr/local/sbin/swpro-restic-backup.sh
+Remote backup timer:          swpro-restic-backup.timer
+Health script:                /usr/local/sbin/swpro-health.sh
+Health timer:                 swpro-health.timer
+Firewall:                     /etc/nftables.conf
+Fail2ban:                     /etc/fail2ban/jail.d/sshd.local
+```
+
+Telegram на российском production не должен получать proxy-настройки в application code. `api.telegram.org` прозрачно направляется через SSH relay на уровне ОС: `/etc/hosts` резолвит его в `127.77.0.1`, nftables redirect отправляет TCP/443 на локальный SSH forward `127.0.0.1:18443`, а `swpro-telegram-tunnel.service` доставляет трафик через немецкий сервер к настоящему `api.telegram.org:443`. Это работает для PHP/curl и aiogram long polling без изменения существующих функций.
+
+Секреты, private keys, DB password, Telegram tokens и Restic password в Git не хранятся.
 
 ## Планировщик
 
+На новом Debian cron работает от пользователя `swpro` и использует `/usr/bin/php8.3`:
+
 ```cron
-*/5 * * * * cd /var/www/vhosts/swpro.ru/httpdocs && php admin/cron/run-broadcasts.php
-*/15 * * * * cd /var/www/vhosts/swpro.ru/httpdocs && php admin/cron/run-automations.php
-15 0 * * * cd /var/www/vhosts/swpro.ru/httpdocs && php admin/cron/run-billing.php >> storage/logs/billing-cron.log 2>&1
-30 1 * * * cd /var/www/vhosts/swpro.ru/httpdocs && php admin/cron/cleanup-web-users.php >> storage/logs/web-user-cleanup.log 2>&1
+MAILTO=""
+SHELL="/bin/sh"
+
+*/5 * * * * cd /var/www/swpro && /usr/bin/php8.3 admin/cron/run-broadcasts.php > /dev/null 2>&1
+*/15 * * * * cd /var/www/swpro && /usr/bin/php8.3 admin/cron/run-automations.php > /dev/null 2>&1
+15 0 * * * cd /var/www/swpro && /usr/bin/php8.3 admin/cron/run-billing.php >> storage/logs/billing-cron.log 2>&1
 ```
+
+До cutover задания нового сервера должны оставаться закомментированными, пока те же бизнес-процессы выполняются на старом Plesk. Перед окончательным включением сверить также `admin/cron/cleanup-web-users.php` и другие актуальные cron из репозитория, чтобы не потерять сервисную очистку и не создать дубли.
 
 Задачи не дублируют друг друга: рассылки, автоматические сценарии, биллинг и очистка временных web-профилей выполняют разные функции.
 
@@ -297,9 +370,10 @@ git diff --check
 
 ## Правило обновления документации
 
-При изменении бизнес-логики необходимо одновременно обновлять:
+При изменении бизнес-логики или production-инфраструктуры необходимо одновременно обновлять:
 
 1. `README.md` — техническую и архитектурную документацию;
-2. Markdown-страницы в `docs/` — инструкции для пользователей;
-3. `help_faq_sections` через `database/seed.sql` — утверждённые ответы для AI на чистой установке;
-4. новую миграцию — обновление базы ответов AI на работающем сайте.
+2. `docs/PRODUCTION_SERVER.md` — реальные server paths, сервисы, transport, backup и cutover;
+3. Markdown-страницы в `docs/` — инструкции для пользователей;
+4. `help_faq_sections` через `database/seed.sql` — утверждённые ответы для AI на чистой установке;
+5. новую миграцию — обновление базы ответов AI на работающем сайте.
