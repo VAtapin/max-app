@@ -498,38 +498,449 @@ Retention:
 
 ## Monitoring
 
+ Конечно. Вот **готовый блок целиком** для замены старого `## Monitoring` в `docs/PRODUCTION_SERVER.md`.
+
+````markdown
+## Monitoring
+
+На новом production-сервере мониторинг разделён на две независимые части:
+
+1. `swpro-health.sh` — автоматическая проверка состояния сервера и отправка Telegram ALERT/RECOVERED;
+2. `swpro-server-bot.py` — интерактивный Telegram-бот для ручного запроса состояния сервера.
+
+Оба компонента используют отдельного серверного Telegram-бота и не являются частью основного `max-app-telegram.service`.
+
+### Health check
+
 Health script:
 
 ```text
+/usr/local/sbin/swpro-health.sh
+````
+
+Systemd unit:
+
+```text
+/etc/systemd/system/swpro-health.service
+```
+
+Timer:
+
+```text
+/etc/systemd/system/swpro-health.timer
+```
+
+Проверка выполняется примерно каждые 5 минут.
+
+Health check контролирует:
+
+* nginx;
+* PHP 8.3 FPM;
+* MariaDB;
+* SSH;
+* Fail2ban;
+* `swpro-telegram-tunnel`;
+* `swpro-server-bot`;
+* локальный HTTP response SWPro;
+* внешний HTTPS response `https://swpro.ru`;
+* DNS;
+* SSL certificate;
+* использование диска;
+* inode;
+* RAM;
+* swap;
+* load;
+* состояние Restic backup timer;
+* критические ошибки systemd/journal.
+
+### Telegram monitoring configuration
+
+Секреты и параметры серверного мониторинга хранятся только на production:
+
+```text
+/root/.config/swpro-monitoring.env
+```
+
+В частности:
+
+```text
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+```
+
+Этот файл не должен попадать в Git.
+
+`TELEGRAM_CHAT_ID` используется одновременно:
+
+* для отправки health alerts;
+* для ограничения доступа к server-monitor Telegram bot.
+
+Telegram monitoring bot принимает команды только от настроенного `TELEGRAM_CHAT_ID`.
+
+### Startup notification
+
+После reboot health check определяет новый `/proc/sys/kernel/random/boot_id` и отправляет одно уведомление:
+
+```text
+🟢 SWPRO SERVER STARTED
+
+Host: swpro.ru
+Uptime: ...
+Kernel: ...
+
+Health check started.
+```
+
+Таким образом, после перезагрузки сервера можно сразу убедиться, что production снова запущен.
+
+### Alert state and anti-spam
+
+Health check не отправляет одно и то же уведомление каждые 5 минут.
+
+Состояние проблем сравнивается по стабильным идентификаторам проблем, а не по полному тексту сообщения.
+
+Например, изменение:
+
+```text
+Critical journal errors: 5
+```
+
+на:
+
+```text
+Critical journal errors: 2
+```
+
+не считается новой проблемой.
+
+Таким образом, временные изменения количества записей в journal не создают Telegram-спам.
+
+При появлении новой проблемы отправляется:
+
+```text
+🔴 SWPRO ALERT
+```
+
+После полного восстановления отправляется:
+
+```text
+🟢 SWPRO RECOVERED
+```
+
+### Journal monitoring
+
+Количество критических journal errors используется только как признак наличия проблемы.
+
+Изменение количества ошибок само по себе не создаёт новый ALERT.
+
+Особенно важно после reboot: временные ошибки запуска Telegram transport или server-monitor bot не должны превращаться в бесконечный поток одинаковых уведомлений.
+
+Состояние самого `swpro-server-bot` контролируется отдельно через systemd:
+
+```text
+swpro-server-bot.service
+```
+
+### Server Telegram bot
+
+Отдельный серверный Telegram bot:
+
+```text
+/usr/local/sbin/swpro-server-bot.py
+```
+
+Systemd unit:
+
+```text
+/etc/systemd/system/swpro-server-bot.service
+```
+
+Основные свойства:
+
+```text
+Type=simple
+User=root
+Group=root
+Restart=always
+RestartSec=10
+```
+
+Сервис включён в автозапуск:
+
+```bash
+systemctl enable swpro-server-bot.service
+```
+
+Он не зависит от SSH-сессии администратора и автоматически запускается после reboot.
+
+Сервис запускается после:
+
+```text
+network-online.target
+swpro-telegram-tunnel.service
+```
+
+Однако Telegram tunnel может потребовать несколько секунд для фактического установления SSH forward. Поэтому сам bot polling также имеет retry/recovery и автоматически повторяет подключение при временной ошибке.
+
+### Telegram server bot и основной application bot
+
+`swpro-server-bot.py` является отдельным серверным инструментом.
+
+Не путать:
+
+```text
+max-app-telegram.service
+```
+
+— основной Telegram-бот приложения SWPro,
+
+и:
+
+```text
+swpro-server-bot.service
+```
+
+— отдельный Telegram-бот мониторинга сервера.
+
+Server monitor не использует application code и не должен добавляться в `bot/` проекта.
+
+### Server bot configuration
+
+Server bot использует тот же:
+
+```text
+/root/.config/swpro-monitoring.env
+```
+
+и получает:
+
+```text
+TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID
+```
+
+Никакие Telegram token или chat ID не должны быть захардкожены в Python-коде.
+
+### Telegram server bot commands
+
+Доступные команды:
+
+```text
+/status
+```
+
+Общее состояние сервера и основных проверок.
+
+```text
+/server
+```
+
+Hostname, FQDN, IP, OS, kernel и uptime.
+
+```text
+/resources
+```
+
+Load, RAM и Swap.
+
+```text
+/disk
+```
+
+Использование диска и inode.
+
+```text
+/services
+```
+
+Состояние основных systemd-сервисов:
+
+* nginx;
+* PHP-FPM;
+* MariaDB;
+* SSH;
+* Fail2ban;
+* Telegram tunnel;
+* server monitor bot;
+* Restic timer.
+
+```text
+/website
+```
+
+DNS, внешний HTTPS, HTTP status и время ответа.
+
+```text
+/ssl
+```
+
+Состояние SSL certificate, срок действия и количество оставшихся дней.
+
+```text
+/backup
+```
+
+Состояние Restic timer и возраст последнего успешного backup.
+
+```text
+/logs
+```
+
+Последние критические ошибки systemd/journal.
+
+```text
+/all
+```
+
+Полный отчёт по серверу, включающий:
+
+* общий status;
+* server information;
+* resources;
+* disk/inode;
+* services;
+* website/DNS/HTTPS;
+* SSL;
+* Restic;
+* critical logs.
+
+### `/all` и сетевые проверки
+
+Каждая внешняя проверка в `/all` выполняется независимо.
+
+Недоступный HTTPS или SSL не должен прерывать формирование всего отчёта.
+
+Например, если HTTPS временно недоступен:
+
+```text
+🌐 WEBSITE
+
+HTTPS: 🔴 connection failed
+```
+
+и:
+
+```text
+🔐 SSL
+
+Status: 🔴 unavailable
+```
+
+остальные разделы `/all` всё равно должны быть сформированы и отправлены.
+
+Индивидуальные внешние проверки используют короткий timeout. Telegram long polling использует отдельный более длинный timeout, поскольку `getUpdates` работает с long polling.
+
+### Telegram long polling
+
+Server monitor bot использует Telegram Bot API `getUpdates`.
+
+Текущий polling timeout:
+
+```text
+50 seconds
+```
+
+HTTP timeout для Telegram API:
+
+```text
+70 seconds
+```
+
+Это необходимо, чтобы HTTP-соединение не завершалось раньше, чем Telegram завершит long-polling запрос.
+
+Временные ошибки подключения обрабатываются внутри polling loop; бот автоматически повторяет подключение.
+
+### Telegram transport
+
+Server monitoring bot использует тот же прозрачный Telegram transport, который описан выше в разделе:
+
+```text
+Telegram: прозрачный SSH transport через Германию
+```
+
+Application code и server monitoring bot обращаются к стандартному:
+
+```text
+https://api.telegram.org/...
+```
+
+Proxy URL или специальные Telegram API endpoints в Python-коде не используются.
+
+Таким образом, существующий:
+
+```text
+swpro-telegram-tunnel.service
+```
+
+обеспечивает как отправку сообщений server monitor, так и получение команд через `getUpdates`.
+
+### Проверка monitoring
+
+Health check:
+
+```bash
 /usr/local/sbin/swpro-health.sh
 ```
 
 Systemd:
 
-```text
-/etc/systemd/system/swpro-health.service
-/etc/systemd/system/swpro-health.timer
+```bash
+systemctl status swpro-health.service --no-pager
+systemctl status swpro-health.timer --no-pager
+systemctl list-timers --all | grep swpro-health
 ```
 
-Проверка выполняется примерно каждые 5 минут и контролирует как минимум:
+Последний health journal:
 
-- nginx;
-- php8.3-fpm;
-- mariadb;
-- ssh;
-- fail2ban;
-- `swpro-telegram-tunnel`;
-- локальный HTTP response SWPro;
-- использование диска;
-- использование RAM;
-- swap;
-- свежесть последнего успешного Restic backup.
+```bash
+journalctl -u swpro-health.service -n 100 --no-pager
+```
 
-Состояние хранится в `/var/lib/swpro-monitor`. Telegram monitoring credentials находятся в `/root/.config/swpro-monitoring.env` и не должны попадать в Git.
+Server monitor bot:
 
-Уведомления отправляются только при изменении состояния: alert при проблеме и recovered после восстановления, чтобы health timer не спамил каждые 5 минут.
+```bash
+systemctl status swpro-server-bot.service --no-pager
+```
 
-Учитывайте зависимость: если сломан сам SSH Telegram tunnel, уведомление с российского сервера через Telegram может не пройти. Для полной независимости можно позже добавить отдельный relay/monitor на немецкой стороне.
+Лог server monitor bot:
+
+```bash
+journalctl -u swpro-server-bot.service -n 100 --no-pager
+```
+
+Проверка автозапуска:
+
+```bash
+systemctl is-enabled swpro-health.timer
+systemctl is-enabled swpro-server-bot.service
+```
+
+Проверка Telegram transport:
+
+```bash
+systemctl is-active swpro-telegram-tunnel
+ss -ltnp | grep 18443
+getent ahostsv4 api.telegram.org
+```
+
+Проверка Bot API:
+
+```bash
+curl --connect-timeout 5 --max-time 10 \
+  "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe"
+```
+
+### Важное замечание
+
+Если одновременно недоступен сам `swpro-telegram-tunnel`, server health check может корректно обнаружить проблему, но Telegram ALERT с российского production-сервера в этот момент может не доставиться.
+
+Это ограничение самого канала уведомлений.
+
+Сам `swpro-server-bot` и `swpro-telegram-tunnel` автоматически восстанавливаются после временных сетевых ошибок.
+
+Состояние сервера после reboot дополнительно подтверждается уведомлением `SWPRO SERVER STARTED`.
+
+ 
 
 ## Logrotate
 
