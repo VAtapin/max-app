@@ -10,7 +10,32 @@
     <link rel="manifest" href="/site.webmanifest">
     <meta name="theme-color" content="#0b4f86">
     <link rel="stylesheet" href="style.css?v=20260814-4">
+    <style>
+        /* VK web consent may render a login/permission panel taller than the 30px widget slot. */
+        .marketing-delivery-hint {
+            overflow: visible !important;
+            position: relative;
+            z-index: 20;
+        }
+
+        .vk-web-message-widget {
+            min-height: 180px !important;
+            height: 180px !important;
+            overflow: visible !important;
+            position: relative;
+            z-index: 21;
+        }
+
+        .vk-web-message-widget iframe {
+            display: block !important;
+            width: 100% !important;
+            height: 180px !important;
+            min-height: 180px !important;
+            border: 0 !important;
+        }
+    </style>
     <script defer src="app.js?v=20260814-4"></script>
+    <script defer src="plan-chat.js?v=20260818-1"></script>
 </head>
 <body>
     <main class="app">
