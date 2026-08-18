@@ -1,0 +1,6 @@
+[Unit]
+Description=SWPRO Server Health Check
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/swpro-health.sh

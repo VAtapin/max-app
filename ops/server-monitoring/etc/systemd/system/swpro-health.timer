@@ -1,0 +1,11 @@
+[Unit]
+Description=Check SWPRO health every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=swpro-health.service
+
+[Install]
+WantedBy=timers.target
