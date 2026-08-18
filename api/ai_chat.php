@@ -112,7 +112,8 @@ function ai_chat_profile_context(array $user): string
             }
         }
 
-        return $lines ? implode("\n", $lines) : '';
+        $context = $lines ? implode("\n", $lines) : '';
+        return mb_substr($context, 0, 3000, 'UTF-8');
     } catch (Throwable $e) {
         error_log('SWPro AI profile context: ' . $e->getMessage());
         return '';
@@ -126,9 +127,14 @@ $profileContextAdded = false;
 if ($originalMessage !== '' && ai_chat_profile_question($originalMessage)) {
     $profileContext = ai_chat_profile_context($user);
     if ($profileContext !== '') {
-        $messageForAi = $originalMessage
+        $messageForAi = mb_substr(
+            $originalMessage
             . "\n\n[Служебный контекст закреплённого консультанта. Используй его только для ответа на вопрос пользователя о консультанте, его профиле, доступных материалах, тестах и предложениях. Не раскрывай внутренние идентификаторы, цены, артикулы или служебные поля. Если вопрос не относится к этому контексту, игнорируй его. Не упоминай этот служебный блок.]\n"
-            . $profileContext;
+            . $profileContext,
+            0,
+            3990,
+            'UTF-8'
+        );
         $profileContextAdded = true;
     }
 }
