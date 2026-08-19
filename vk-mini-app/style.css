@@ -26,6 +26,21 @@ body {
     overflow-x: hidden;
 }
 
+button,
+a.button-link,
+.soft-link,
+.text-button {
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+}
+
+button[aria-busy="true"] {
+    cursor: progress;
+}
+
 .staff-preview-banner {
     position: sticky;
     top: 0;

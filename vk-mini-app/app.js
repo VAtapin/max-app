@@ -1071,6 +1071,19 @@ function messagingPermissionNotice(platform) {
     return state.messagingPermissionNotices[platform] || null;
 }
 
+function setMessagingActionBusy(element, label) {
+    if (!(element instanceof HTMLButtonElement)) return () => {};
+    const originalText = element.textContent || '';
+    element.disabled = true;
+    element.setAttribute('aria-busy', 'true');
+    element.textContent = label;
+    return () => {
+        element.disabled = false;
+        element.removeAttribute('aria-busy');
+        element.textContent = originalText;
+    };
+}
+
 function setMessagingPermissionNotice(message = '', tone = 'info', platform = null) {
     const noticePlatform = platform || currentMessagingIntegration()?.platform || state.platform;
     state.messagingPermissionNotices[noticePlatform] = message ? {message, tone} : null;
@@ -1156,7 +1169,7 @@ function renderSingleMessagingPermissionCard(integration) {
                 ${isAllowed
                     ? `<button class="secondary compact" data-action="revoke-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">Отключить в SWPro</button>`
                     : deliveryDisabled
-                        ? `<button class="primary compact" data-action="enable-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">Включить в SWPro</button>`
+                        ? `<button class="primary compact" data-action="enable-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">Возобновить в SWPro</button>`
                     : `<button class="primary compact" data-action="allow-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">${escapeHtml(allowLabel)}</button>`}`}
             </div>
         </section>
@@ -1451,7 +1464,7 @@ async function enableSocialMessages(platform = null) {
     await refreshMessagingPermissions(
         'VK',
         result.status === 'allowed' && result.delivery_enabled
-            ? 'Доставка сообщений из SWPro включена. VK подтвердил разрешение.'
+            ? 'Доставка сообщений из SWPro возобновлена. Разрешение VK уже было подтверждено.'
             : 'VK не подтвердил разрешение. Откройте подтверждение VK ещё раз.',
         result.status === 'allowed' && result.delivery_enabled ? 'success' : 'warning'
     );
@@ -1469,7 +1482,9 @@ async function revokeSocialMessages(platform = null) {
     state.messagingConfig = null;
     await loadMessagingConfig();
     setMessagingPermissionNotice(
-        `Доставка из SWPro через ${integration.platform} отключена. Это не меняет настройки сообщений в самой платформе; включить доставку снова можно этой же кнопкой.`,
+        integration.platform === 'VK'
+            ? 'Доставка сообщений из SWPro остановлена. Разрешение в VK не менялось; при возобновлении новое системное окно не потребуется.'
+            : 'Доставка сообщений из SWPro отключена. Для повторного включения OK снова запросит разрешение внутри Mini App.',
         'info',
         integration.platform
     );
@@ -3373,10 +3388,16 @@ page.addEventListener('click', async (event) => {
         }
     }
     if (target.dataset.action === 'revoke-social-messages') {
+        const restoreButton = setMessagingActionBusy(target, 'Отключаем…');
         try {
             await revokeSocialMessages(target.dataset.messagingPlatform || null);
         } catch (_) {
-            page.insertAdjacentHTML('afterbegin', '<div class="form-error">Не удалось отключить сообщения. Попробуйте позже.</div>');
+            restoreButton();
+            setMessagingPermissionNotice(
+                'Не удалось отключить доставку. Попробуйте ещё раз.',
+                'warning',
+                target.dataset.messagingPlatform || state.platform
+            );
         }
     }
     if (target.dataset.action === 'start-test') await startTestSession(false);
