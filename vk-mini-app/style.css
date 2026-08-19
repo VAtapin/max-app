@@ -1246,6 +1246,11 @@ button.compact {
     padding: 14px;
 }
 
+.message-permission-stack {
+    display: grid;
+    gap: 14px;
+}
+
 .message-permission-card span {
     color: var(--muted);
     line-height: 1.45;

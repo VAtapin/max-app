@@ -18,7 +18,7 @@ const state = {
     consultantProfilePromise: null,
     messagingConfig: null,
     messagingConfigPromise: null,
-    messagingPermissionNotice: null,
+    messagingPermissionNotices: {},
     onboarding: null,
     notifications: [],
     today: null,
@@ -1019,10 +1019,26 @@ async function loadMessagingConfig() {
     return state.messagingConfigPromise;
 }
 
-function currentMessagingIntegration() {
+function messagingIntegration(platform = null) {
     const integrations = state.messagingConfig?.integrations || {};
+    if (platform) {
+        return integrations[platform] || null;
+    }
     return integrations[state.platform]
         || (state.platform === 'web' ? integrations.VK || integrations.OK || null : null);
+}
+
+function currentMessagingIntegration() {
+    return messagingIntegration();
+}
+
+function messagingIntegrationsForDisplay() {
+    const integrations = state.messagingConfig?.integrations || {};
+    if (state.platform === 'web') {
+        return ['VK', 'OK'].map((platform) => integrations[platform]).filter(Boolean);
+    }
+    const integration = integrations[state.platform];
+    return integration ? [integration] : [];
 }
 
 function okMessageStartUrl(integration) {
@@ -1030,8 +1046,8 @@ function okMessageStartUrl(integration) {
     return groupId ? `https://ok.ru/group/${groupId}/messages/start/swpro` : '';
 }
 
-function messagingPermissionWasRequested() {
-    const integration = currentMessagingIntegration();
+function messagingPermissionWasRequested(platform = null) {
+    const integration = messagingIntegration(platform);
     if (integration?.platform === 'VK') {
         return integration.permission_status === 'allowed' && integration.delivery_enabled === true;
     }
@@ -1041,9 +1057,14 @@ function messagingPermissionWasRequested() {
     return false;
 }
 
-function setMessagingPermissionNotice(message = '', tone = 'info') {
-    state.messagingPermissionNotice = message ? {message, tone} : null;
-    const notice = page.querySelector('[data-messaging-permission-notice]');
+function messagingPermissionNotice(platform) {
+    return state.messagingPermissionNotices[platform] || null;
+}
+
+function setMessagingPermissionNotice(message = '', tone = 'info', platform = null) {
+    const noticePlatform = platform || currentMessagingIntegration()?.platform || state.platform;
+    state.messagingPermissionNotices[noticePlatform] = message ? {message, tone} : null;
+    const notice = page.querySelector(`[data-messaging-permission-notice="${noticePlatform}"]`);
     if (!notice) return;
     notice.textContent = message;
     notice.className = `marketing-delivery-hint ${tone}`;
@@ -1058,19 +1079,29 @@ function updateMessagingPermissionCard() {
 }
 
 function renderMessagingPermissionCard() {
-    const integration = currentMessagingIntegration();
     if (state.onboarding?.marketing_consent_available === false
-        || !state.onboarding?.marketing_consent
-        || !integration) {
+        || !state.onboarding?.marketing_consent) {
         return '';
     }
 
+    const integrations = messagingIntegrationsForDisplay();
+    if (!integrations.length) return '';
+
+    return `
+        <div class="message-permission-stack" data-messaging-permission-card>
+            ${integrations.map((integration) => renderSingleMessagingPermissionCard(integration)).join('')}
+        </div>
+    `;
+}
+
+function renderSingleMessagingPermissionCard(integration) {
     const isVk = integration.platform === 'VK';
     const isOk = integration.platform === 'OK';
-    const isAllowed = messagingPermissionWasRequested();
+    const isAllowed = messagingPermissionWasRequested(integration.platform);
     const providerAllowed = isVk && integration.permission_status === 'allowed';
     const deliveryDisabled = providerAllowed && !integration.delivery_enabled;
     const isPending = (isVk || isOk) && integration.permission_status === 'pending';
+    const notice = messagingPermissionNotice(integration.platform);
     const title = isVk
         ? ui('messages.vk_title', 'Личные сообщения VK')
         : ui('messages.ok_title', 'Личные сообщения OK');
@@ -1099,19 +1130,19 @@ function renderMessagingPermissionCard() {
         : button;
 
     return `
-        <section class="message-permission-card" data-messaging-permission-card>
+        <section class="message-permission-card" data-messaging-platform="${escapeHtml(integration.platform)}">
             <strong>${escapeHtml(title)}</strong>
             <span>${escapeHtml(text)}</span>
-            <div class="marketing-delivery-hint ${escapeHtml(state.messagingPermissionNotice?.tone || 'info')}" data-messaging-permission-notice ${state.messagingPermissionNotice?.message ? '' : 'hidden'}>${escapeHtml(state.messagingPermissionNotice?.message || '')}</div>
+            <div class="marketing-delivery-hint ${escapeHtml(notice?.tone || 'info')}" data-messaging-permission-notice="${escapeHtml(integration.platform)}" ${notice?.message ? '' : 'hidden'}>${escapeHtml(notice?.message || '')}</div>
             <div class="detail-actions">
-                <button class="secondary compact" data-action="refresh-social-messages">Проверить статус</button>
+                <button class="secondary compact" data-action="refresh-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">Проверить статус</button>
                 ${isAllowed
-                    ? `<button class="secondary compact" data-action="revoke-social-messages">Отключить в SWPro</button>`
+                    ? `<button class="secondary compact" data-action="revoke-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">Отключить в SWPro</button>`
                     : deliveryDisabled
-                        ? `<button class="primary compact" data-action="enable-social-messages">Включить в SWPro</button>`
+                        ? `<button class="primary compact" data-action="enable-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">Включить в SWPro</button>`
                     : isOk && state.platform === 'web' && okMessageStartUrl(integration)
                         ? `<a class="button primary compact" href="${escapeHtml(okMessageStartUrl(integration))}" target="_blank" rel="noopener" data-action="open-ok-messages">Открыть диалог OK</a>`
-                    : `<button class="primary compact" data-action="allow-social-messages">${escapeHtml(allowLabel)}</button>`}
+                    : `<button class="primary compact" data-action="allow-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">${escapeHtml(allowLabel)}</button>`}
             </div>
         </section>
     `;
@@ -1230,12 +1261,12 @@ async function okMessagesAllowedByPlatform(integration) {
     }
 }
 
-async function allowSocialMessages() {
-    const integration = currentMessagingIntegration();
+async function allowSocialMessages(platform = null) {
+    const integration = messagingIntegration(platform);
     if (integration?.platform === 'VK' && state.platform === 'VK' && window.vkBridge) {
         const groupId = Number(integration.external_id || 0);
         if (!groupId) throw new Error('VK group is unavailable');
-        setMessagingPermissionNotice('Открываем системное окно VK. Подтвердите разрешение в нём.', 'info');
+        setMessagingPermissionNotice('Открываем системное окно VK. Подтвердите разрешение в нём.', 'info', 'VK');
         // The Bridge call must happen directly in the click handler. Waiting for
         // our API first breaks VK's user-gesture requirement and makes the dialog
         // appear intermittently on desktop.
@@ -1243,12 +1274,12 @@ async function allowSocialMessages() {
             group_id: groupId,
         });
         await prepareVkMessagePermission('allow');
-        await refreshMessagingPermissions();
+        await refreshMessagingPermissions('VK');
         return {preserveView: true};
     }
 
     if (integration?.platform === 'VK' && state.platform === 'web') {
-        setMessagingPermissionNotice('Открываем официальное окно VK для подтверждения.', 'info');
+        setMessagingPermissionNotice('Открываем официальное окно VK для подтверждения.', 'info', 'VK');
         const widgetShown = await showWebVkPermissionWidget(null, 'message-permission-hint');
         return {preserveView: widgetShown};
     }
@@ -1259,30 +1290,30 @@ async function allowSocialMessages() {
             throw new Error('OK group is unavailable');
         }
         window.open(url, '_blank', 'noopener');
-        await refreshMessagingPermissions('Откройте диалог OK, отправьте группе первое сообщение и затем нажмите «Проверить статус».', 'info');
+        await refreshMessagingPermissions('OK', 'Откройте диалог OK, отправьте группе первое сообщение и затем нажмите «Проверить статус».', 'info');
         return {preserveView: true};
     }
 
     if (integration?.platform === 'OK' && state.platform === 'OK') {
         const permission = await prepareOkMessagePermission();
         if (permission.status === 'allowed') {
-            await refreshMessagingPermissions('Готово: личные сообщения OK уже подключены.', 'success');
+            await refreshMessagingPermissions('OK', 'Готово: личные сообщения OK уже подключены.', 'success');
             return {preserveView: true};
         }
 
-        setMessagingPermissionNotice('Открываем системное окно OK. Подтвердите разрешение в нём.', 'info');
+        setMessagingPermissionNotice('Открываем системное окно OK. Подтвердите разрешение в нём.', 'info', 'OK');
         const FAPI = await initOkSdk();
         const dialogResult = waitForOkPermissionDialog();
         FAPI.UI.showPermissions(['BOT_API_INIT']);
         const response = await dialogResult;
         if (response.result === 'ok') {
             await prepareOkMessagePermission('allow');
-            await refreshMessagingPermissions('Готово: OK подтвердил разрешение, консультант может писать вам в личные сообщения.', 'success');
+            await refreshMessagingPermissions('OK', 'Готово: OK подтвердил разрешение, консультант может писать вам в личные сообщения.', 'success');
         } else if (response.result === 'cancel') {
             await prepareOkMessagePermission('deny');
-            await refreshMessagingPermissions('Разрешение не подтверждено. Его можно включить позже этой же кнопкой.', 'info');
+            await refreshMessagingPermissions('OK', 'Разрешение не подтверждено. Его можно включить позже этой же кнопкой.', 'info');
         } else {
-            await refreshMessagingPermissions('OK ещё не подтвердил разрешение. Нажмите «Открыть окно OK» и завершите подтверждение.', 'warning');
+            await refreshMessagingPermissions('OK', 'OK ещё не подтвердил разрешение. Нажмите «Открыть окно OK» и завершите подтверждение.', 'warning');
         }
         return {preserveView: true};
     }
@@ -1293,44 +1324,41 @@ async function allowSocialMessages() {
     );
 }
 
-async function refreshMessagingPermissions(noticeMessage = '', noticeTone = 'info') {
+async function refreshMessagingPermissions(platform = null, noticeMessage = '', noticeTone = 'info') {
     state.messagingConfig = null;
     await loadMessagingConfig();
-    let integration = currentMessagingIntegration();
+    const requestedPlatform = platform || currentMessagingIntegration()?.platform || null;
+    let integration = messagingIntegration(requestedPlatform);
     let vkChecked = null;
     if (integration?.platform === 'VK') {
         vkChecked = await prepareVkMessagePermission('check');
         state.messagingConfig = null;
         await loadMessagingConfig();
-        integration = currentMessagingIntegration();
+        integration = messagingIntegration(requestedPlatform);
     }
     if (noticeMessage) {
-        state.messagingPermissionNotice = {message: noticeMessage, tone: noticeTone};
+        setMessagingPermissionNotice(noticeMessage, noticeTone, requestedPlatform);
     } else if (integration?.platform === 'VK') {
         if (integration.permission_status === 'allowed' && integration.delivery_enabled === true) {
-            state.messagingPermissionNotice = {
-                message: vkChecked?.provider_checked
+            setMessagingPermissionNotice(
+                vkChecked?.provider_checked
                     ? 'VK подтвердил разрешение на личные сообщения.'
                     : 'SWPro не смог сейчас связаться с VK для проверки. Последний сохранённый статус показан ниже.',
-                tone: 'success',
-            };
+                'success',
+                'VK'
+            );
         } else if (integration.permission_status === 'allowed') {
-            state.messagingPermissionNotice = {
-                message: 'VK разрешает сообщения, но доставка из SWPro отключена по вашему выбору.',
-                tone: 'info',
-            };
+            setMessagingPermissionNotice('VK разрешает сообщения, но доставка из SWPro отключена по вашему выбору.', 'info', 'VK');
         } else if (integration.permission_status === 'pending') {
-            state.messagingPermissionNotice = {
-                message: 'VK ещё не подтвердил разрешение. Нажмите кнопку и завершите подтверждение в окне VK.',
-                tone: 'warning',
-            };
+            setMessagingPermissionNotice('VK ещё не подтвердил разрешение. Нажмите кнопку и завершите подтверждение в окне VK.', 'warning', 'VK');
         } else {
-            state.messagingPermissionNotice = {
-                message: vkChecked?.provider_checked
+            setMessagingPermissionNotice(
+                vkChecked?.provider_checked
                     ? 'VK не разрешает сообщения от этого сообщества. Нажмите кнопку, чтобы изменить разрешение в VK.'
                     : 'Статус VK пока не подтверждён. Нажмите кнопку, чтобы открыть подтверждение VK.',
-                tone: 'info',
-            };
+                'info',
+                'VK'
+            );
         }
     } else if (integration?.platform === 'OK') {
         const actualStatus = state.platform === 'OK'
@@ -1345,32 +1373,24 @@ async function refreshMessagingPermissions(noticeMessage = '', noticeTone = 'inf
             state.messagingConfig = null;
             await loadMessagingConfig();
         }
-        const refreshed = currentMessagingIntegration();
+        const refreshed = messagingIntegration('OK');
         if (refreshed?.permission_status === 'allowed') {
-            state.messagingPermissionNotice = {
-                message: 'Личные сообщения OK подключены.',
-                tone: 'success',
-            };
+            setMessagingPermissionNotice('Личные сообщения OK подключены.', 'success', 'OK');
         } else if (refreshed?.permission_status === 'pending') {
-            state.messagingPermissionNotice = {
-                message: 'OK ждёт подтверждения. Нажмите «Открыть окно OK».',
-                tone: 'warning',
-            };
+            setMessagingPermissionNotice('OK ждёт подтверждения. Нажмите «Открыть окно OK».', 'warning', 'OK');
         } else {
-            state.messagingPermissionNotice = {
-                message: 'Разрешение пока не подключено. Нажмите кнопку, чтобы открыть окно OK.',
-                tone: 'info',
-            };
+            setMessagingPermissionNotice('Разрешение пока не подключено. Нажмите кнопку, чтобы открыть окно OK.', 'info', 'OK');
         }
     }
     updateMessagingPermissionCard();
 }
 
-async function enableSocialMessages() {
-    const integration = currentMessagingIntegration();
+async function enableSocialMessages(platform = null) {
+    const integration = messagingIntegration(platform);
     if (integration?.platform !== 'VK') return;
     const result = await prepareVkMessagePermission('enable_delivery');
     await refreshMessagingPermissions(
+        'VK',
         result.status === 'allowed' && result.delivery_enabled
             ? 'Доставка сообщений из SWPro включена. VK подтвердил разрешение.'
             : 'VK не подтвердил разрешение. Откройте подтверждение VK ещё раз.',
@@ -1378,8 +1398,8 @@ async function enableSocialMessages() {
     );
 }
 
-async function revokeSocialMessages() {
-    const integration = currentMessagingIntegration();
+async function revokeSocialMessages(platform = null) {
+    const integration = messagingIntegration(platform);
     if (!['VK', 'OK'].includes(integration?.platform)) {
         return;
     }
@@ -1389,10 +1409,11 @@ async function revokeSocialMessages() {
     });
     state.messagingConfig = null;
     await loadMessagingConfig();
-    state.messagingPermissionNotice = {
-        message: `Доставка из SWPro через ${integration.platform} отключена. Это не меняет настройки сообщений в самой платформе; включить доставку снова можно этой же кнопкой.`,
-        tone: 'info',
-    };
+    setMessagingPermissionNotice(
+        `Доставка из SWPro через ${integration.platform} отключена. Это не меняет настройки сообщений в самой платформе; включить доставку снова можно этой же кнопкой.`,
+        'info',
+        integration.platform
+    );
     updateMessagingPermissionCard();
 }
 
@@ -1457,7 +1478,7 @@ async function finishWebVkPermission(allowed, userId) {
         state.messagingConfig = null;
         await loadMessagingConfig();
         if (page.querySelector('[data-messaging-permission-card]')) {
-            await refreshMessagingPermissions();
+            await refreshMessagingPermissions('VK');
         }
     } catch (_) {
         active.processing = false;
@@ -3256,17 +3277,19 @@ page.addEventListener('click', async (event) => {
         await render();
     }
     if (target.dataset.action === 'allow-social-messages') {
+        const messagingPlatform = target.dataset.messagingPlatform || null;
         try {
-            const result = await allowSocialMessages();
+            const result = await allowSocialMessages(messagingPlatform);
             if (!result?.preserveView) {
                 await render();
             }
         } catch (_) {
             if (page.querySelector('[data-messaging-permission-card]')) {
-                const platform = currentMessagingIntegration()?.platform || state.platform;
+                const platform = messagingPlatform || currentMessagingIntegration()?.platform || state.platform;
                 setMessagingPermissionNotice(
                     `Не удалось открыть подтверждение ${platform}. Попробуйте ещё раз; если окно не появляется, откройте Mini App непосредственно в ${platform}.`,
-                    'warning'
+                    'warning',
+                    platform
                 );
             } else {
                 page.insertAdjacentHTML(
@@ -3278,21 +3301,21 @@ page.addEventListener('click', async (event) => {
     }
     if (target.dataset.action === 'refresh-social-messages') {
         try {
-            await refreshMessagingPermissions();
+            await refreshMessagingPermissions(target.dataset.messagingPlatform || null);
         } catch (_) {
             page.insertAdjacentHTML('afterbegin', '<div class="form-error">Не удалось проверить статус сообщений. Попробуйте позже.</div>');
         }
     }
     if (target.dataset.action === 'enable-social-messages') {
         try {
-            await enableSocialMessages();
+            await enableSocialMessages(target.dataset.messagingPlatform || null);
         } catch (_) {
-            setMessagingPermissionNotice('Не удалось включить доставку. Сначала проверьте разрешение в VK.', 'warning');
+            setMessagingPermissionNotice('Не удалось включить доставку. Сначала проверьте разрешение в VK.', 'warning', target.dataset.messagingPlatform || 'VK');
         }
     }
     if (target.dataset.action === 'revoke-social-messages') {
         try {
-            await revokeSocialMessages();
+            await revokeSocialMessages(target.dataset.messagingPlatform || null);
         } catch (_) {
             page.insertAdjacentHTML('afterbegin', '<div class="form-error">Не удалось отключить сообщения. Попробуйте позже.</div>');
         }
