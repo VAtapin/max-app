@@ -124,17 +124,34 @@ function messaging_upsert_vk_permission(
     array $integration,
     string $status,
     ?string $requestKeyHash = null,
-    ?string $requestExpiresAt = null
+    ?string $requestExpiresAt = null,
+    ?bool $deliveryEnabled = null
 ): void {
     $allowedAt = $status === 'allowed' ? date('Y-m-d H:i:s') : null;
     $deniedAt = $status === 'denied' ? date('Y-m-d H:i:s') : null;
+    if ($deliveryEnabled === null) {
+        $deliveryStmt = db()->prepare(
+            'SELECT delivery_enabled
+             FROM vk_message_permissions
+             WHERE end_user_id = :end_user_id AND group_id = :group_id
+             LIMIT 1'
+        );
+        $deliveryStmt->execute([
+            'end_user_id' => $endUserId,
+            'group_id' => (string)$integration['external_id'],
+        ]);
+        $storedDelivery = $deliveryStmt->fetchColumn();
+        $deliveryEnabled = $storedDelivery === false
+            ? $status === 'allowed'
+            : (bool)$storedDelivery;
+    }
     $stmt = db()->prepare(
         'INSERT INTO vk_message_permissions (
             end_user_id, platform_account_id, integration_id, group_id, status,
-            request_key_hash, request_expires_at, requested_at, allowed_at, denied_at
+            request_key_hash, request_expires_at, requested_at, allowed_at, denied_at, delivery_enabled
          ) VALUES (
             :end_user_id, :platform_account_id, :integration_id, :group_id, :status,
-            :request_key_hash, :request_expires_at, NOW(), :allowed_at, :denied_at
+            :request_key_hash, :request_expires_at, NOW(), :allowed_at, :denied_at, :delivery_enabled
          )
          ON DUPLICATE KEY UPDATE
             platform_account_id = VALUES(platform_account_id),
@@ -144,7 +161,8 @@ function messaging_upsert_vk_permission(
             request_expires_at = VALUES(request_expires_at),
             requested_at = NOW(),
             allowed_at = VALUES(allowed_at),
-            denied_at = VALUES(denied_at)'
+            denied_at = VALUES(denied_at),
+            delivery_enabled = VALUES(delivery_enabled)'
     );
     $stmt->execute([
         'end_user_id' => $endUserId,
@@ -156,6 +174,7 @@ function messaging_upsert_vk_permission(
         'request_expires_at' => $requestExpiresAt,
         'allowed_at' => $allowedAt,
         'denied_at' => $deniedAt,
+        'delivery_enabled' => $deliveryEnabled ? 1 : 0,
     ]);
 }
 
@@ -166,8 +185,133 @@ function messaging_mark_vk_permission_allowed(int $endUserId, string $platformUs
         return;
     }
 
-    messaging_upsert_vk_permission($endUserId, (int)$account['id'], $integration, 'allowed');
+    messaging_upsert_vk_permission($endUserId, (int)$account['id'], $integration, 'allowed', null, null, true);
     messaging_sync_vk_account_allowed((int)$account['id']);
+}
+
+/**
+ * Applies the one-time key passed to VK when a user responds to the permission
+ * prompt. It supports both a VK Mini App account and a web visitor who has just
+ * identified themselves to VK through the official widget.
+ */
+function messaging_apply_vk_permission_request(
+    string $key,
+    string $groupId,
+    string $platformUserId,
+    bool $allowed
+): bool {
+    if ($key === '') {
+        return false;
+    }
+
+    $stmt = db()->prepare(
+        'SELECT p.*, pa.platform AS account_platform, pa.platform_user_id
+         FROM vk_message_permissions p
+         INNER JOIN platform_accounts pa ON pa.id = p.platform_account_id
+         WHERE p.request_key_hash = :request_key_hash
+           AND p.group_id = :group_id
+           AND p.status = "pending"
+           AND p.request_expires_at >= NOW()
+         LIMIT 1'
+    );
+    $stmt->execute([
+        'request_key_hash' => hash('sha256', $key),
+        'group_id' => $groupId,
+    ]);
+    $permission = $stmt->fetch();
+    if (!$permission) {
+        return false;
+    }
+
+    if ((string)$permission['account_platform'] === 'VK') {
+        if ((string)$permission['platform_user_id'] !== $platformUserId) {
+            return false;
+        }
+    } elseif ($allowed) {
+        $accountStmt = db()->prepare(
+            'SELECT * FROM platform_accounts
+             WHERE platform = "VK" AND platform_user_id = :platform_user_id
+             LIMIT 1'
+        );
+        $accountStmt->execute(['platform_user_id' => $platformUserId]);
+        $vkAccount = $accountStmt->fetch();
+        if ($vkAccount && (int)$vkAccount['end_user_id'] !== (int)$permission['end_user_id']) {
+            $conflict = db()->prepare(
+                'UPDATE vk_message_permissions
+                 SET status = "denied", request_key_hash = NULL,
+                     request_expires_at = NULL, denied_at = NOW(), delivery_enabled = 0
+                 WHERE id = :id'
+            );
+            $conflict->execute(['id' => $permission['id']]);
+            return true;
+        }
+        if (!$vkAccount) {
+            $createAccount = db()->prepare(
+                'INSERT INTO platform_accounts (end_user_id, platform, platform_user_id)
+                 VALUES (:end_user_id, "VK", :platform_user_id)'
+            );
+            $createAccount->execute([
+                'end_user_id' => $permission['end_user_id'],
+                'platform_user_id' => $platformUserId,
+            ]);
+            $vkAccount = ['id' => (int)db()->lastInsertId()];
+        }
+        $permission['platform_account_id'] = (int)$vkAccount['id'];
+    }
+
+    $update = db()->prepare(
+        'UPDATE vk_message_permissions
+         SET status = :status,
+             request_key_hash = NULL,
+             request_expires_at = NULL,
+             allowed_at = :allowed_at,
+             denied_at = :denied_at,
+             platform_account_id = :platform_account_id,
+             delivery_enabled = :delivery_enabled
+         WHERE id = :id'
+    );
+    $update->execute([
+        'status' => $allowed ? 'allowed' : 'denied',
+        'allowed_at' => $allowed ? date('Y-m-d H:i:s') : null,
+        'denied_at' => $allowed ? null : date('Y-m-d H:i:s'),
+        'platform_account_id' => $permission['platform_account_id'],
+        'delivery_enabled' => $allowed ? 1 : (int)$permission['delivery_enabled'],
+        'id' => $permission['id'],
+    ]);
+    messaging_sync_vk_account_allowed((int)$permission['platform_account_id']);
+    return true;
+}
+
+/**
+ * VK itself is the source of truth. The response is null only when the group
+ * token or VK API is temporarily unavailable; callers must not guess then.
+ */
+function messaging_vk_provider_permission_status(array $integration, string $platformUserId): ?bool
+{
+    $groupId = preg_replace('/\D+/', '', (string)($integration['external_id'] ?? '')) ?? '';
+    $userId = preg_replace('/\D+/', '', $platformUserId) ?? '';
+    $token = trim((string)($integration['access_token'] ?? ''));
+    if ($groupId === '' || $userId === '' || $token === '') {
+        return null;
+    }
+
+    $response = messaging_http_form_post('https://api.vk.com/method/messages.isMessagesFromGroupAllowed', [
+        'access_token' => $token,
+        'v' => (string)(app_config()['integrations']['vk_api_version'] ?? '5.199'),
+        'group_id' => $groupId,
+        'user_id' => $userId,
+    ]);
+    $providerStatus = $response['response'] ?? null;
+    if (is_array($providerStatus) && array_key_exists('is_allowed', $providerStatus)) {
+        return (bool)$providerStatus['is_allowed'];
+    }
+    if (is_bool($providerStatus) || is_int($providerStatus) || is_string($providerStatus)) {
+        return (bool)$providerStatus;
+    }
+
+    $error = $response['error']['error_msg'] ?? $response['error'] ?? 'Empty VK permission response';
+    error_log('SWPro VK permission check failed: ' . (is_string($error) ? $error : json_encode($error, JSON_UNESCAPED_UNICODE)));
+    return null;
 }
 
 function messaging_sync_vk_account_allowed(int $platformAccountId): void
@@ -534,20 +678,6 @@ function send_vk_community_message(array $integration, string $platformUserId, s
         return ['ok' => false, 'error' => 'VK user_id is empty or invalid'];
     }
 
-    $permissionStmt = db()->prepare(
-        'SELECT messages_allowed
-         FROM platform_accounts
-         WHERE platform = "VK"
-           AND platform_user_id = :platform_user_id
-         ORDER BY id DESC
-         LIMIT 1'
-    );
-    $permissionStmt->execute(['platform_user_id' => $userId]);
-    $messagesAllowed = $permissionStmt->fetchColumn();
-    if ($messagesAllowed !== false && (string)$messagesAllowed === '0') {
-        return ['ok' => false, 'error' => 'Клиент запретил сообщения от VK-сообщества'];
-    }
-
     $token = trim((string)($integration['access_token'] ?? ''));
     if ($token === '') {
         return ['ok' => false, 'error' => 'VK community token is missing'];
@@ -628,9 +758,26 @@ function send_social_platform_message(
         return ['ok' => false, 'error' => 'Нет активной интеграции сообщества для ' . platform_label($platform)];
     }
 
-    // VK is the final authority for this permission. Do not block a message only
-    // because Callback API has not yet delivered message_allow or an integration
-    // record was recreated. A successful messages.send below repairs the local state.
+    if ($platform === 'VK' && $endUserId) {
+        $deliveryStmt = db()->prepare(
+            'SELECT delivery_enabled
+             FROM vk_message_permissions
+             WHERE end_user_id = :end_user_id
+               AND group_id = :group_id
+             LIMIT 1'
+        );
+        $deliveryStmt->execute([
+            'end_user_id' => $endUserId,
+            'group_id' => (string)$integration['external_id'],
+        ]);
+        $deliveryEnabled = $deliveryStmt->fetchColumn();
+        if ($deliveryEnabled !== false && !(bool)$deliveryEnabled) {
+            return ['ok' => false, 'error' => 'Клиент отключил доставку сообщений из SWPro для этого сообщества VK'];
+        }
+    }
+
+    // VK itself is the final authority for its permission. A local record never
+    // blocks a message because a successful messages.send repairs it below.
 
     $attachments = [];
     $fallbackMediaUrls = $mediaUrls;

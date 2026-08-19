@@ -26,7 +26,7 @@ foreach (['VK', 'OK'] as $platform) {
     ];
     if ($platform === 'VK') {
         $permissionStmt = db()->prepare(
-            'SELECT status
+            'SELECT status, delivery_enabled
              FROM vk_message_permissions
              WHERE end_user_id = :end_user_id
                AND group_id = :group_id
@@ -36,7 +36,9 @@ foreach (['VK', 'OK'] as $platform) {
             'end_user_id' => (int)$user['id'],
             'group_id' => $externalId,
         ]);
-        $items[$platform]['permission_status'] = $permissionStmt->fetchColumn() ?: null;
+        $permission = $permissionStmt->fetch() ?: null;
+        $items[$platform]['permission_status'] = $permission['status'] ?? null;
+        $items[$platform]['delivery_enabled'] = $permission ? (bool)$permission['delivery_enabled'] : false;
     } elseif ($platform === 'OK') {
         $permissionStmt = db()->prepare(
             'SELECT status

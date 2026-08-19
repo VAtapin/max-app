@@ -1859,6 +1859,36 @@ button.secondary,
     margin-top: 10px;
 }
 
+.vk-web-permission-backdrop {
+    align-items: center;
+    z-index: 10000;
+}
+
+.vk-web-permission-modal {
+    max-width: 460px;
+}
+
+.vk-web-permission-modal h2 {
+    padding-right: 44px;
+}
+
+.vk-web-permission-modal p {
+    color: var(--muted);
+    line-height: 1.45;
+    margin: 0;
+}
+
+.vk-web-permission-modal .vk-web-message-widget {
+    min-height: 48px;
+    overflow: hidden;
+}
+
+.vk-web-permission-modal .vk-web-message-widget iframe {
+    border: 0;
+    display: block;
+    max-width: 100%;
+}
+
 .main-action-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

@@ -1032,8 +1032,11 @@ function okMessageStartUrl(integration) {
 
 function messagingPermissionWasRequested() {
     const integration = currentMessagingIntegration();
-    if (integration?.platform === 'VK' || integration?.platform === 'OK') {
-        return integration?.permission_status === 'allowed';
+    if (integration?.platform === 'VK') {
+        return integration.permission_status === 'allowed' && integration.delivery_enabled === true;
+    }
+    if (integration?.platform === 'OK') {
+        return integration.permission_status === 'allowed';
     }
     return false;
 }
@@ -1065,6 +1068,8 @@ function renderMessagingPermissionCard() {
     const isVk = integration.platform === 'VK';
     const isOk = integration.platform === 'OK';
     const isAllowed = messagingPermissionWasRequested();
+    const providerAllowed = isVk && integration.permission_status === 'allowed';
+    const deliveryDisabled = providerAllowed && !integration.delivery_enabled;
     const isPending = (isVk || isOk) && integration.permission_status === 'pending';
     const title = isVk
         ? ui('messages.vk_title', 'Личные сообщения VK')
@@ -1072,6 +1077,8 @@ function renderMessagingPermissionCard() {
     const text = isVk
         ? (isAllowed
             ? `Личные сообщения от сообщества «${integration.title || 'VK'}» подключены.`
+            : deliveryDisabled
+                ? `VK разрешает сообщения от сообщества «${integration.title || 'VK'}», но доставка из SWPro сейчас отключена.`
             : isPending
                 ? 'Разрешение ещё не подтверждено. Нажмите кнопку, чтобы снова открыть подтверждение VK.'
                 : `Разрешите личные сообщения от сообщества «${integration.title || 'VK'}», чтобы консультант мог отвечать вам в VK.`)
@@ -1100,19 +1107,20 @@ function renderMessagingPermissionCard() {
                 <button class="secondary compact" data-action="refresh-social-messages">Проверить статус</button>
                 ${isAllowed
                     ? `<button class="secondary compact" data-action="revoke-social-messages">Отключить в SWPro</button>`
+                    : deliveryDisabled
+                        ? `<button class="primary compact" data-action="enable-social-messages">Включить в SWPro</button>`
                     : isOk && state.platform === 'web' && okMessageStartUrl(integration)
                         ? `<a class="button primary compact" href="${escapeHtml(okMessageStartUrl(integration))}" target="_blank" rel="noopener" data-action="open-ok-messages">Открыть диалог OK</a>`
                     : `<button class="primary compact" data-action="allow-social-messages">${escapeHtml(allowLabel)}</button>`}
             </div>
-            ${isVk && state.platform === 'web' ? '<div class="marketing-delivery-hint" id="message-permission-hint" hidden></div>' : ''}
         </section>
     `;
 }
 
-async function prepareVkMessagePermission() {
+async function prepareVkMessagePermission(action = 'prepare', extra = {}) {
     return api('vk_message_permission.php', {
         method: 'POST',
-        body: JSON.stringify(userPayload()),
+        body: JSON.stringify({...userPayload(), action, ...extra}),
     });
 }
 
@@ -1225,28 +1233,22 @@ async function okMessagesAllowedByPlatform(integration) {
 async function allowSocialMessages() {
     const integration = currentMessagingIntegration();
     if (integration?.platform === 'VK' && state.platform === 'VK' && window.vkBridge) {
-        const permission = await prepareVkMessagePermission();
-        if (permission.status === 'allowed') {
-            setMessagingPermissionNotice('Готово: личные сообщения VK уже подключены.', 'success');
-            return {preserveView: true};
-        }
+        const groupId = Number(integration.external_id || 0);
+        if (!groupId) throw new Error('VK group is unavailable');
         setMessagingPermissionNotice('Открываем системное окно VK. Подтвердите разрешение в нём.', 'info');
+        // The Bridge call must happen directly in the click handler. Waiting for
+        // our API first breaks VK's user-gesture requirement and makes the dialog
+        // appear intermittently on desktop.
         await vkBridge.send('VKWebAppAllowMessagesFromGroup', {
-                group_id: Number(permission.group_id),
-                key: String(permission.key || ''),
+            group_id: groupId,
         });
-        const allowed = await waitForVkMessagePermission();
-        await refreshMessagingPermissions(
-            allowed
-                ? 'Готово: VK подтвердил разрешение, консультант может писать вам в личные сообщения.'
-                : 'VK пока не подтвердил разрешение. Нажмите «Открыть окно VK» и завершите подтверждение.',
-            allowed ? 'success' : 'warning'
-        );
+        await prepareVkMessagePermission('allow');
+        await refreshMessagingPermissions();
         return {preserveView: true};
     }
 
     if (integration?.platform === 'VK' && state.platform === 'web') {
-        setMessagingPermissionNotice('Ниже появится официальная кнопка VK. Нажмите её и подтвердите разрешение.', 'info');
+        setMessagingPermissionNotice('Открываем официальное окно VK для подтверждения.', 'info');
         const widgetShown = await showWebVkPermissionWidget(null, 'message-permission-hint');
         return {preserveView: widgetShown};
     }
@@ -1294,23 +1296,39 @@ async function allowSocialMessages() {
 async function refreshMessagingPermissions(noticeMessage = '', noticeTone = 'info') {
     state.messagingConfig = null;
     await loadMessagingConfig();
-    const integration = currentMessagingIntegration();
+    let integration = currentMessagingIntegration();
+    let vkChecked = null;
+    if (integration?.platform === 'VK') {
+        vkChecked = await prepareVkMessagePermission('check');
+        state.messagingConfig = null;
+        await loadMessagingConfig();
+        integration = currentMessagingIntegration();
+    }
     if (noticeMessage) {
         state.messagingPermissionNotice = {message: noticeMessage, tone: noticeTone};
     } else if (integration?.platform === 'VK') {
-        if (integration.permission_status === 'allowed') {
+        if (integration.permission_status === 'allowed' && integration.delivery_enabled === true) {
             state.messagingPermissionNotice = {
-                message: 'Готово: VK подтвердил разрешение на личные сообщения.',
+                message: vkChecked?.provider_checked
+                    ? 'VK подтвердил разрешение на личные сообщения.'
+                    : 'SWPro не смог сейчас связаться с VK для проверки. Последний сохранённый статус показан ниже.',
                 tone: 'success',
+            };
+        } else if (integration.permission_status === 'allowed') {
+            state.messagingPermissionNotice = {
+                message: 'VK разрешает сообщения, но доставка из SWPro отключена по вашему выбору.',
+                tone: 'info',
             };
         } else if (integration.permission_status === 'pending') {
             state.messagingPermissionNotice = {
-                message: 'VK ещё не подтвердил разрешение. Нажмите «Открыть окно VK» и завершите подтверждение.',
+                message: 'VK ещё не подтвердил разрешение. Нажмите кнопку и завершите подтверждение в окне VK.',
                 tone: 'warning',
             };
         } else {
             state.messagingPermissionNotice = {
-                message: 'Разрешение пока не подключено. Нажмите кнопку, чтобы открыть подтверждение VK.',
+                message: vkChecked?.provider_checked
+                    ? 'VK не разрешает сообщения от этого сообщества. Нажмите кнопку, чтобы изменить разрешение в VK.'
+                    : 'Статус VK пока не подтверждён. Нажмите кнопку, чтобы открыть подтверждение VK.',
                 tone: 'info',
             };
         }
@@ -1348,16 +1366,16 @@ async function refreshMessagingPermissions(noticeMessage = '', noticeTone = 'inf
     updateMessagingPermissionCard();
 }
 
-async function waitForVkMessagePermission() {
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 800));
-        state.messagingConfig = null;
-        await loadMessagingConfig();
-        if (currentMessagingIntegration()?.permission_status === 'allowed') {
-            return true;
-        }
-    }
-    return false;
+async function enableSocialMessages() {
+    const integration = currentMessagingIntegration();
+    if (integration?.platform !== 'VK') return;
+    const result = await prepareVkMessagePermission('enable_delivery');
+    await refreshMessagingPermissions(
+        result.status === 'allowed' && result.delivery_enabled
+            ? 'Доставка сообщений из SWPro включена. VK подтвердил разрешение.'
+            : 'VK не подтвердил разрешение. Откройте подтверждение VK ещё раз.',
+        result.status === 'allowed' && result.delivery_enabled ? 'success' : 'warning'
+    );
 }
 
 async function revokeSocialMessages() {
@@ -1399,24 +1417,95 @@ function loadVkOpenApi() {
     });
 }
 
+let activeWebVkPermission = null;
+let vkWebPermissionObserverInstalled = false;
+
+function closeWebVkPermissionModal() {
+    activeWebVkPermission?.modal?.remove();
+    activeWebVkPermission = null;
+}
+
+async function finishWebVkPermission(allowed, userId) {
+    const active = activeWebVkPermission;
+    if (!active || active.processing) return;
+    active.processing = true;
+    const vkUserId = String(userId || '').replace(/\D+/g, '');
+    if (!vkUserId) {
+        active.processing = false;
+        active.status.textContent = 'VK не передал идентификатор пользователя. Попробуйте ещё раз.';
+        return;
+    }
+
+    active.status.textContent = allowed ? 'VK подтвердил разрешение. Проверяем его в VK…' : 'VK не разрешил сообщения.';
+    try {
+        const result = await prepareVkMessagePermission('confirm', {
+            key: active.permission.key,
+            vk_user_id: vkUserId,
+            allowed,
+        });
+        if (active.form) {
+            setMarketingDeliveryHint(
+                active.form,
+                result.status === 'allowed' && result.delivery_enabled
+                    ? 'VK подтвердил разрешение на сообщения.'
+                    : 'VK не подтвердил разрешение. Его можно включить позже.',
+                result.status === 'allowed' && result.delivery_enabled ? 'success' : 'warning',
+                active.hintId
+            );
+        }
+        closeWebVkPermissionModal();
+        state.messagingConfig = null;
+        await loadMessagingConfig();
+        if (page.querySelector('[data-messaging-permission-card]')) {
+            await refreshMessagingPermissions();
+        }
+    } catch (_) {
+        active.processing = false;
+        active.status.textContent = 'Не удалось подтвердить состояние в SWPro. Нажмите кнопку VK ещё раз.';
+    }
+}
+
+function installVkWebPermissionObserver(VK) {
+    if (vkWebPermissionObserverInstalled) return;
+    vkWebPermissionObserverInstalled = true;
+    VK.Observer.subscribe('widgets.allowMessagesFromCommunity.allowed', (userId) => {
+        finishWebVkPermission(true, userId).catch(() => {});
+    });
+    VK.Observer.subscribe('widgets.allowMessagesFromCommunity.denied', (userId) => {
+        finishWebVkPermission(false, userId).catch(() => {});
+    });
+}
+
 async function showWebVkPermissionWidget(form, hintId = 'marketing-delivery-hint') {
     const permission = await prepareVkMessagePermission();
     if (permission.status === 'allowed') {
-        setMarketingDeliveryHint(form, 'Готово: сообщения VK уже подключены.', 'success', hintId);
+        setMarketingDeliveryHint(form, 'VK уже разрешил сообщения. При необходимости включите доставку в SWPro.', 'success', hintId);
         return false;
     }
 
-    const hint = form?.querySelector(`#${hintId}`) || document.querySelector(`#${hintId}`);
-    if (!hint) return false;
-    hint.hidden = false;
-    hint.className = 'marketing-delivery-hint';
-    hint.innerHTML = `
-        <div>Подключите сообщения VK. Если вы ещё не вошли, VK сначала предложит войти. Либо укажите email ниже.</div>
-        <div id="vk-web-message-widget" class="vk-web-message-widget"></div>
+    closeWebVkPermissionModal();
+    const modal = document.createElement('div');
+    modal.className = 'modal-backdrop vk-web-permission-backdrop';
+    modal.innerHTML = `
+        <section class="modal-card vk-web-permission-modal" role="dialog" aria-modal="true" aria-labelledby="vk-permission-title">
+            <button class="modal-close" type="button" aria-label="Закрыть">×</button>
+            <h2 id="vk-permission-title">Разрешить сообщения VK</h2>
+            <p>Подтвердите разрешение в официальном окне VK. Если вы ещё не вошли в VK, сначала появится вход.</p>
+            <div class="vk-web-message-widget" id="vk-web-message-widget"></div>
+            <p class="muted" data-vk-web-permission-status>Ожидаем подтверждение VK…</p>
+        </section>
     `;
+    document.body.appendChild(modal);
+    const status = modal.querySelector('[data-vk-web-permission-status]');
+    modal.querySelector('.modal-close')?.addEventListener('click', closeWebVkPermissionModal);
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) closeWebVkPermissionModal();
+    });
+    activeWebVkPermission = {modal, permission, form, hintId, status, processing: false};
 
     const VK = await loadVkOpenApi();
     if (!VK?.Widgets?.AllowMessagesFromCommunity) {
+        closeWebVkPermissionModal();
         throw new Error('VK web widget is unavailable');
     }
     try {
@@ -1424,22 +1513,7 @@ async function showWebVkPermissionWidget(form, hintId = 'marketing-delivery-hint
     } catch (_) {
         // VK Open API may already be initialized on this page.
     }
-    VK.Observer.subscribe('widgets.allowMessagesFromCommunity.allowed', () => {
-        setMarketingDeliveryHint(form, 'VK подтвердил разрешение. Проверяем подключение в SWPro…', 'success', hintId);
-        if (hintId === 'message-permission-hint') {
-            waitForVkMessagePermission()
-                .then((allowed) => refreshMessagingPermissions(
-                    allowed
-                        ? 'Готово: VK подтвердил разрешение, консультант может писать вам в личные сообщения.'
-                        : 'VK подтвердил действие, но SWPro ещё ждёт Callback API. Обновите статус через несколько секунд.',
-                    allowed ? 'success' : 'warning'
-                ))
-                .catch(() => {});
-        }
-    });
-    VK.Observer.subscribe('widgets.allowMessagesFromCommunity.denied', () => {
-        setMarketingDeliveryHint(form, 'Разрешение VK не предоставлено. Вы сможете включить его позже.', 'warning', hintId);
-    });
+    installVkWebPermissionObserver(VK);
     VK.Widgets.AllowMessagesFromCommunity(
         'vk-web-message-widget',
         {height: 30, key: String(permission.key || '')},
@@ -3207,6 +3281,13 @@ page.addEventListener('click', async (event) => {
             await refreshMessagingPermissions();
         } catch (_) {
             page.insertAdjacentHTML('afterbegin', '<div class="form-error">Не удалось проверить статус сообщений. Попробуйте позже.</div>');
+        }
+    }
+    if (target.dataset.action === 'enable-social-messages') {
+        try {
+            await enableSocialMessages();
+        } catch (_) {
+            setMessagingPermissionNotice('Не удалось включить доставку. Сначала проверьте разрешение в VK.', 'warning');
         }
     }
     if (target.dataset.action === 'revoke-social-messages') {
