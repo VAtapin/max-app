@@ -519,6 +519,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'platform' => (string)$payload['platform'],
                 ]);
             }
+            if ($moduleKey === 'integrations' && ($payload['platform'] ?? '') === 'OK') {
+                // OK Bot API uses a subscription endpoint instead of a manually
+                // entered Callback URL. A failed subscription does not undo the
+                // saved connection: the concrete provider error is retained in
+                // the read-only field on the integration.
+                $webhook = ok_callback_subscribe_integration($savedId);
+                if (!$webhook['ok']) {
+                    redirect(
+                        'crud.php?module=integrations&action=edit&id=' . $savedId
+                        . '&success=saved&ok_webhook=failed'
+                    );
+                }
+                redirect(
+                    'crud.php?module=integrations&action=edit&id=' . $savedId
+                    . '&success=saved&ok_webhook=ready'
+                );
+            }
             if ($moduleKey === 'managers' && can_manage_team_admin_access($moduleKey, $admin, $savedId)) {
                 save_manager_admin_access($savedId, $payload, $_POST, $errors);
                 if ($errors) {

@@ -282,6 +282,12 @@ function validate_scope_payload(string $moduleKey, array $payload, array $admin,
             $errors[] = 'Сначала завершите и проверьте настройку Callback API этого сообщества.';
         }
     }
+    if ($moduleKey === 'integrations' && ($payload['platform'] ?? '') === 'OK') {
+        $groupId = trim((string)($payload['external_id'] ?? ''));
+        if ($groupId !== '' && !preg_match('/^\d+$/', $groupId)) {
+            $errors[] = 'Для OK укажите числовой ID группы без ссылки и текста.';
+        }
+    }
     if ($moduleKey === 'integrations' && trim((string)($payload['external_id'] ?? '')) !== '') {
         $duplicateSql = 'SELECT COUNT(*) FROM messaging_integrations
                          WHERE platform = :platform AND external_id = :external_id';

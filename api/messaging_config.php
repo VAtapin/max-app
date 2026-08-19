@@ -37,6 +37,19 @@ foreach (['VK', 'OK'] as $platform) {
             'group_id' => $externalId,
         ]);
         $items[$platform]['permission_status'] = $permissionStmt->fetchColumn() ?: null;
+    } elseif ($platform === 'OK') {
+        $permissionStmt = db()->prepare(
+            'SELECT status
+             FROM ok_message_permissions
+             WHERE end_user_id = :end_user_id
+               AND group_id = :group_id
+             LIMIT 1'
+        );
+        $permissionStmt->execute([
+            'end_user_id' => (int)$user['id'],
+            'group_id' => $externalId,
+        ]);
+        $items[$platform]['permission_status'] = $permissionStmt->fetchColumn() ?: null;
     }
 }
 

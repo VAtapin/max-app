@@ -122,7 +122,7 @@ try {
                 $featuredSection = $row;
                 continue;
             }
-            if ((string)$row['title'] === 'Как подключить VK-сообщество') {
+            if (in_array((string)$row['title'], ['Как подключить VK-сообщество', 'Как подключить группу OK'], true)) {
                 continue;
             }
             $faqSections[] = $row;
@@ -156,6 +156,7 @@ require __DIR__ . '/../app/views/layouts/header.php';
 <?php endif; ?>
 
 <?= render_vk_connection_guide() ?>
+<?= render_ok_connection_guide() ?>
 
 <?php if ($faqSections): ?>
     <section class="help-grid">

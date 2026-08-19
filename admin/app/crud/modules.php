@@ -313,27 +313,25 @@ return [
     'integrations' => [
         'title' => app_text('integrations.title'),
         'table' => 'messaging_integrations',
-        'columns' => ['id', 'owner_type', 'owner_id', 'platform', 'title', 'external_id', 'is_default', 'callback_last_event_at', 'is_active'],
+        'columns' => ['id', 'owner_type', 'owner_id', 'platform', 'title', 'external_id', 'is_default', 'callback_subscribed_at', 'callback_last_event_at', 'is_active'],
         'fields' => [
             'owner_type' => ['label' => app_text('integrations.owner_type'), 'type' => 'select', 'options' => ['reseller', 'manager'], 'required' => true],
             'owner_id' => ['label' => app_text('integrations.owner_id'), 'type' => 'number', 'required' => true],
             'platform' => ['label' => app_text('auto.k_89009febe5c6'), 'type' => 'select', 'options' => ['VK', 'OK', 'telegram', 'MAX'], 'required' => true],
             'title' => ['label' => app_text('auto.k_3de49828e86a'), 'required' => true],
             'external_id' => [
-                'label' => app_text('integrations.external_id'),
+                'label' => 'ID группы / сообщества',
                 'help' => [
-                    'title' => 'group_id',
-                    'text' => 'В VK откройте Callback API. В сером блоке подтверждения скопируйте число из JSON после group_id.',
-                    'image' => '/admin/uploads/help/vk-callback-group-id-marked.png',
+                    'title' => 'ID группы',
+                    'text' => 'Для VK это число group_id из Callback API. Для OK — числовой ID группы из её адреса или настроек.',
                 ],
             ],
             'access_token' => [
-                'label' => app_text('integrations.access_token'),
+                'label' => 'Токен группы',
                 'type' => 'textarea',
                 'help' => [
-                    'title' => 'Ключ доступа',
-                    'text' => 'В VK откройте «Дополнительно» -> «Работа с API» -> «Ключи доступа», создайте ключ и скопируйте строку вида vk1.a... в это поле.',
-                    'image' => '/admin/uploads/help/vk-api-access-token-marked.jpg',
+                    'title' => 'Токен',
+                    'text' => 'Для VK — ключ доступа сообщества. Для OK — Bot API token группы. Полная инструкция откроется выше.',
                 ],
             ],
             'callback_confirmation_code' => [
@@ -353,6 +351,7 @@ return [
                     'image' => '/admin/uploads/help/vk-callback-secret-marked.png',
                 ],
             ],
+            'callback_subscribed_at' => ['label' => 'OK webhook подключён', 'readonly' => true],
             'callback_last_event_at' => ['label' => app_text('integrations.callback_last_event_at'), 'readonly' => true],
             'callback_last_error' => ['label' => app_text('integrations.callback_last_error'), 'type' => 'textarea', 'readonly' => true],
             'is_default' => [

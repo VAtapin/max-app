@@ -194,6 +194,100 @@ function messaging_sync_vk_account_allowed(int $platformAccountId): void
     $stmt->execute(['id' => $platformAccountId]);
 }
 
+function messaging_ok_platform_account(int $endUserId, ?string $platformUserId = null): ?array
+{
+    $sql = 'SELECT * FROM platform_accounts WHERE end_user_id = :end_user_id AND platform = "OK"';
+    $params = ['end_user_id' => $endUserId];
+    if ($platformUserId !== null && $platformUserId !== '') {
+        $sql .= ' AND platform_user_id = :platform_user_id';
+        $params['platform_user_id'] = $platformUserId;
+    }
+    $sql .= ' ORDER BY id DESC LIMIT 1';
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    $account = $stmt->fetch();
+    return $account ?: null;
+}
+
+function messaging_ok_permission_for_user(int $endUserId, string $groupId): ?array
+{
+    $stmt = db()->prepare(
+        'SELECT p.*, pa.platform_user_id
+         FROM ok_message_permissions p
+         INNER JOIN platform_accounts pa ON pa.id = p.platform_account_id
+         WHERE p.end_user_id = :end_user_id
+           AND p.group_id = :group_id
+         ORDER BY p.updated_at DESC, p.id DESC
+         LIMIT 1'
+    );
+    $stmt->execute(['end_user_id' => $endUserId, 'group_id' => $groupId]);
+    return $stmt->fetch() ?: null;
+}
+
+function messaging_upsert_ok_permission(int $endUserId, int $platformAccountId, array $integration, string $status): void
+{
+    $status = in_array($status, ['pending', 'allowed', 'denied'], true) ? $status : 'pending';
+    $now = date('Y-m-d H:i:s');
+    $stmt = db()->prepare(
+        'INSERT INTO ok_message_permissions
+            (end_user_id, platform_account_id, integration_id, group_id, status, requested_at, allowed_at, denied_at)
+         VALUES
+            (:end_user_id, :platform_account_id, :integration_id, :group_id, :status, :requested_at, :allowed_at, :denied_at)
+         ON DUPLICATE KEY UPDATE
+            platform_account_id = VALUES(platform_account_id),
+            integration_id = VALUES(integration_id),
+            status = VALUES(status),
+            requested_at = VALUES(requested_at),
+            allowed_at = VALUES(allowed_at),
+            denied_at = VALUES(denied_at)'
+    );
+    $stmt->execute([
+        'end_user_id' => $endUserId,
+        'platform_account_id' => $platformAccountId,
+        'integration_id' => (int)$integration['id'],
+        'group_id' => (string)$integration['external_id'],
+        'status' => $status,
+        'requested_at' => $status === 'pending' ? $now : null,
+        'allowed_at' => $status === 'allowed' ? $now : null,
+        'denied_at' => $status === 'denied' ? $now : null,
+    ]);
+}
+
+function messaging_sync_ok_account_allowed(int $platformAccountId): void
+{
+    $stmt = db()->prepare(
+        'UPDATE platform_accounts pa
+         SET pa.messages_allowed = CASE
+                 WHEN EXISTS (
+                     SELECT 1 FROM ok_message_permissions p
+                     WHERE p.platform_account_id = pa.id AND p.status = "allowed"
+                 ) THEN 1 ELSE 0 END,
+             pa.messages_allowed_at = CASE
+                 WHEN EXISTS (
+                     SELECT 1 FROM ok_message_permissions p
+                     WHERE p.platform_account_id = pa.id AND p.status = "allowed"
+                 ) THEN COALESCE(pa.messages_allowed_at, NOW()) ELSE pa.messages_allowed_at END,
+             pa.messages_denied_at = CASE
+                 WHEN EXISTS (
+                     SELECT 1 FROM ok_message_permissions p
+                     WHERE p.platform_account_id = pa.id AND p.status = "allowed"
+                 ) THEN NULL ELSE NOW() END
+         WHERE pa.id = :id'
+    );
+    $stmt->execute(['id' => $platformAccountId]);
+}
+
+function messaging_mark_ok_permission_allowed(int $endUserId, string $platformUserId, array $integration): void
+{
+    $account = messaging_ok_platform_account($endUserId, $platformUserId);
+    if (!$account) {
+        return;
+    }
+
+    messaging_upsert_ok_permission($endUserId, (int)$account['id'], $integration, 'allowed');
+    messaging_sync_ok_account_allowed((int)$account['id']);
+}
+
 function messaging_owner_context_from_user_id(?int $endUserId): array
 {
     if (!$endUserId) {
@@ -573,6 +667,12 @@ function send_social_platform_message(
             messaging_mark_vk_permission_allowed($endUserId, $platformUserId, $integration);
         } catch (Throwable $error) {
             error_log('SWPro VK permission state repair failed: ' . $error->getMessage());
+        }
+    } elseif ($platform === 'OK' && !empty($result['ok']) && $endUserId) {
+        try {
+            messaging_mark_ok_permission_allowed($endUserId, $platformUserId, $integration);
+        } catch (Throwable $error) {
+            error_log('SWPro OK permission state repair failed: ' . $error->getMessage());
         }
     }
 

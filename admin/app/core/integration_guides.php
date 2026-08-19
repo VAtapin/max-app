@@ -15,13 +15,62 @@ function render_vk_connection_help_link(): string
 {
     ob_start();
     ?>
-    <section class="panel integration-help-link">
-        <div>
-            <span class="eyebrow">VK</span>
-            <h2>Инструкция по подключению сообщества</h2>
-            <p>Пошаговая настройка сообщений, ключа доступа и Callback API вынесена в раздел помощи.</p>
+    <div class="integration-help-links">
+        <section class="panel integration-help-link">
+            <div>
+                <span class="eyebrow">VK</span>
+                <h2>Подключение сообщества VK</h2>
+                <p>Ключ доступа и Callback API. SWPro будет принимать ответы клиента и отправлять сообщения от имени сообщества.</p>
+            </div>
+            <a class="button secondary-button" href="/docs/#/integrations/vk-connect">Инструкция VK</a>
+        </section>
+        <section class="panel integration-help-link">
+            <div>
+                <span class="eyebrow">OK</span>
+                <h2>Подключение группы OK</h2>
+                <p>Нужны ID группы и Bot API token. После сохранения SWPro автоматически подключит webhook для живого чата.</p>
+            </div>
+            <a class="button secondary-button" href="/docs/#/integrations/ok-connect">Инструкция OK</a>
+        </section>
+    </div>
+    <?php
+    return trim((string)ob_get_clean());
+}
+
+function render_ok_connection_guide(): string
+{
+    ob_start();
+    ?>
+    <section class="panel vk-guide" id="ok-connection-guide">
+        <div class="vk-guide-head">
+            <div>
+                <span class="eyebrow">OK</span>
+                <h2>Как подключить группу OK</h2>
+                <p>Группа сможет получать сообщения клиентов в живой чат SWPro и отправлять им ответы от своего имени.</p>
+            </div>
+            <div class="vk-guide-note">
+                Токен Bot API — секрет. Не отправляйте его в мессенджерах и не публикуйте на странице группы. Если токен показали постороннему, сразу выпустите новый в настройках OK.
+            </div>
         </div>
-        <a class="button secondary-button" href="/docs/#/integrations/vk-connect">Открыть инструкцию</a>
+
+        <ol class="vk-screenshot-list">
+            <li class="vk-screenshot-card"><div class="vk-screenshot-text"><span>1</span><div><h3>Откройте сообщения группы</h3><p>В desktop-версии Одноклассников откройте свою группу и перейдите в настройки сообщений. Включите возможность писать группе.</p></div></div></li>
+            <li class="vk-screenshot-card"><div class="vk-screenshot-text"><span>2</span><div><h3>Получите Bot API token и право приложения</h3><p>В настройках группы откройте раздел Bot API и создайте или скопируйте токен доступа. Для системного окна разрешения приложению также нужно право OK BOT_API_INIT; если его ещё не выдали вашему приложению, запросите его у поддержки OK один раз.</p></div></div></li>
+            <li class="vk-screenshot-card"><div class="vk-screenshot-text"><span>3</span><div><h3>Найдите ID группы</h3><p>Скопируйте числовой ID группы из её адреса или настроек. В SWPro не нужен короткий текстовый адрес группы.</p></div></div></li>
+            <li class="vk-screenshot-card"><div class="vk-screenshot-text"><span>4</span><div><h3>Добавьте подключение в SWPro</h3><p>В разделе «Подключения» создайте запись, выберите платформу OK, укажите название, ID группы и Bot API token, затем сохраните.</p></div></div></li>
+            <li class="vk-screenshot-card"><div class="vk-screenshot-text"><span>5</span><div><h3>Проверьте webhook</h3><p>SWPro сам зарегистрирует защищённый webhook. Если всё готово, в карточке подключения появится время «OK webhook подключён». Ответ клиента из OK затем автоматически появится в живом чате.</p></div></div></li>
+        </ol>
+
+        <div class="vk-guide-fields">
+            <h3>Что заполнить в SWPro</h3>
+            <dl>
+                <div><dt>Платформа</dt><dd>OK</dd></div>
+                <div><dt>ID группы OK</dt><dd>Числовой идентификатор вашей группы.</dd></div>
+                <div><dt>Токен Bot API</dt><dd>Токен группы из настроек Bot API OK.</dd></div>
+                <div><dt>Webhook</dt><dd>Ничего вручную указывать не нужно: SWPro создаёт и подключает его при сохранении.</dd></div>
+                <div><dt>Клиент</dt><dd>В мини-приложении клиент нажимает «Разрешить сообщения OK» и подтверждает системное окно Одноклассников.</dd></div>
+            </dl>
+        </div>
     </section>
     <?php
     return trim((string)ob_get_clean());

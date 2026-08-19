@@ -9,6 +9,7 @@ require_once __DIR__ . '/../app/core/broadcast_runner.php';
 require_once __DIR__ . '/../app/core/client_journey.php';
 require_once __DIR__ . '/../app/core/content_ownership.php';
 require_once __DIR__ . '/../app/core/integration_guides.php';
+require_once __DIR__ . '/../app/core/ok_callback.php';
 require_once __DIR__ . '/../app/core/site_templates.php';
 require_once __DIR__ . '/../app/core/consultant_profiles.php';
 require_once __DIR__ . '/../app/core/subscription_plans.php';

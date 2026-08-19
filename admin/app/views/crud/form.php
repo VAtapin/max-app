@@ -8,6 +8,9 @@
             <?php if ($limitCheckUrl !== ''): ?>
                 <div class="limit-check-message" data-limit-check-message hidden></div>
             <?php endif; ?>
+            <?php if ($moduleKey === 'integrations'): ?>
+                <section class="integration-platform-note" data-integration-platform-note></section>
+            <?php endif; ?>
             <?php foreach ($formFields as $name => $field): ?>
                 <?php
                 $type = $field['type'] ?? 'text';
@@ -30,7 +33,7 @@
                     continue;
                 }
                 ?>
-                <label class="field">
+                <label class="field" data-crud-field="<?= h($name) ?>">
                     <span class="field-label-line">
                         <span><?= h($field['label'] ?? $name) ?><?= ($field['required'] ?? false) ? ' *' : '' ?></span>
                         <?php if (!empty($field['help']) && is_array($field['help'])): ?>
@@ -117,6 +120,49 @@
                     <?php render_site_template_editor($editRow ?: null); ?>
                 <?php endif; ?>
             <?php endforeach; ?>
+            <?php if ($moduleKey === 'integrations'): ?>
+                <script>
+                (() => {
+                    const form = document.currentScript.closest('form');
+                    const platform = form?.querySelector('[name="platform"]');
+                    if (!form || !platform) return;
+                    const field = (name) => form.querySelector(`[data-crud-field="${name}"]`);
+                    const setVisible = (name, visible) => {
+                        const element = field(name);
+                        if (element) element.hidden = !visible;
+                    };
+                    const setLabel = (name, label) => {
+                        const element = field(name);
+                        const target = element?.querySelector('.field-label-line > span:first-child');
+                        if (target) target.textContent = `${label}${target.textContent.includes('*') ? ' *' : ''}`;
+                    };
+                    const update = () => {
+                        const isVk = platform.value === 'VK';
+                        const isOk = platform.value === 'OK';
+                        setVisible('callback_confirmation_code', isVk);
+                        setVisible('callback_secret', isVk);
+                        setVisible('is_default', isVk);
+                        setVisible('callback_subscribed_at', isOk);
+                        setLabel('external_id', isOk ? 'ID группы OK' : isVk ? 'group_id VK' : 'ID группы / сообщества');
+                        setLabel('access_token', isOk ? 'Токен Bot API группы OK' : isVk ? 'Ключ доступа VK' : 'Токен группы');
+                        const note = form.querySelector('[data-integration-platform-note]');
+                        if (!note) return;
+                        if (isOk) {
+                            note.hidden = false;
+                            note.innerHTML = '<strong>OK: только ID группы и Bot API token.</strong><br>После сохранения SWPro сам подключит защищённый webhook для ответов клиентов. Поля Callback API и «Стандартное сообщество» относятся только к VK.';
+                        } else if (isVk) {
+                            note.hidden = false;
+                            note.innerHTML = '<strong>VK: заполните Callback API.</strong><br>Укажите group_id, ключ доступа, строку подтверждения и секретный ключ из инструкции выше.';
+                        } else {
+                            note.hidden = true;
+                            note.textContent = '';
+                        }
+                    };
+                    platform.addEventListener('change', update);
+                    update();
+                })();
+                </script>
+            <?php endif; ?>
             <?php if ($moduleKey === 'broadcasts'): ?>
                 <section class="field wide broadcast-preview" id="broadcast-preview">
                     <span>Предварительный просмотр</span>

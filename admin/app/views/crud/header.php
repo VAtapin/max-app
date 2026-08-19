@@ -79,6 +79,11 @@ require $crudPublicDir . '/../app/views/layouts/header.php';
         <?php endforeach; ?>
     </div>
 <?php endif; ?>
+<?php if ($moduleKey === 'integrations' && ($_GET['ok_webhook'] ?? '') === 'ready'): ?>
+    <div class="notice success">Группа OK сохранена, webhook подключён. Ответы клиентов будут попадать в живой чат.</div>
+<?php elseif ($moduleKey === 'integrations' && ($_GET['ok_webhook'] ?? '') === 'failed'): ?>
+    <div class="notice warning">Группа OK сохранена, но webhook пока не подключён. Проверьте ID группы и Bot API token: ответ OK указан в поле «Последняя ошибка Callback».</div>
+<?php endif; ?>
 <?php if ($moduleKey === 'integrations'): ?>
     <?= render_vk_connection_help_link() ?>
 <?php endif; ?>
