@@ -496,6 +496,29 @@ Retention:
 
 Таймер запускается ночью по Europe/Berlin с небольшим randomized delay. Проверенный restore является обязательной частью эксплуатации; тест восстановления отдельного файла уже выполнялся.
 
+### Аварийное восстановление на старом Plesk-сервере
+
+Старый немецкий сервер остаётся выключенным fallback-узлом и принимает
+зашифрованный Restic-репозиторий локально в `/var/backups/swpro-restic`.
+Скрипт `deploy/plesk/restore-from-restic.sh` устанавливается на старом сервере
+как `/usr/local/sbin/swpro-restore-from-restic.sh`. Пароль Restic должен быть
+доступен на старом сервере в `/root/.config/restic/swpro.pass`; его нельзя
+хранить в Git.
+
+Инструмент сначала позволяет посмотреть snapshots и восстановить копию во
+временный staging-каталог. Изменение старого сервера требует явного
+`--confirm`. Восстанавливаются только база данных, `admin/uploads`, `uploads`
+и приватное хранилище. Конфиги Debian Nginx/PHP-FPM поверх Plesk не
+восстанавливаются, DNS автоматически не меняется, а старый Telegram-бот после
+восстановления остаётся остановленным.
+
+```bash
+swpro-restore-from-restic.sh list
+swpro-restore-from-restic.sh verify
+swpro-restore-from-restic.sh stage latest
+CONFIRM=YES swpro-restore-from-restic.sh apply latest --confirm
+```
+
 ## Monitoring
 
  Конечно. Вот **готовый блок целиком** для замены старого `## Monitoring` в `docs/PRODUCTION_SERVER.md`.

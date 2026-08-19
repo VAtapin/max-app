@@ -79,6 +79,33 @@ video additionally requires either `HEYGEN_API_KEY` or `TAVUS_API_KEY`; select
 the same provider in the super-admin AI settings after deployment. Generated
 MP3 and MP4 files are stored under `SWPRO_PRIVATE_STORAGE_PATH`.
 
+## Emergency restore on the old Plesk server
+
+The current Debian production server writes encrypted Restic snapshots to the
+old German server over SFTP. The repository itself is local on that fallback
+server at `/var/backups/swpro-restic`; the Restic password must be available
+there in `/root/.config/restic/swpro.pass` and must never be committed.
+
+Install `restore-from-restic.sh` as `/usr/local/sbin/swpro-restore-from-restic.sh`
+on the old server. It restores only the application database and runtime files
+(`admin/uploads`, `uploads` and private storage). It deliberately does not
+restore Debian Nginx/PHP-FPM configuration over Plesk.
+
+The old bot and Plesk cron must remain stopped while restoring. The tool creates
+a local pre-restore backup and requires an explicit confirmation before changing
+anything:
+
+```bash
+swpro-restore-from-restic.sh list
+swpro-restore-from-restic.sh verify
+swpro-restore-from-restic.sh stage latest
+CONFIRM=YES swpro-restore-from-restic.sh apply latest --confirm
+```
+
+Add `--deploy` only after reviewing the staged snapshot and when the old Plesk
+site should be prepared with its existing deploy script. DNS is never changed
+automatically and the Telegram bot remains stopped after a restore.
+
 For Telegram OpenID Connect on ordinary desktop/mobile web:
 
 - set `TELEGRAM_OIDC_CLIENT_ID` and `TELEGRAM_OIDC_CLIENT_SECRET`;
