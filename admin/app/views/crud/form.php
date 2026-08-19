@@ -139,10 +139,13 @@
                     const update = () => {
                         const isVk = platform.value === 'VK';
                         const isOk = platform.value === 'OK';
+                        const isExisting = Boolean(form.querySelector('[name="id"]')?.value);
                         setVisible('callback_confirmation_code', isVk);
                         setVisible('callback_secret', isVk);
+                        setVisible('callback_last_event_at', isVk && isExisting);
+                        setVisible('callback_last_error', isVk && isExisting);
                         setVisible('is_default', isVk);
-                        setVisible('callback_subscribed_at', isOk);
+                        setVisible('callback_subscribed_at', isOk && isExisting);
                         setLabel('external_id', isOk ? 'ID группы OK' : isVk ? 'group_id VK' : 'ID группы / сообщества');
                         setLabel('access_token', isOk ? 'Токен Bot API группы OK' : isVk ? 'Ключ доступа VK' : 'Токен группы');
                         const note = form.querySelector('[data-integration-platform-note]');

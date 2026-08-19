@@ -22,7 +22,7 @@ function render_vk_connection_help_link(): string
                 <h2>Подключение сообщества VK</h2>
                 <p>Ключ доступа и Callback API. SWPro будет принимать ответы клиента и отправлять сообщения от имени сообщества.</p>
             </div>
-            <a class="button secondary-button" href="/docs/#/integrations/vk-connect">Инструкция VK</a>
+            <a class="button secondary-button" href="/docs/#/integrations/vk-connect" target="_blank" rel="noopener" data-help-link>Инструкция VK</a>
         </section>
         <section class="panel integration-help-link">
             <div>
@@ -30,7 +30,7 @@ function render_vk_connection_help_link(): string
                 <h2>Подключение группы OK</h2>
                 <p>Нужны ID группы и Bot API token. После сохранения SWPro автоматически подключит webhook для живого чата.</p>
             </div>
-            <a class="button secondary-button" href="/docs/#/integrations/ok-connect">Инструкция OK</a>
+            <a class="button secondary-button" href="/docs/#/integrations/ok-connect" target="_blank" rel="noopener" data-help-link>Инструкция OK</a>
         </section>
     </div>
     <?php
@@ -46,7 +46,7 @@ function render_ok_connection_guide(): string
             <div>
                 <span class="eyebrow">OK</span>
                 <h2>Как подключить группу OK</h2>
-                <p>Группа сможет получать сообщения клиентов в живой чат SWPro и отправлять им ответы от своего имени.</p>
+                <p>Группа сможет получать сообщения клиентов в живой чат SWPro и отправлять им ответы от своего имени. Для OK нужны только ID группы и Bot API token: строка возврата и секретный ключ — это настройки VK.</p>
             </div>
             <div class="vk-guide-note">
                 Токен Bot API — секрет. Не отправляйте его в мессенджерах и не публикуйте на странице группы. Если токен показали постороннему, сразу выпустите новый в настройках OK.

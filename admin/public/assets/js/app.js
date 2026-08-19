@@ -150,6 +150,113 @@ function initAdminRemoteModals(root = document) {
     });
 }
 
+function adminHelpPanel() {
+    let panel = document.getElementById('admin-help-panel');
+    if (panel) {
+        return panel;
+    }
+
+    const shell = document.querySelector('.app-shell');
+    if (!shell) {
+        return null;
+    }
+
+    panel = document.createElement('aside');
+    panel.id = 'admin-help-panel';
+    panel.className = 'admin-help-panel';
+    panel.setAttribute('aria-label', 'Справка SWPro');
+    panel.innerHTML = `
+        <header class="admin-help-panel-head">
+            <div>
+                <span class="eyebrow">Справка</span>
+                <strong data-admin-help-title>Помощь SWPro</strong>
+            </div>
+            <div class="admin-help-panel-actions">
+                <a class="icon-button" data-admin-help-external target="_blank" rel="noopener" aria-label="Открыть в новой вкладке" title="Открыть в новой вкладке">↗</a>
+                <button type="button" class="icon-button" data-admin-help-close aria-label="Закрыть справку" title="Закрыть">×</button>
+            </div>
+        </header>
+        <iframe class="admin-help-panel-frame" data-admin-help-frame title="Справка SWPro"></iframe>
+    `;
+    shell.appendChild(panel);
+
+    panel.querySelector('[data-admin-help-close]')?.addEventListener('click', () => {
+        shell.classList.remove('help-panel-open');
+        panel.hidden = true;
+    });
+
+    return panel;
+}
+
+function canUseAdminHelpPanel() {
+    const shell = document.querySelector('.app-shell');
+    const main = document.querySelector('.main');
+    if (!shell || !main || !window.matchMedia('(min-width: 1440px)').matches) {
+        return false;
+    }
+
+    return shell.classList.contains('help-panel-open') || main.getBoundingClientRect().width >= 1050;
+}
+
+function openAdminHelpPanel(url, title) {
+    const shell = document.querySelector('.app-shell');
+    const panel = adminHelpPanel();
+    if (!shell || !panel) {
+        return false;
+    }
+
+    const frame = panel.querySelector('[data-admin-help-frame]');
+    const titleNode = panel.querySelector('[data-admin-help-title]');
+    const external = panel.querySelector('[data-admin-help-external]');
+    if (!frame || !external) {
+        return false;
+    }
+
+    if (titleNode) {
+        titleNode.textContent = title || 'Помощь SWPro';
+    }
+    external.href = url;
+    frame.src = url;
+    panel.hidden = false;
+    shell.classList.add('help-panel-open');
+    return true;
+}
+
+function initAdminHelpLinks(root = document) {
+    root.querySelectorAll('a[href^="/docs/"]').forEach((link) => {
+        link.dataset.helpLink = '1';
+        link.target = '_blank';
+        link.rel = 'noopener';
+    });
+
+    if (document.body.dataset.adminHelpLinksBound === '1') {
+        return;
+    }
+    document.body.dataset.adminHelpLinksBound = '1';
+
+    document.addEventListener('click', (event) => {
+        const link = event.target instanceof Element ? event.target.closest('a[href^="/docs/"]') : null;
+        if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+            return;
+        }
+        if (!canUseAdminHelpPanel()) {
+            return;
+        }
+
+        event.preventDefault();
+        openAdminHelpPanel(link.href, link.dataset.helpTitle || link.textContent.trim() || 'Помощь SWPro');
+    });
+
+    window.addEventListener('resize', () => {
+        const shell = document.querySelector('.app-shell');
+        const panel = document.getElementById('admin-help-panel');
+        if (shell?.classList.contains('help-panel-open') && panel && !window.matchMedia('(min-width: 1440px)').matches) {
+            shell.classList.remove('help-panel-open');
+            panel.hidden = true;
+        }
+    });
+}
+
 function initUserMergeSearch(root = document) {
     root.querySelectorAll('[data-user-merge-search]').forEach((widget) => {
         if (widget.dataset.mergeSearchBound === '1') {
@@ -843,6 +950,7 @@ document.querySelectorAll('button[disabled]').forEach((button) => {
 initAdminResultModals();
 initAdminModalBackdrop();
 initAdminRemoteModals();
+initAdminHelpLinks();
 initUserMergeSearch();
 initLimitChecks();
 initLeadMediaModal();

@@ -137,8 +137,9 @@ parse_str((string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY), $curr
                     $isActive = $currentPath === $hrefPath
                         && (($hrefQuery['module'] ?? null) === ($currentQuery['module'] ?? null)
                             || (!isset($hrefQuery['module']) && !isset($currentQuery['module'])));
+                    $isDocumentationLink = str_starts_with($href, '/docs/');
                     ?>
-                    <a href="<?= h($href) ?>" class="<?= $isActive ? 'active' : '' ?>">
+                    <a href="<?= h($href) ?>" class="<?= $isActive ? 'active' : '' ?>"<?= $isDocumentationLink ? ' target="_blank" rel="noopener" data-help-link' : '' ?>>
                         <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><?= $navIcons[$module] ?? $navIcons['content'] ?></svg>
                         <span><?= h($label) ?></span>
                     </a>

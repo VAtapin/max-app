@@ -1077,6 +1077,11 @@ button:disabled {
     gap: 6px;
 }
 
+/* Form fields are switched by platform; the author rule above must not unhide them. */
+.crud-form [hidden] {
+    display: none !important;
+}
+
 .field span {
     color: var(--muted);
     font-size: 14px;
@@ -5183,6 +5188,78 @@ button {
     margin: 10px 0 0;
     max-width: 760px;
     text-align: center;
+}
+
+/* Documentation stays beside the current form on large screens. */
+.admin-help-panel {
+    display: none;
+}
+
+@media (min-width: 1440px) {
+    .app-shell.help-panel-open {
+        grid-template-columns: var(--admin-sidebar-width) minmax(680px, 1fr) clamp(420px, 31vw, 560px);
+    }
+
+    .admin-help-panel {
+        align-self: start;
+        background: #ffffff;
+        border-left: 1px solid var(--line);
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        height: 100dvh;
+        min-width: 0;
+        overflow: hidden;
+        position: sticky;
+        top: 0;
+    }
+
+    .admin-help-panel[hidden] {
+        display: none;
+    }
+
+    .admin-help-panel-head {
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        padding: 14px 16px;
+    }
+
+    .admin-help-panel-head > div:first-child {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+    }
+
+    .admin-help-panel-head strong {
+        color: var(--text);
+        font-size: 15px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .admin-help-panel-actions {
+        display: flex;
+        gap: 6px;
+    }
+
+    .admin-help-panel-actions .icon-button {
+        align-items: center;
+        display: inline-flex;
+        justify-content: center;
+        min-height: 32px;
+        padding: 4px 9px;
+        text-decoration: none;
+    }
+
+    .admin-help-panel-frame {
+        border: 0;
+        height: 100%;
+        min-height: 0;
+        width: 100%;
+    }
 }
 
 @media (max-width: 760px) {
