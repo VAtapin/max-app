@@ -7,6 +7,7 @@ require_once __DIR__ . '/../admin/app/core/social_messaging.php';
 $data = input_json() ?: $_REQUEST;
 $user = require_platform_user($data);
 $platform = normalize_platform((string)($data['platform'] ?? $user['current_platform'] ?? $user['platform'] ?? ''));
+$action = strtolower(trim((string)($data['action'] ?? 'prepare')));
 
 if (!in_array($platform, ['VK', 'web'], true)) {
     json_response(['error' => 'Подключение сообщений VK недоступно на этой платформе.'], 422);
@@ -42,22 +43,52 @@ if (!$integration) {
     json_response(['error' => 'Нет готового сообщества VK для подключения. Укажите email для получения уведомлений.'], 409);
 }
 
+if ($action === 'revoke') {
+    $permissionStmt = db()->prepare(
+        'SELECT id, platform_account_id
+         FROM vk_message_permissions
+         WHERE end_user_id = :end_user_id AND group_id = :group_id
+         LIMIT 1'
+    );
+    $permissionStmt->execute([
+        'end_user_id' => (int)$user['id'],
+        'group_id' => (string)$integration['external_id'],
+    ]);
+    $permission = $permissionStmt->fetch() ?: null;
+    if ($permission) {
+        $revoke = db()->prepare(
+            'UPDATE vk_message_permissions
+             SET status = "denied", request_key_hash = NULL, request_expires_at = NULL,
+                 denied_at = NOW()
+             WHERE id = :id'
+        );
+        $revoke->execute(['id' => (int)$permission['id']]);
+        messaging_sync_vk_account_allowed((int)$permission['platform_account_id']);
+    }
+    json_response([
+        'active' => true,
+        'status' => 'denied',
+        'group_id' => (string)$integration['external_id'],
+        'title' => (string)$integration['title'],
+    ]);
+}
+
 $existing = null;
 if ($platform === 'VK') {
-    $existing = messaging_vk_permission_for_user((int)$user['id'], $platformUserId, (int)$integration['id']);
+    $existing = messaging_vk_permission_for_user((int)$user['id'], $platformUserId, (string)$integration['external_id']);
 } else {
     $existingStmt = db()->prepare(
         'SELECT p.*, i.*, i.id AS integration_id
          FROM vk_message_permissions p
          INNER JOIN messaging_integrations i ON i.id = p.integration_id
          WHERE p.end_user_id = :end_user_id
-           AND p.integration_id = :integration_id
+           AND p.group_id = :group_id
            AND p.status = "allowed"
          LIMIT 1'
     );
     $existingStmt->execute([
         'end_user_id' => (int)$user['id'],
-        'integration_id' => (int)$integration['id'],
+        'group_id' => (string)$integration['external_id'],
     ]);
     $existing = $existingStmt->fetch() ?: null;
 }

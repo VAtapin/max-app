@@ -87,25 +87,19 @@ function messaging_vk_platform_account(int $endUserId, ?string $platformUserId =
     return $account ?: null;
 }
 
-function messaging_vk_permission_for_user(int $endUserId, string $platformUserId, ?int $integrationId = null): ?array
+function messaging_vk_permission_for_user(int $endUserId, string $platformUserId, ?string $groupId = null): ?array
 {
-    $integrationFilter = $integrationId ? ' AND p.integration_id = :integration_id' : '';
+    $groupFilter = $groupId !== null && $groupId !== '' ? ' AND p.group_id = :group_id' : '';
     $stmt = db()->prepare(
-        'SELECT p.*, i.*,
-                p.id AS permission_id,
-                p.status AS permission_status,
-                i.id AS integration_id
+        'SELECT p.*, pa.platform AS account_platform, pa.platform_user_id,
+                p.id AS permission_id, p.status AS permission_status
          FROM vk_message_permissions p
-         INNER JOIN messaging_integrations i ON i.id = p.integration_id
          INNER JOIN platform_accounts pa ON pa.id = p.platform_account_id
          WHERE p.end_user_id = :end_user_id
            AND pa.platform = "VK"
            AND pa.platform_user_id = :platform_user_id
            AND p.status = "allowed"
-           AND i.platform = "VK"
-           AND i.is_active = 1
-           AND i.external_id = p.group_id
-           ' . $integrationFilter . '
+           ' . $groupFilter . '
          ORDER BY p.allowed_at DESC, p.id DESC
          LIMIT 1'
     );
@@ -113,12 +107,15 @@ function messaging_vk_permission_for_user(int $endUserId, string $platformUserId
         'end_user_id' => $endUserId,
         'platform_user_id' => preg_replace('/\D+/', '', $platformUserId) ?: $platformUserId,
     ];
-    if ($integrationId) {
-        $params['integration_id'] = $integrationId;
+    if ($groupId !== null && $groupId !== '') {
+        $params['group_id'] = $groupId;
     }
     $stmt->execute($params);
     $permission = $stmt->fetch();
-    return $permission && messaging_integration_is_usable($permission) ? $permission : null;
+    // The permission belongs to the VK community, not to an editable integration row.
+    // A consultant can save the same community again and receive a new integration ID.
+    // In that case the client's existing VK permission must remain valid.
+    return $permission ?: null;
 }
 
 function messaging_upsert_vk_permission(
@@ -160,6 +157,41 @@ function messaging_upsert_vk_permission(
         'allowed_at' => $allowedAt,
         'denied_at' => $deniedAt,
     ]);
+}
+
+function messaging_mark_vk_permission_allowed(int $endUserId, string $platformUserId, array $integration): void
+{
+    $account = messaging_vk_platform_account($endUserId, $platformUserId);
+    if (!$account) {
+        return;
+    }
+
+    messaging_upsert_vk_permission($endUserId, (int)$account['id'], $integration, 'allowed');
+    messaging_sync_vk_account_allowed((int)$account['id']);
+}
+
+function messaging_sync_vk_account_allowed(int $platformAccountId): void
+{
+    $stmt = db()->prepare(
+        'UPDATE platform_accounts pa
+         SET pa.messages_allowed = CASE
+                 WHEN EXISTS (
+                     SELECT 1 FROM vk_message_permissions p
+                     WHERE p.platform_account_id = pa.id AND p.status = "allowed"
+                 ) THEN 1 ELSE 0 END,
+             pa.messages_allowed_at = CASE
+                 WHEN EXISTS (
+                     SELECT 1 FROM vk_message_permissions p
+                     WHERE p.platform_account_id = pa.id AND p.status = "allowed"
+                 ) THEN COALESCE(pa.messages_allowed_at, NOW()) ELSE pa.messages_allowed_at END,
+             pa.messages_denied_at = CASE
+                 WHEN EXISTS (
+                     SELECT 1 FROM vk_message_permissions p
+                     WHERE p.platform_account_id = pa.id AND p.status = "allowed"
+                 ) THEN NULL ELSE NOW() END
+         WHERE pa.id = :id'
+    );
+    $stmt->execute(['id' => $platformAccountId]);
 }
 
 function messaging_owner_context_from_user_id(?int $endUserId): array
@@ -498,23 +530,13 @@ function send_social_platform_message(
         !empty($ownerContext['manager_id']) ? (int)$ownerContext['manager_id'] : null,
         !empty($ownerContext['reseller_id']) ? (int)$ownerContext['reseller_id'] : null
     );
-    if ($platform === 'VK' && $endUserId) {
-        $allowedIntegration = $integration
-            ? messaging_vk_permission_for_user($endUserId, $platformUserId, (int)$integration['id'])
-            : null;
-        if ($allowedIntegration) {
-            $integration = $allowedIntegration;
-        } else {
-            $historyStmt = db()->prepare('SELECT COUNT(*) FROM vk_message_permissions WHERE end_user_id = :end_user_id');
-            $historyStmt->execute(['end_user_id' => $endUserId]);
-            if ((int)$historyStmt->fetchColumn() > 0) {
-                return ['ok' => false, 'error' => 'Клиент не разрешил сообщения выбранного VK-сообщества'];
-            }
-        }
-    }
     if (!$integration) {
         return ['ok' => false, 'error' => 'Нет активной интеграции сообщества для ' . platform_label($platform)];
     }
+
+    // VK is the final authority for this permission. Do not block a message only
+    // because Callback API has not yet delivered message_allow or an integration
+    // record was recreated. A successful messages.send below repairs the local state.
 
     $attachments = [];
     $fallbackMediaUrls = $mediaUrls;
@@ -545,6 +567,14 @@ function send_social_platform_message(
     $result = $platform === 'VK'
         ? send_vk_community_message($integration, $platformUserId, $message, $attachments)
         : send_ok_group_message($integration, $platformUserId, $message);
+
+    if ($platform === 'VK' && !empty($result['ok']) && $endUserId) {
+        try {
+            messaging_mark_vk_permission_allowed($endUserId, $platformUserId, $integration);
+        } catch (Throwable $error) {
+            error_log('SWPro VK permission state repair failed: ' . $error->getMessage());
+        }
+    }
 
     $result['integration_id'] = (int)$integration['id'];
     return $result;

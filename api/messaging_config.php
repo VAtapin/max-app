@@ -29,13 +29,11 @@ foreach (['VK', 'OK'] as $platform) {
             'SELECT status
              FROM vk_message_permissions
              WHERE end_user_id = :end_user_id
-               AND integration_id = :integration_id
                AND group_id = :group_id
              LIMIT 1'
         );
         $permissionStmt->execute([
             'end_user_id' => (int)$user['id'],
-            'integration_id' => (int)$integration['id'],
             'group_id' => $externalId,
         ]);
         $items[$platform]['permission_status'] = $permissionStmt->fetchColumn() ?: null;
