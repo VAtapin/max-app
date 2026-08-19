@@ -1256,6 +1256,67 @@ button.compact {
     line-height: 1.45;
 }
 
+.detail-actions .ok-mini-app-action {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 58px;
+    padding: 9px 14px;
+    border: 0;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #f58220, #ff9d00);
+    box-shadow: 0 8px 18px rgba(245, 130, 32, .22);
+    color: #fff;
+}
+
+.detail-actions .ok-mini-app-action:hover {
+    background: linear-gradient(135deg, #e86f12, #f58b00);
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+.ok-mini-app-icon {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: #fff;
+    color: #ef790f !important;
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.ok-mini-app-copy {
+    display: grid;
+    gap: 1px;
+    text-align: left;
+}
+
+.ok-mini-app-copy strong,
+.ok-mini-app-copy small,
+.ok-mini-app-arrow {
+    color: #fff !important;
+}
+
+.ok-mini-app-copy strong {
+    font-size: 15px;
+}
+
+.ok-mini-app-copy small {
+    font-size: 12px;
+    font-weight: 600;
+    opacity: .88;
+}
+
+.ok-mini-app-arrow {
+    font-size: 23px;
+    font-weight: 700;
+}
+
 .platform-pill,
 .status-pill {
     background: #eef6f5;

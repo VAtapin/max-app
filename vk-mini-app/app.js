@@ -1114,7 +1114,7 @@ function renderSingleMessagingPermissionCard(integration) {
     const notice = messagingPermissionNotice(integration.platform);
     const title = isVk
         ? ui('messages.vk_title', 'Личные сообщения VK')
-        : ui('messages.ok_title', 'Личные сообщения OK');
+        : ui('messages.ok_title', 'Сообщения в OK');
     const text = isVk
         ? (isAllowed
             ? `Личные сообщения от сообщества «${integration.title || 'VK'}» подключены.`
@@ -1126,7 +1126,7 @@ function renderSingleMessagingPermissionCard(integration) {
         : state.platform === 'web'
             ? (isAllowed
                 ? `Личные сообщения от группы «${integration.title || 'OK'}» подключены.`
-                : `На обычном сайте OK не показывает системное разрешение. Откройте Mini App в Одноклассниках и подтвердите разрешение там — после этого консультант сможет отвечать вам в OK.`)
+                : 'Чтобы консультант мог отвечать вам в OK, откройте приложение и подтвердите разрешение.')
             : (isAllowed
             ? `Личные сообщения от группы «${integration.title || 'OK'}» подключены.`
             : isPending
@@ -1146,14 +1146,18 @@ function renderSingleMessagingPermissionCard(integration) {
             <span>${escapeHtml(text)}</span>
             <div class="marketing-delivery-hint ${escapeHtml(notice?.tone || 'info')}" data-messaging-permission-notice="${escapeHtml(integration.platform)}" ${notice?.message ? '' : 'hidden'}>${escapeHtml(notice?.message || '')}</div>
             <div class="detail-actions">
-                <button class="secondary compact" data-action="refresh-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">Проверить статус</button>
+                ${isOk && state.platform === 'web' && okMiniAppUrl()
+                    ? `<a class="button-link primary ok-mini-app-action" href="${escapeHtml(okMiniAppUrl())}" target="_blank" rel="noopener" data-action="open-ok-mini-app">
+                        <span class="ok-mini-app-icon" aria-hidden="true">OK</span>
+                        <span class="ok-mini-app-copy"><strong>Открыть в OK</strong><small>Подтвердить сообщения</small></span>
+                        <span class="ok-mini-app-arrow" aria-hidden="true">→</span>
+                    </a>`
+                    : `<button class="secondary compact" data-action="refresh-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">Проверить статус</button>
                 ${isAllowed
                     ? `<button class="secondary compact" data-action="revoke-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">Отключить в SWPro</button>`
                     : deliveryDisabled
                         ? `<button class="primary compact" data-action="enable-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">Включить в SWPro</button>`
-                    : isOk && state.platform === 'web' && okMiniAppUrl()
-                        ? `<a class="button primary compact" href="${escapeHtml(okMiniAppUrl())}" target="_blank" rel="noopener" data-action="open-ok-mini-app">Открыть Mini App в OK</a>`
-                    : `<button class="primary compact" data-action="allow-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">${escapeHtml(allowLabel)}</button>`}
+                    : `<button class="primary compact" data-action="allow-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">${escapeHtml(allowLabel)}</button>`}`}
             </div>
         </section>
     `;
