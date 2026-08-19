@@ -1,31 +1,31 @@
-# Plesk Live Deploy For swpro.ru
+# Рабочий деплой SWPro на Plesk для swpro.ru
 
-Target server:
+Целевой сервер:
 
-- Plesk Obsidian on Ubuntu 22.04
-- Domain: `swpro.ru`
-- Document root: `/var/www/vhosts/swpro.ru/httpdocs`
+- Plesk Obsidian на Ubuntu 22.04
+- Домен: `swpro.ru`
+- Корень сайта: `/var/www/vhosts/swpro.ru/httpdocs`
 - PHP: 8.3.x, PHP-FPM
-- DB: MariaDB 10.6.x
+- База данных: MariaDB 10.6.x
 
-## 1. Prepare Domain
+## 1. Подготовка домена
 
-In Plesk, set the domain document root to:
+В Plesk установите корень сайта домена:
 
 ```text
 httpdocs
 ```
 
-Enable PHP-FPM with PHP 8.3.
+Включите PHP-FPM с PHP 8.3.
 
-Upload limits are controlled by PHP/Plesk. Example values for images, PDFs and videos:
+Лимиты загрузки задаются в PHP/Plesk. Пример значений для изображений, PDF и видео:
 
 ```text
 upload_max_filesize = 300M
 post_max_size = 320M
 ```
 
-Recommended PHP extensions:
+Рекомендуемые расширения PHP:
 
 ```text
 pdo_mysql
@@ -36,29 +36,29 @@ curl
 fileinfo
 ```
 
-## 2. Upload Code
+## 2. Загрузка кода
 
-Inside `/var/www/vhosts/swpro.ru/httpdocs`:
+В каталоге `/var/www/vhosts/swpro.ru/httpdocs`:
 
 ```bash
 git clone https://github.com/VAtapin/max-app.git .
 ```
 
-If the folder is not empty, upload files or pull into the existing Git checkout.
+Если каталог не пустой, загрузите файлы или выполните pull в существующей копии Git.
 
-## 3. Create Database In Plesk
+## 3. Создание базы данных в Plesk
 
-Create a MariaDB database and user in Plesk, for example:
+Создайте в Plesk базу MariaDB и пользователя, например:
 
 ```text
-Database: health_sales_system
-User: max_app
-Password: strong password
+База: health_sales_system
+Пользователь: max_app
+Пароль: надёжный пароль
 ```
 
-MariaDB 10.6 is enough for the current schema.
+MariaDB 10.6 достаточно для текущей схемы.
 
-## 4. Configure Live Env
+## 4. Настройка live.env
 
 ```bash
 cd /var/www/vhosts/swpro.ru/httpdocs
@@ -66,175 +66,209 @@ cp deploy/plesk/env.example deploy/plesk/live.env
 nano deploy/plesk/live.env
 ```
 
-Fill DB credentials, Telegram token, public URLs, system user and
-`SWPRO_PRIVATE_STORAGE_PATH`. The private path should be outside `httpdocs`, for
-example `/var/www/vhosts/swpro.ru/private/swpro`; it stores avatar source media
-and generated previews that must not be publicly addressable. This is the
-only runtime configuration file used by the PHP application, bots, migrations
-and systemd service. Do not create `admin/app/config/local.php`, `bot/.env` or
-a root `.env`.
+Заполните реквизиты БД, токен Telegram, публичные URL, системного пользователя и
+`SWPRO_PRIVATE_STORAGE_PATH`. Приватный каталог должен находиться за пределами
+`httpdocs`, например `/var/www/vhosts/swpro.ru/private/swpro`; в нём хранятся
+исходные файлы аватаров и сгенерированные материалы, которые нельзя отдавать
+публично. Это единственный рабочий файл конфигурации для PHP-приложения, ботов,
+миграций и systemd-сервиса. Не создавайте `admin/app/config/local.php`,
+`bot/.env` или корневой `.env`.
 
-For AI features, set `OPENAI_API_KEY` for text generation and voice. Real AI
-video additionally requires either `HEYGEN_API_KEY` or `TAVUS_API_KEY`; select
-the same provider in the super-admin AI settings after deployment. Generated
-MP3 and MP4 files are stored under `SWPRO_PRIVATE_STORAGE_PATH`.
+Для функций ИИ укажите `OPENAI_API_KEY` для генерации текста и голоса. Для
+настоящих ИИ-видео дополнительно нужен `HEYGEN_API_KEY` или `TAVUS_API_KEY`; после
+деплоя выберите того же провайдера в настройках ИИ супер-администратора.
+Сгенерированные MP3 и MP4 сохраняются в `SWPRO_PRIVATE_STORAGE_PATH`.
 
-## Emergency restore on the old Plesk server
+## Аварийное восстановление на старом Plesk-сервере
 
-The current Debian production server writes encrypted Restic snapshots to the
-old German server over SFTP. The repository itself is local on that fallback
-server at `/var/backups/swpro-restic`; the Restic password must be available
-there in `/root/.config/restic/swpro.pass` and must never be committed.
+Новый рабочий сервер записывает зашифрованные снимки Restic на старый
+немецкий сервер по SFTP. Сам репозиторий находится на старом сервере в
+`/var/backups/swpro-restic`. Пароль Restic должен быть доступен в
+`/root/.config/restic/swpro.pass` и не должен попадать в Git.
 
-Install `restore-from-restic.sh` as `/usr/local/sbin/swpro-restore-from-restic.sh`
-on the old server. It restores only the application database and runtime files
-(`admin/uploads`, `uploads` and private storage). It deliberately does not
-restore Debian Nginx/PHP-FPM configuration over Plesk.
+На старом сервере вспомогательный скрипт устанавливается как
+`/usr/local/sbin/swpro-restore-from-restic.sh`. Он восстанавливает только базу
+данных приложения и рабочие файлы (`admin/uploads`, `uploads` и приватное
+хранилище). Конфигурация Debian Nginx/PHP-FPM поверх Plesk намеренно не
+восстанавливается.
 
-The old bot and Plesk cron must remain stopped while restoring. The tool creates
-a local pre-restore backup and requires an explicit confirmation before changing
-anything:
+Старый Telegram-бот и задания Plesk должны оставаться остановленными во время
+восстановления. Скрипт сначала создаёт локальную резервную копию текущего
+состояния и требует явного подтверждения. Все команды выполняются от `root` на
+старом немецком сервере:
 
 ```bash
+# Проверка (версия Restic должна быть не ниже 0.14.0)
+restic version
+test -r /root/.config/restic/swpro.pass
+test -d /var/backups/swpro-restic
+
+# Установка или обновление вспомогательного скрипта после актуализации копии
+install -o root -g root -m 0750 \
+  /var/www/vhosts/swpro.ru/httpdocs/deploy/plesk/restore-from-restic.sh \
+  /usr/local/sbin/swpro-restore-from-restic.sh
+
+# Проверка и подготовка без изменения рабочего сайта
 swpro-restore-from-restic.sh list
-swpro-restore-from-restic.sh verify
+swpro-restore-from-restic.sh verify latest
 swpro-restore-from-restic.sh stage latest
-CONFIRM=YES swpro-restore-from-restic.sh apply latest --confirm
+swpro-restore-from-restic.sh apply latest --confirm
 ```
 
-Add `--deploy` only after reviewing the staged snapshot and when the old Plesk
-site should be prepared with its existing deploy script. DNS is never changed
-automatically and the Telegram bot remains stopped after a restore.
+Команда `apply` восстанавливает базу автоматически — вручную выполнять `mysql`
+не нужно. Скрипт берёт параметры подключения из старого
+`deploy/plesk/live.env`, создаёт резервную копию текущей базы и файлов в
+`/var/backups/swpro-pre-restore-<UTC timestamp>`, импортирует сжатый дамп через
+`mariadb` и синхронизирует три рабочих каталога. Дамп базы внутри снимка
+находится в `/run/swpro-database.sql.gz`.
 
-For Telegram OpenID Connect on ordinary desktop/mobile web:
+Во временный каталог также попадает `live.env` нового сервера, но только для справки. Он
+не должен заменять Plesk-файл окружения. Если старый `live.env` отсутствует или
+его реквизиты базы не работают, `apply` запускать нельзя: сначала нужно
+исправить конфигурацию. Не создавайте новую базу и не выполняйте ручной импорт
+в обход вспомогательного скрипта.
 
-- set `TELEGRAM_OIDC_CLIENT_ID` and `TELEGRAM_OIDC_CLIENT_SECRET`;
-- register `https://swpro.ru/api/telegram_oidc_callback.php` as the redirect URL;
-- keep `SWPRO_PUBLIC_URL=https://swpro.ru`;
-- keep `SWPRO_MINI_APP_URL=https://swpro.ru/vk-mini-app/`.
+Флаг `--deploy` добавляется только после проверки временной копии, если старый
+Plesk-сайт нужно подготовить существующим скриптом деплоя. DNS автоматически не
+меняется, а Telegram-бот после восстановления остаётся остановленным.
 
-For VK:
+Для Telegram OpenID Connect на обычном сайте в браузере компьютера или телефона:
 
-- `VK_APP_ID` and `VK_SECURE_KEY` are for VK Mini App authorization.
-- `VK_GROUP_TOKEN` is required to send replies from the admin panel to VK users. Create it in VK community settings: API access keys, with community messages permission.
-- `VK_SERVICE_TOKEN` is not enough for `messages.send`; VK rejects that method for service tokens.
+- укажите `TELEGRAM_OIDC_CLIENT_ID` и `TELEGRAM_OIDC_CLIENT_SECRET`;
+- зарегистрируйте `https://swpro.ru/api/telegram_oidc_callback.php` как URL перенаправления;
+- оставьте `SWPRO_PUBLIC_URL=https://swpro.ru`;
+- оставьте `SWPRO_MINI_APP_URL=https://swpro.ru/vk-mini-app/`.
 
-Common Plesk system user can be checked with:
+Для VK:
+
+- `VK_APP_ID` и `VK_SECURE_KEY` используются для авторизации VK Mini App.
+- `VK_GROUP_TOKEN` нужен для отправки ответов пользователям VK из админки. Создайте
+  его в настройках сообщества VK: ключи доступа API с разрешением на сообщения
+  сообщества.
+- Одного `VK_SERVICE_TOKEN` недостаточно для `messages.send`: VK отклоняет этот
+  метод для сервисных токенов.
+
+Общего системного пользователя Plesk можно проверить командой:
 
 ```bash
 stat -c '%U %G' /var/www/vhosts/swpro.ru/httpdocs
 ```
 
-Put those values into `APP_USER` and `APP_GROUP`.
+Укажите полученные значения в `APP_USER` и `APP_GROUP`.
 
-## 5. Run Install
+## 5. Установка
 
 ```bash
 cd /var/www/vhosts/swpro.ru/httpdocs
 bash deploy/plesk/install.sh deploy/plesk/live.env
 ```
 
-This creates `bot/.venv`, public upload folders and the private AI media folder,
-validates the database connection, and removes legacy configuration copies. Private `deploy/plesk/live.env` is
-ignored by Git. Telegram Mini App reads its bot token from this file to verify
-`initData`.
+Скрипт создаёт `bot/.venv`, публичные каталоги загрузок и приватный каталог
+медиа ИИ, проверяет подключение к БД и удаляет устаревшие копии конфигурации.
+Приватный `deploy/plesk/live.env` игнорируется Git. Telegram Mini App читает
+токен бота из этого файла для проверки `initData`.
 
-## 6. Import Database
+## 6. Импорт базы данных
 
 ```bash
 bash deploy/plesk/import-db.sh deploy/plesk/live.env
 ```
 
-The clean import loads the current schema, demo data, the 47-question multiscale check-up and its media metadata.
+Чистый импорт загружает текущую схему, демонстрационные данные, чек-ап из 47
+вопросов и метаданные его медиафайлов.
 
-Default admin after seed:
+Администратор по умолчанию после импорта:
 
 ```text
 Email: admin@example.com
-Password: admin123
+Пароль: admin123
 ```
 
-Change it after first login.
+Измените пароль после первого входа.
 
-For later schema updates without wiping data, run migrations instead of importing the full schema. Applied migrations are tracked and are not repeated:
+Для последующих обновлений схемы без удаления данных запускайте миграции, а не
+повторный полный импорт. Выполненные миграции отслеживаются и повторно не
+запускаются:
 
 ```bash
 bash deploy/plesk/migrate-db.sh deploy/plesk/live.env
 ```
 
-## 7. Protect Private Paths
+## 7. Защита приватных путей
 
-The repository includes `.htaccess`. For Plesk/nginx, also paste:
+В репозитории есть `.htaccess`. Для Plesk/nginx также добавьте:
 
-- `deploy/plesk/apache-additional.conf` into Additional Apache directives
-- `deploy/plesk/nginx-additional.conf` into Additional nginx directives
+- `deploy/plesk/apache-additional.conf` — в Additional Apache directives;
+- `deploy/plesk/nginx-additional.conf` — в Additional nginx directives.
 
-Then reload Apache/nginx from Plesk.
+После этого перезапустите Apache/nginx из Plesk.
 
-Avatar files are returned only by the authenticated owner-only PHP endpoint.
-The bundled web-server rules also deny `/storage/private` in case the fallback
-folder under the project root is ever used.
+Файлы аватаров выдаются только через PHP-обработчик, доступный авторизованному
+владельцу. Встроенные правила веб-сервера также запрещают доступ к
+`/storage/private`, если резервный каталог когда-либо окажется внутри проекта.
 
-Add a daily cron task for the retention periods configured in
+Добавьте ежедневное задание планировщика с периодами хранения из раздела
 `Настройки → Настройки ИИ`:
 
 ```bash
 php /var/www/vhosts/swpro.ru/httpdocs/admin/cron/cleanup-ai-data.php
 ```
 
-Use `--dry-run` to preview counts without deleting records.
+Используйте `--dry-run`, чтобы посмотреть количество записей без удаления.
 
-The standard deploy also runs `admin/cron/sync-docsify-ai.php` after migrations,
-so committed Docsify pages become searchable by the admin assistant without a
-second manual copy.
+Стандартный деплой также запускает `admin/cron/sync-docsify-ai.php` после
+миграций, поэтому страницы Docsify из Git становятся доступными для поиска
+админ-помощником без отдельного ручного копирования.
 
-## 8. Telegram Bot Service
+## 8. Сервис Telegram-бота
 
-Install generated service from `live.env`:
+Установите сгенерированный из `live.env` сервис:
 
 ```bash
 sudo bash deploy/plesk/install-systemd.sh deploy/plesk/live.env
 sudo systemctl status max-app-telegram.service
 ```
 
-Logs:
+Логи:
 
 ```bash
 journalctl -u max-app-telegram.service -f
 ```
 
-Telegram diagnostics:
+Диагностика Telegram:
 
 ```bash
 bash deploy/plesk/check-telegram.sh
 ```
 
-Set Telegram bot menu button:
+Установить кнопку меню Telegram-бота:
 
 ```bash
 bot/.venv/bin/python -m bot.telegram.set_menu_button
 ```
 
-Reset custom menu button when BotFather already provides the Mini App Open button:
+Сбросить пользовательскую кнопку меню, если BotFather уже предоставляет кнопку
+открытия Mini App:
 
 ```bash
 bot/.venv/bin/python -m bot.telegram.clear_menu_button
 ```
 
-## 9. Update Deploy
+## 9. Обновление и деплой
 
-For later updates:
+Для последующих обновлений:
 
 ```bash
 cd /var/www/vhosts/swpro.ru/httpdocs
 bash deploy/plesk/deploy.sh deploy/plesk/live.env
 ```
 
-The deploy script pulls code, applies migrations, checks syntax, updates bot dependencies and restarts the bot service when the service is installed.
+Скрипт получает новый код, применяет миграции, проверяет синтаксис, обновляет
+зависимости бота и перезапускает сервис бота, если он установлен.
 
-## 10. Scheduled Tasks
+## 10. Планировщик заданий
 
-Create four Plesk scheduled tasks under the site system user:
+Создайте четыре задания Plesk от имени системного пользователя сайта:
 
 ```cron
 */5 * * * * cd /var/www/vhosts/swpro.ru/httpdocs && php admin/cron/run-broadcasts.php
@@ -243,9 +277,14 @@ Create four Plesk scheduled tasks under the site system user:
 35 0 * * * cd /var/www/vhosts/swpro.ru/httpdocs && php admin/cron/cleanup-web-users.php >> storage/logs/web-user-cleanup.log 2>&1
 ```
 
-The second task sends unfinished check-up reminders after 24 hours, 3 days and 7 days, and inactivity messages after 14 and 30 days. Delivery is limited to daytime in the client's timezone. The third task creates invoices for the previous calendar month and updates individual workplace access after the payment deadline. The fourth task deletes abandoned temporary web profiles after the configured 3-day or 5-day period.
+Второе задание отправляет напоминания о незавершённых чек-апах через 24 часа,
+3 дня и 7 дней, а сообщения о неактивности — через 14 и 30 дней. Отправка
+ограничена дневным временем в часовом поясе клиента. Третье задание создаёт
+счета за предыдущий календарный месяц и обновляет доступ конкретного рабочего
+места после окончания срока оплаты. Четвёртое задание удаляет заброшенные
+временные web-профили после настроенного периода в 3 или 5 дней.
 
-## 11. Smoke Test URLs
+## 11. Быстрая проверка URL
 
 ```text
 https://swpro.ru/api/index.php
@@ -255,7 +294,7 @@ https://swpro.ru/docs/
 https://swpro.ru/legal.php?type=privacy_policy
 ```
 
-API check:
+Проверка API:
 
 ```bash
 curl -s https://swpro.ru/api/index.php

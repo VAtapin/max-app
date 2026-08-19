@@ -512,12 +512,37 @@ Retention:
 восстанавливаются, DNS автоматически не меняется, а старый Telegram-бот после
 восстановления остаётся остановленным.
 
+Все команды ниже выполняются от `root` на старом немецком сервере:
+
 ```bash
+# Предварительная проверка (Restic должен быть не ниже 0.14.0)
+restic version
+test -r /root/.config/restic/swpro.pass
+test -d /var/backups/swpro-restic
+
+# Установка helper-скрипта (один раз после обновления checkout)
+install -o root -g root -m 0750 \
+  /var/www/vhosts/swpro.ru/httpdocs/deploy/plesk/restore-from-restic.sh \
+  /usr/local/sbin/swpro-restore-from-restic.sh
+
+# Только чтение/подготовка
 swpro-restore-from-restic.sh list
-swpro-restore-from-restic.sh verify
+swpro-restore-from-restic.sh verify latest
 swpro-restore-from-restic.sh stage latest
-CONFIRM=YES swpro-restore-from-restic.sh apply latest --confirm
+swpro-restore-from-restic.sh apply latest --confirm
 ```
+
+База данных восстанавливается автоматически, вручную выполнять `mysql` или
+`mariadb` не нужно. Скрипт берёт параметры подключения из старого
+`deploy/plesk/live.env`, перед импортом создаёт резервную копию текущей базы и
+файлов в `/var/backups/swpro-pre-restore-<UTC timestamp>`, затем импортирует
+сжатый дамп `/run/swpro-database.sql.gz` через `mariadb`. После этого он
+синхронизирует `admin/uploads`, `uploads` и приватное хранилище.
+
+Файл `live.env`, восстановленный из snapshot нового Debian-сервера, находится
+в staging только для справки и не заменяет Plesk-конфигурацию. Если старый
+`live.env` отсутствует или его реквизиты БД не работают, `apply` запускать
+нельзя: сначала нужно восстановить корректную конфигурацию.
 
 ## Monitoring
 
