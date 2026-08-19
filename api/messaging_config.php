@@ -6,6 +6,7 @@ require_once __DIR__ . '/../admin/app/core/social_messaging.php';
 $user = require_platform_user();
 $managerId = !empty($user['manager_id']) ? (int)$user['manager_id'] : null;
 $resellerId = !empty($user['reseller_id']) ? (int)$user['reseller_id'] : null;
+$okAppId = preg_replace('/\D+/', '', (string)(app_config()['integrations']['ok_app_id'] ?? '')) ?: '';
 
 $items = [];
 foreach (['VK', 'OK'] as $platform) {
@@ -55,4 +56,10 @@ foreach (['VK', 'OK'] as $platform) {
     }
 }
 
-json_response(['integrations' => $items]);
+json_response([
+    'integrations' => $items,
+    // The regular web site cannot invoke the native OK confirmation. It can
+    // offer a safe return to the real OK Mini App instead of a fabricated
+    // group-chat URL that asks an owner to join their own group.
+    'ok_mini_app_url' => $okAppId !== '' ? 'https://ok.ru/app/' . $okAppId : null,
+]);

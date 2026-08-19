@@ -1041,9 +1041,19 @@ function messagingIntegrationsForDisplay() {
     return integration ? [integration] : [];
 }
 
-function okMessageStartUrl(integration) {
-    const groupId = encodeURIComponent(String(integration?.external_id || '').trim());
-    return groupId ? `https://ok.ru/group/${groupId}/messages/start/swpro` : '';
+function okMiniAppUrl() {
+    const baseUrl = String(state.messagingConfig?.ok_mini_app_url || '').trim();
+    if (!baseUrl) return '';
+    try {
+        const url = new URL(baseUrl, window.location.origin);
+        const referralCode = getReferralCode();
+        if (referralCode) {
+            url.searchParams.set('ref', referralCode);
+        }
+        return url.toString();
+    } catch (_) {
+        return '';
+    }
 }
 
 function messagingPermissionWasRequested(platform = null) {
@@ -1116,7 +1126,7 @@ function renderSingleMessagingPermissionCard(integration) {
         : state.platform === 'web'
             ? (isAllowed
                 ? `Личные сообщения от группы «${integration.title || 'OK'}» подключены.`
-                : `Откройте диалог с группой «${integration.title || 'OK'}» в Одноклассниках и отправьте первое сообщение. После этого консультант сможет отвечать вам в OK.`)
+                : `На обычном сайте OK не показывает системное разрешение. Откройте Mini App в Одноклассниках и подтвердите разрешение там — после этого консультант сможет отвечать вам в OK.`)
             : (isAllowed
             ? `Личные сообщения от группы «${integration.title || 'OK'}» подключены.`
             : isPending
@@ -1125,9 +1135,10 @@ function renderSingleMessagingPermissionCard(integration) {
     const button = isVk
         ? ui('messages.vk_allow', 'Разрешить сообщения VK')
         : ui('messages.ok_allow', 'Разрешить сообщения OK');
-    const allowLabel = isPending
-        ? (isVk ? 'Открыть окно VK' : 'Открыть окно OK')
-        : button;
+    // In OK the same button can be used repeatedly: it invokes the native
+    // platform confirmation again. Calling it “open window” was misleading,
+    // especially when the first confirmation was declined.
+    const allowLabel = isPending && isVk ? 'Открыть окно VK' : button;
 
     return `
         <section class="message-permission-card" data-messaging-platform="${escapeHtml(integration.platform)}">
@@ -1140,8 +1151,8 @@ function renderSingleMessagingPermissionCard(integration) {
                     ? `<button class="secondary compact" data-action="revoke-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">Отключить в SWPro</button>`
                     : deliveryDisabled
                         ? `<button class="primary compact" data-action="enable-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">Включить в SWPro</button>`
-                    : isOk && state.platform === 'web' && okMessageStartUrl(integration)
-                        ? `<a class="button primary compact" href="${escapeHtml(okMessageStartUrl(integration))}" target="_blank" rel="noopener" data-action="open-ok-messages">Открыть диалог OK</a>`
+                    : isOk && state.platform === 'web' && okMiniAppUrl()
+                        ? `<a class="button primary compact" href="${escapeHtml(okMiniAppUrl())}" target="_blank" rel="noopener" data-action="open-ok-mini-app">Открыть Mini App в OK</a>`
                     : `<button class="primary compact" data-action="allow-social-messages" data-messaging-platform="${escapeHtml(integration.platform)}">${escapeHtml(allowLabel)}</button>`}
             </div>
         </section>
@@ -1245,12 +1256,36 @@ function waitForOkPermissionDialog() {
 }
 
 async function okMessagesAllowedByPlatform(integration) {
+    const groupId = String(integration?.external_id || '').trim();
+    if (!groupId) return null;
+
+    // A VK Mini App launched in OK has VK Bridge, not the old FAPI session
+    // parameters. Ask OK through its bridge first; this is the only reliable
+    // status check in the current Mini App runtime.
+    if (state.platform === 'OK' && window.vkBridge) {
+        try {
+            const response = await vkBridge.send('OKWebAppCallAPIMethod', {
+                method: 'group.isMessagesAllowed',
+                params: {gid: groupId},
+                request_id: `swpro-ok-messages-${Date.now()}`,
+            });
+            const payloads = [response?.response, response?.data?.response, response?.data, response];
+            for (const payload of payloads) {
+                if (typeof payload?.allowed === 'boolean') {
+                    return payload.allowed;
+                }
+            }
+        } catch (_) {
+            // Older/classic OK contexts can still use FAPI below.
+        }
+    }
+
     try {
         const FAPI = await initOkSdk();
         return await new Promise((resolve) => {
             FAPI.Client.call({
                 method: 'group.isMessagesAllowed',
-                gid: String(integration.external_id || ''),
+                gid: groupId,
             }, (status, data) => {
                 const payload = data && typeof data === 'object' ? data : status;
                 resolve(typeof payload?.allowed === 'boolean' ? payload.allowed : null);
@@ -1285,16 +1320,37 @@ async function allowSocialMessages(platform = null) {
     }
 
     if (integration?.platform === 'OK' && state.platform === 'web') {
-        const url = okMessageStartUrl(integration);
+        const url = okMiniAppUrl();
         if (!url) {
-            throw new Error('OK group is unavailable');
+            throw new Error('OK Mini App is unavailable');
         }
         window.open(url, '_blank', 'noopener');
-        await refreshMessagingPermissions('OK', 'Откройте диалог OK, отправьте группе первое сообщение и затем нажмите «Проверить статус».', 'info');
+        await refreshMessagingPermissions('OK', 'Откройте Mini App в Одноклассниках и подтвердите разрешение там.', 'info');
         return {preserveView: true};
     }
 
     if (integration?.platform === 'OK' && state.platform === 'OK') {
+        const groupId = Number(integration.external_id || 0);
+        if (!groupId) throw new Error('OK group is unavailable');
+
+        if (window.vkBridge) {
+            setMessagingPermissionNotice('Открываем системное окно OK. Подтвердите разрешение в нём.', 'info', 'OK');
+            // A VK Mini App in OK must use the bridge. Do not await our API
+            // before this call: the native client requires a direct user click
+            // and otherwise silently refuses to display the confirmation.
+            await vkBridge.send('VKWebAppAllowMessagesFromGroup', {group_id: groupId});
+            const actualStatus = await okMessagesAllowedByPlatform(integration);
+            if (actualStatus === false) {
+                await prepareOkMessagePermission('deny');
+                await refreshMessagingPermissions('OK', 'OK не подтвердил разрешение. Нажмите «Разрешить сообщения OK», чтобы попробовать снова.', 'info');
+            } else {
+                await prepareOkMessagePermission('allow');
+                await refreshMessagingPermissions('OK', 'Готово: OK подтвердил разрешение, консультант может писать вам в личные сообщения.', 'success');
+            }
+            return {preserveView: true};
+        }
+
+        // Compatibility fallback for legacy/classic OK application sessions.
         const permission = await prepareOkMessagePermission();
         if (permission.status === 'allowed') {
             await refreshMessagingPermissions('OK', 'Готово: личные сообщения OK уже подключены.', 'success');
@@ -1309,11 +1365,8 @@ async function allowSocialMessages(platform = null) {
         if (response.result === 'ok') {
             await prepareOkMessagePermission('allow');
             await refreshMessagingPermissions('OK', 'Готово: OK подтвердил разрешение, консультант может писать вам в личные сообщения.', 'success');
-        } else if (response.result === 'cancel') {
-            await prepareOkMessagePermission('deny');
-            await refreshMessagingPermissions('OK', 'Разрешение не подтверждено. Его можно включить позже этой же кнопкой.', 'info');
         } else {
-            await refreshMessagingPermissions('OK', 'OK ещё не подтвердил разрешение. Нажмите «Открыть окно OK» и завершите подтверждение.', 'warning');
+            await refreshMessagingPermissions('OK', 'OK ещё не подтвердил разрешение. Нажмите «Разрешить сообщения OK» и завершите подтверждение.', 'warning');
         }
         return {preserveView: true};
     }
@@ -1376,10 +1429,12 @@ async function refreshMessagingPermissions(platform = null, noticeMessage = '', 
         const refreshed = messagingIntegration('OK');
         if (refreshed?.permission_status === 'allowed') {
             setMessagingPermissionNotice('Личные сообщения OK подключены.', 'success', 'OK');
+        } else if (state.platform === 'web') {
+            setMessagingPermissionNotice('На обычном сайте разрешение OK не запрашивается. Откройте Mini App в Одноклассниках.', 'info', 'OK');
         } else if (refreshed?.permission_status === 'pending') {
-            setMessagingPermissionNotice('OK ждёт подтверждения. Нажмите «Открыть окно OK».', 'warning', 'OK');
+            setMessagingPermissionNotice('OK ждёт подтверждения. Нажмите «Разрешить сообщения OK».', 'warning', 'OK');
         } else {
-            setMessagingPermissionNotice('Разрешение пока не подключено. Нажмите кнопку, чтобы открыть окно OK.', 'info', 'OK');
+            setMessagingPermissionNotice('Разрешение пока не подключено. Нажмите «Разрешить сообщения OK».', 'info', 'OK');
         }
     }
     updateMessagingPermissionCard();
